@@ -1,0 +1,63 @@
+@startuml
+' === 🟢 Use Case 1: Caricamento di un documento multimediale ===
+actor Utente
+participant "Interfaccia Utente" as UI
+participant "Controller Upload" as Controller
+participant "Servizio Documenti" as Servizio
+database "Database" as DB
+
+Utente -> UI: Carica file
+UI -> Controller: submitUpload(file, metadati)
+Controller -> Servizio: salvaDocumento(file, metadati)
+Servizio -> DB: INSERT Documento
+DB --> Servizio: conferma salvataggio
+Servizio --> Controller: esito positivo
+Controller --> UI: messaggio di conferma
+UI --> Utente: "File caricato con successo"
+
+' === 🔵 Use Case 2: Aggiunta commento su segmento video YouTube ===
+actor Utente
+participant "Interfaccia Video" as UI2
+participant "Controller Commenti" as Controller2
+participant "Servizio Commenti" as Servizio2
+database "Database" as DB2
+
+Utente -> UI2: Seleziona intervallo [00:45 - 01:15]
+Utente -> UI2: Inserisce commento
+UI2 -> Controller2: aggiungiCommento(idEsecuzione, intervallo, testo)
+Controller2 -> Servizio2: creaSegmento(idEsecuzione, intervallo)
+Servizio2 -> DB2: INSERT Segmento
+DB2 --> Servizio2: ID_Segmento
+
+Servizio2 -> DB2: INSERT Commento(ID_Segmento, ID_Utente, Testo)
+DB2 --> Servizio2: Conferma
+Servizio2 --> Controller2: esito positivo
+Controller2 --> UI2: conferma inserimento
+
+' === 🟠 Use Case 3: Registrazione nuovo utente + approvazione admin ===
+actor "Utente Non Registrato" as Guest
+actor "Amministratore" as Admin
+participant "Form Registrazione" as Form
+participant "Controller Utente" as Controller3
+participant "Servizio Utenti" as Servizio3
+database "Database" as DB3
+
+Guest -> Form: Compila form
+Form -> Controller3: richiestaRegistrazione(dati)
+Controller3 -> Servizio3: salvaRichiesta(dati)
+Servizio3 -> DB3: INSERT RichiestaRegistrazione
+DB3 --> Servizio3: conferma salvataggio
+Servizio3 --> Controller3: OK
+Controller3 --> Form: "Richiesta inviata"
+
+Admin -> Controller3: visualizzaRichieste()
+Controller3 -> DB3: SELECT * FROM RichiesteRegistrazione
+DB3 --> Controller3: elenco richieste
+Controller3 --> Admin: mostra elenco
+
+Admin -> Controller3: approvaRichiesta(idRichiesta)
+Controller3 -> Servizio3: creaUtente(dati)
+Servizio3 -> DB3: INSERT Utente
+Servizio3 -> DB3: DELETE RichiestaRegistrazione
+Controller3 --> Admin: "Utente creato"
+@enduml
