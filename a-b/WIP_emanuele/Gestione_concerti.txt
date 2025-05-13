@@ -1,0 +1,10 @@
+@startuml
+actor Utente
+
+rectangle "Gestione Concerti YouTube" {
+    Utente --> (Inserisci Link Concerto YouTube)
+    Utente --> (Aggiungi Informazioni sui Brani Eseguiti)
+    Utente --> (Visualizza/Ascolta Concerto)
+}
+
+@enduml

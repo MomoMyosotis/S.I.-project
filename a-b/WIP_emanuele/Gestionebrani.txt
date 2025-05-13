@@ -1,0 +1,10 @@
+@startuml
+actor Utente
+
+rectangle "Gestione Brani" {
+    Utente --> (Inserisci Nuovo Brano)
+    Utente --> (Modifica Informazioni Brano)
+    Utente --> (Visualizza Informazioni Brano)
+}
+
+@enduml

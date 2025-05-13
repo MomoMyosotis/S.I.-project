@@ -1,0 +1,10 @@
+@startuml
+actor Utente
+
+rectangle "Gestione Documenti Digitali" {
+    Utente --> (Carica Documento Digitale)
+    Utente --> (Scarica Documento Digitale)
+    Utente --> (Visualizza/Ascolta Documento)
+}
+
+@enduml

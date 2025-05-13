@@ -1,0 +1,10 @@
+@startuml
+actor Amministratore
+
+rectangle "Gestione Dizionari" {
+    Amministratore --> (Aggiorna Dizionario Strumenti)
+    Amministratore --> (Aggiorna Dizionario Generi)
+    Amministratore --> (Aggiorna Dizionario Autori)
+}
+
+@enduml

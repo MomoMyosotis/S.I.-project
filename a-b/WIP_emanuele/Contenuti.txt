@@ -1,0 +1,37 @@
+@startuml
+' === 🟢 Use Case 1: Caricamento di un documento multimediale ===
+actor Utente
+participant "Interfaccia Utente" as UI
+participant "Controller Upload" as Controller
+participant "Servizio Documenti" as Servizio
+database "Database" as DB
+
+Utente -> UI: Carica file
+UI -> Controller: submitUpload(file, metadati)
+Controller -> Servizio: salvaDocumento(file, metadati)
+Servizio -> DB: INSERT Documento
+DB --> Servizio: conferma salvataggio
+Servizio --> Controller: esito positivo
+Controller --> UI: messaggio di conferma
+UI --> Utente: "File caricato con successo"
+
+' === 🔵 Use Case 2: Aggiunta commento su segmento video YouTube ===
+actor Utente
+participant "Interfaccia Video" as UI2
+participant "Controller Commenti" as Controller2
+participant "Servizio Commenti" as Servizio2
+database "Database" as DB2
+
+Utente -> UI2: Seleziona intervallo [00:45 - 01:15]
+Utente -> UI2: Inserisce commento
+UI2 -> Controller2: aggiungiCommento(idEsecuzione, intervallo, testo)
+Controller2 -> Servizio2: creaSegmento(idEsecuzione, intervallo)
+Servizio2 -> DB2: INSERT Segmento
+DB2 --> Servizio2: ID_Segmento
+
+Servizio2 -> DB2: INSERT Commento(ID_Segmento, ID_Utente, Testo)
+DB2 --> Servizio2: Conferma
+Servizio2 --> Controller2: esito positivo
+Controller2 --> UI2: conferma inserimento
+
+@enduml

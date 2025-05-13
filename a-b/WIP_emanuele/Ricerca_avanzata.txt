@@ -1,0 +1,12 @@
+@startuml
+actor Utente
+
+rectangle "Ricerca Avanzata" {
+    Utente --> (Ricerca per Genere)
+    Utente --> (Ricerca per Titolo)
+    Utente --> (Ricerca per Autore)
+    Utente --> (Ricerca per Esecutore)
+    Utente --> (Accesso Diretto a Brani Commentati)
+}
+
+@enduml

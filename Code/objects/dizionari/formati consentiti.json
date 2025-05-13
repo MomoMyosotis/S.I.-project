@@ -1,0 +1,19 @@
+{
+    "documenti": {
+        "spartiti": [".pdf", ".odt", ".midi", ".xml", ".sib", ".mus"],
+        "testi": [".txt", ".pdf", ".docx", ".odt", ".rtf", ".html"],
+        "accordi": [".txt", ".pdf", ".docx", ".rtf"]
+    },
+
+    "brani": {
+        "audio": [".mp3", ".mp4", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".youtube"],
+        "video": [".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv", ".youtube"],
+        "midi": [".midi", ".mid", ".kar"],
+        "live": [".mp3", ".mp4", ".flac", ".wav", ".aac"]
+    },
+
+    "immagini" : {
+        "foto profilo" : [".jpg", ".png", ".jpeg"],
+        "foto cover" : [".jpg", ".png", ".jpeg", ".gif"]
+    }
+}

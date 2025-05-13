@@ -1,0 +1,28 @@
+@startuml
+actor Amministratore
+actor Utente
+
+rectangle "Moderazione" {
+    
+    package "Gestione Utenti" {
+        Amministratore --> (Approvare Registrazione Utente)
+        Amministratore --> (Rifiutare Registrazione Utente)
+        Amministratore --> (Rimuovere Utente Registrato)
+    }
+    
+    package "Gestione Commenti Generali" {
+        Amministratore --> (Rimuovere Commento Offensivo)
+        Utente --> (Cancellare Commenti su Propri Contenuti)
+        Utente --> (Caricare comento)
+        Utente --> (Rispondere a commento)
+    }
+    
+    package "Moderazione Commenti Segmenti Esecuzione" {
+        Amministratore --> (Rimuovere Commenti su Segmenti)
+        Utente --> (Aggiungere Commenti a Segmenti)
+        Utente --> (Rispondere a Commenti su Segmenti)
+        Utente --> (Cancellare commenti su propri segmenti)
+    }
+}
+
+@enduml

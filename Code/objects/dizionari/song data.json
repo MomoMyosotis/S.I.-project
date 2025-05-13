@@ -1,0 +1,15 @@
+{
+
+    "media name" : "",
+    "title" : "",
+    "durata" : "",
+    "authors" : [],
+    "id generes" : [],
+    "year" : ["DD", "MM", "YY"],
+    "esecutore" : "",
+    "strumenti" : [],
+    "location" : "",
+    "file ids" : [],
+    "ulteriori info" : ""
+
+}
