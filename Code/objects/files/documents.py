@@ -1,7 +1,7 @@
 # obj document
 
 
-class document:
+class Document:
 
     def __init__(self, document_data):
         self.document_data = document_data
@@ -10,23 +10,23 @@ class document:
         return f"{self}"
 
 # method
-def upload(self):
-    u(self)
-
-def download(self):
-    d(self)
 
 def view(self):
     v(self)
 
-def comment(self):
+def share(self):
+    s(self)
+
+def add_note(self):
+    # calls the function of he note obj
+    d(self)
+
+def change_data(self):
+    # tipo titolo didascalia o il file stesso
     c(self)
 
 def report(self):
     r(self)
-
-def note(self):
-    n(self)
 
 def delete(self):
     d(self)

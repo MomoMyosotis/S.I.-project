@@ -1,12 +1,15 @@
 # obj comment
 
-class commento:
+class Commento:
 
     def __init__(self, id, user_data, comment_data, file_data):
         self.id = id # id del commento UNIVOCO
-        self.user_data = user_data # dizionario coi dati dell'utente
-        self.comment_data = comment_data # dizionario coi dati del commento
-        self.file_data = file_data # dizionario coi dati dei file, video, musica o documento
+        self.user_data = user_data # dizionario coi dati dell'utente da qui si prende l'id e l'username
+        self.comment_data = comment_data # dizionario coi dati del commento - contiene i dati
+        self.file_data = file_data # dizionario coi dati dei file, video, musica o documento - ne recuper l'id
+
+    def __str__(self):
+        return f"{self}"
 
 def pubblish(self):
     p()

@@ -1,7 +1,7 @@
 # obj song
 
 
-class song:
+class Song:
 
     def __init__(self, id, user_data, song_data):
         self.id = id
@@ -12,25 +12,25 @@ class song:
         return f"{self}"
 
 # method
-def upload(self):
-    u(self)
+def play(self):
+    p(self)
 
-def download(self):
-    d(self)
+def stop(self):
+    s(self)
 
-def view(self):
-    v(self)
+def rewind(self):
+    r(self)
 
-def comment(self):
-    c(self)
+def pull_data(self):
+    p(self)
 
 def report(self):
     r(self)
 
-def note(self):
-    n(self)
+def share(self):
+    s(self)
 
-def delete(self):
-    d(self)
+def add_to_playlist(self):
+    atp(self)
 
 # last line

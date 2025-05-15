@@ -1,24 +1,17 @@
+import threading
+import webview
+from UI.homepage import create_app
 
-def login ():
-    print("login start..")
+app = create_app()
 
-    # pulsante di login
+def start_flask():
+    app.run(debug=False, use_reloader=False)
 
-    # pulsante di register
+def avvio():
+    # Avvia il server Flask in un thread
+    flask_thread = threading.Thread(target=start_flask, daemon=True)
+    flask_thread.start()
 
-    # pulsante di assistenza
-
-    # se login #1st time -> register()
-    print("login end")
-
-def register():
-    print("register start")
-
-    print ("register end")
-
-def logout():
-    print("logout start")
-
-    print("logout end")
-
-# last line
+    # Crea una finestra desktop che punta alla pagina di login
+    webview.create_window("Puffytune Login", "http://127.0.0.1:5000", width=1024, height=640)
+    webview.start()

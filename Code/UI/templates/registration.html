@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Registrazione</title>
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.5.1/css/all.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Poppins:200,300,400,500,600,700,800,900&display=swap" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='registration style.css') }}" />
+</head>
+<body>
+
+  <div class="box">
+    <div class="registration">
+      <div class="registrationBx">
+        <h2><i class="fas fa-user-plus"></i> sign up</h2>
+        <form action="/register" method="post" enctype="multipart/form-data">
+          <input type="email" name="mail" placeholder="Email" required />
+          <input type="text" name="username" placeholder="Username" required />
+          <input type="password" name="password" placeholder="Password" required />
+          <input type="date" name="birthday" placeholder="Data di nascita" required />
+          <input type="submit" value="Crea account" />
+          <div class="group">
+            <a href="/">Hai già un account?</a>
+            <a href="#">Serve aiuto?</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
+

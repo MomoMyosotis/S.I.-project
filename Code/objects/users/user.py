@@ -1,6 +1,6 @@
 # obj user
 
-class user:
+class User:
     def __init__(self, user_data, id):
         self.user_data = user_data
         self.id = id
