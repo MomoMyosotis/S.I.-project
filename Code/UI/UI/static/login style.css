@@ -1,0 +1,207 @@
+/* per i font da google e fontawesome*/
+@import url("https://fonts.googleapis.com/css?family=Poppins:200,300,400,500,600,700,800,900&display=swap");
+@import url("https://use.fontawesome.com/releases/v6.5.1/css/all.css");
+
+/* corpo della pagina*/
+body {
+  /* usa una cosa strana chiamata flexbox per centrare il contenuto*/
+  display: flex;
+  justify-content: center;              /* allinea orizzontale al centro */
+  align-items: center;                  /* allinea verticale al centro */
+  min-height: 100vh;                    /* altezza min al 100% della finestra */
+  background: #25252b;                /* colore sfondo */
+  margin: 0;                            /* rimuove i margini predefiniti */
+  padding: 0;                           /* rimuove padding predefinito*/
+}
+
+/* impostazioni generali per tutti gli allineamenti della pagina */
+* {
+  font-family: "Poppins", sans-serif;   /* imposta il font poppins per tutto il sito */
+  box-sizing: border-box;               /* include i bordi e il padding nelle dimensioni degli elementi */
+}
+
+/* proprietà personalizzata --a per l'angolo */
+@property --a {
+  syntax: "<angle>";               /* definisce il tipo di valore (angolo) */
+  inherits: false;                 /* i figli non ereditano  la proprietà */
+  initial-value: 0deg;             /* valore iniziare griglia = 0° */
+}
+
+/* stile contenitore principale */
+.box {
+  position: relative;             /* posizionamento relativo per gli elementi interni */
+  width: 400px;                   /* larghezza box */
+  height: 200px;                  /* altezza box */
+  background: repeating-conic-gradient(             /* sfondo */
+    from var(--a),
+    #ff2770 0%,
+    #ff2770 5%,
+    transparent 5%,
+    transparent 40%,
+    #ff2770 50%
+  );
+
+  /* aggiunge ombra al contenitore */
+  filter: drop-shadow(0 15px 50px #000);
+  border-radius: 20px;             /* bordo arrotondato */
+  animation: rotating 4s linear infinite;             /* animazione rotazzione continua */
+  display: flex;                   /* usa flexbox per allineare i contenuti */
+  justify-content: center;         /* allinea orizzontalmente al centro */
+  align-items: center;             /* allinea verticalmente al centro */
+  transition: 0.5s;                /* t transizione */
+}
+
+/* animazione rotazione definita con @keyframes */
+@keyframes rotating {
+  0% {
+    --a: 0deg;             /* all'inizio angolo = 0° */
+  }
+  100% {
+    --a: 360deg;             /* alla fine angolo = 360° (giro completo) */
+  }
+}
+
+/* stile elemento pseudo ::before (tf is that?)1*/
+.box::before {
+  content: "";             /* contenuto vuoto per effetti grafici */
+  position: absolute;      /* posizionamento abs dentro .box */
+  width: 100%;             /* larghezza piena */
+  height: 100%;            /* altezza piena */
+
+  /* graddiente con sfumature diverse per l'effetto di rotazione */
+  background: repeating-conic-gradient(
+    from var(--a),
+    #45f3ff 0%,
+    #45f3ff 5%,
+    transparent 5%,
+    transparent 40%,
+    #45f3ff 50%
+  );
+  filter: drop-shadow(0 15px 50px #000);  /* ombra contenitore */
+  border-radius: 20px;             /* bordo arrotondato */
+  animation: rotating 4s linear infinite; /* rotazione continua */
+  animation-delay: -1s;             /* ritarda animazione di 1s -> crea effetto diverso */
+}
+
+/* stile per elememnto psudo ::after */
+.box::after {
+  content: "";             /* contenitore vuoto */
+  position: absolute;      /* posizionamento abs */
+  inset: 4px;             /* distanzia di 4px dai bordi del contenitore */
+  background: #2d2d39;  /* colore sfondo */
+  border-radius: 15px;    /* bordo arrotondato */
+  border: 8px solid #25252b; /* bordo con colore scuro */
+}
+
+/* effetto passaggio del mouse su .box (hover)*/
+.box:hover {
+  width: 450px;             /* allarga box */
+  height: 500px;            /* alza box */
+}
+
+/* effetto  passaggio mouse su .box classe login*/
+.box:hover .login {
+  inset: 40px;             /* distanza dall'elemento di login diminuita */
+}
+
+/* effetto passaggio mouse su .box classe login.bx*/
+.box:hover .loginBx {
+  transform: translateY(0px);   /* fa scoorrere contenuto verso l'alto */
+}
+
+/* stile per modulo login */
+.login {
+  position: absolute;       /* Posizionamento assoluto all'interno della box */
+  inset: 60px;              /* Distanziamento di 60px dai bordi della box */
+  display: flex;            /* Usa Flexbox per allineare i contenuti */
+  justify-content: center;  /* Allinea orizzontalmente al centro */
+  align-items: center;      /* Allinea verticalmente al centro */
+  flex-direction: column;   /* Allinea gli elementi in colonna */
+  border-radius: 10px;      /* Bordo arrotondato */
+  background: #00000033;    /* Sfondo semitrasparente */
+  color: #fff;              /* Colore del testo bianco */
+  z-index: 1000;            /* Imposta un livello di profondità superiore */
+  box-shadow: inset 0 10px 20px #00000080; /* Ombra interna */
+  border-bottom: 2px solid #ffffff80; /* Bordo inferiore bianco semitrasparente */
+  transition: 0.5s;         /* Transizione per modifiche (ad esempio su hover) */
+  overflow: hidden;         /* Nasconde il contenuto che esce dai confini */
+}
+
+/* stile contenitore modulo loginbx*/
+.loginBx {
+  position: relative;       /* Posizionamento relativo */
+  display: flex;            /* Usa Flexbox */
+  justify-content: center;  /* Allinea orizzontalmente al centro */
+  align-items: center;      /* Allinea verticalmente al centro */
+  flex-direction: column;   /* Allinea gli elementi in colonna */
+  gap: 20px;                /* Distanza tra gli elementi */
+  width: 70%;               /* Larghezza del contenitore */
+  transform: translateY(126px); /* Sposta il contenuto verso il basso */
+  transition: 0.5s;         /* Transizione per il movimento */
+}
+
+/* stile per titolo h2 */
+h2 {
+  text-transform: uppercase; /* Trasforma il testo in maiuscolo */
+  font-weight: 600;          /* Imposta il peso del font a 600 */
+  letter-spacing: 0.2em;     /* Distanza tra le lettere */
+  text-align: center;        /* Allinea il testo al centro */
+}
+
+/* stile per icona nel titolo */
+h2 i {
+  color: #ff2770; /* colore icona*/
+  text-shadow: 0 0 5px #ff2770, 0 0 20px #ff2770; /* effetto ombra */
+}
+
+/* stile per gli input (campi di testo) */
+input {
+  width: 100%;                  /* Larghezza al 100% */
+  padding: 10px 20px;           /* Spaziatura interna */
+  outline: none;                /* Rimuove il contorno predefinito */
+  border: none;                 /* Rimuove il bordo predefinito */
+  font-size: 1em;               /* Imposta la dimensione del font */
+  color: #fff;                /* Colore del testo bianco */
+  background: #0000001a;      /* Sfondo semi-trasparente */
+  border: 2px solid #fff;     /* Bordo bianco */
+  border-radius: 30px;          /* Bordo arrotondato */
+}
+
+/* Stile per i placeholder degli input */
+input::placeholder {
+  color: #999;               /* Colore del testo del placeholder */
+}/* Stile per il pulsante di submit */
+input[type="submit"] {
+  background: #45f3ff;       /* Colore di sfondo azzurro per il pulsante */
+  border: none;              /* Rimuove il bordo predefinito del pulsante */
+  font-weight: 500;          /* Imposta il peso del font a 500 per un testo più audace */
+  color: #111;               /* Colore del testo (nero scuro) */
+  cursor: pointer;          /* Mostra un cursore a forma di mano quando ci si passa sopra */
+  transition: 0.5s;          /* Aggiunge una transizione fluida di 0.5 secondi per gli effetti */
+}
+
+/* Effetti al passaggio del mouse sopra il pulsante di submit */
+input[type="submit"]:hover {
+  box-shadow: 0 0 10px #45f3ff, 0 0 60px #45f3ff; /* Aggiunge un'ombra luminosa al passaggio del mouse */
+  /* La prima ombra è piccola e diffusa (0 0 10px), la seconda è più grande e intensa (0 0 60px) */
+}
+
+/* Contenitore per i link (gruppo di elementi) */
+.group {
+  width: 100%;               /* Larghezza al 100% dell'elemento contenitore */
+  display: flex;             /* Usa Flexbox per organizzare i link orizzontalmente */
+  justify-content: space-between; /* Distribuisce i link con spazio tra di loro */
+  font-size: 0.9em;          /* Imposta la dimensione del font al 90% della dimensione predefinita */
+}
+
+/* Stile per i link all'interno di .group */
+.group a {
+  color: #fff;               /* Colore del testo bianco per i link */
+  text-decoration: none;     /* Rimuove la sottolineatura dai link */
+}
+
+/* Stile per il secondo link all'interno di .group */
+.group a:nth-child(2) {
+  color: #ff2770;            /* Colore rosso brillante per il secondo link */
+  font-weight: 600;          /* Imposta il peso del font a 600 per il secondo link, rendendolo più audace */
+}
