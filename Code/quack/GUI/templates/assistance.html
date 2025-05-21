@@ -1,0 +1,32 @@
+<link rel="stylesheet" href="{{ url_for('static', filename='assistance_style.css') }}">
+
+<div class="box">
+  <form method="POST" action="{{ url_for('auth.assistance') }}" class="assistanceBx">
+    <h2>
+      <i class="fa-solid fa-envelope"></i> Assistance
+    </h2>
+
+    <input type="text" name="username_or_email" placeholder="Username or Email" required>
+
+    <label for="problem">Describe your problem:</label>
+    <textarea name="problem" id="problem" placeholder="What's wrong?" required></textarea>
+
+    <input type="submit" value="Send to assistance" />
+
+    <div class="group">
+      <a href="{{ url_for('\') }}">Back to Login</a>
+    </div>
+
+    {% if success %}
+    <div class="message">
+      <p id="success-message">We’ve sent your problem to our assistance team!</p>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="message">
+      <p id="error-message">{{ error }}</p>
+    </div>
+    {% endif %}
+  </form>
+</div>

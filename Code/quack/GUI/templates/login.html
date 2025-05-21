@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Modern Animated Login Form</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='login_style.css') }}">
+</head>
+<body>
+  <div class="box">
+    <div class="login">
+      <form id="loginForm" class="loginBx">
+        <h2>
+          <i class="fa-solid fa-right-to-bracket"></i>
+          Login
+          <i class="fa-solid fa-heart"></i>
+        </h2>
+        <input type="text" name="username" placeholder="Username" required />
+        <input type="password" name="password" placeholder="Password" required />
+        <input type="submit" value="Sign in" />
+        <div class="group">
+          <a href="{{ url_for('auth.recover') }}">Forgot Password?</a>
+          <a href="{{ url_for('auth.register') }}">Sign up</a>
+        </div>
+        <p id="msg" style="color: #ff2770; text-align: center; margin-top: 10px;"></p>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async function(event) {
+      event.preventDefault(); // stop reload
+      const form = event.target;
+      const msg = document.getElementById('msg');
+
+      const data = {
+        username: form.username.value,
+        password: form.password.value,
+      };
+
+      try {
+        const response = await fetch('/submit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) throw new Error('Network response was not ok');
+
+        const result = await response.json();
+
+        if (result.success) {
+          msg.style.color = '#45f3ff';
+          msg.textContent = 'Login successful! Redirecting...';
+          // Redirect dopo breve delay (esempio)
+          setTimeout(() => window.location.href = '/', 1500);
+        } else {
+          msg.style.color = '#ff2770';
+          msg.textContent = result.message || 'Login failed';
+        }
+      } catch (error) {
+        msg.style.color = '#ff2770';
+        msg.textContent = 'Errore di rete. Riprova.';
+      }
+    });
+  </script>
+</body>
+</html>

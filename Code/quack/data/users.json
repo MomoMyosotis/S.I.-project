@@ -1,0 +1,12 @@
+{
+  "pippo@email.com": {
+    "email": "pippo@email.com",
+    "username": "pippo",
+    "password_hash": "abc123"
+  },
+  "pluto@email.com": {
+    "email": "pluto@email.com",
+    "username": "pluto",
+    "password_hash": "xyz456"
+  }
+}

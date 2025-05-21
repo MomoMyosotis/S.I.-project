@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Forgot Password</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='recover_pswd_style.css') }}">
+</head>
+<body>
+  <div class="box">
+    <div class="forgot">
+      <form method="POST" action="{{ url_for('auth.recover') }}" class="forgotBx">
+        <!-- Titolo "Forgot" con busta -->
+        <h2>
+          <i class="fa-solid fa-envelope"></i>
+          Forgot
+        </h2>
+        <!-- Titolo "Password" con chiave -->
+        <h2>
+          <i class="fa-solid fa-key"></i>
+          Password
+        </h2>
+
+        <input type="text" name="username_or_email" placeholder="Username or Email" required>
+        <input type="submit" value="Send Reset Link" />
+        <div class="group">
+          <a href="{{ url_for('auth.login') }}">Back to Login</a>
+        </div>
+
+        {% if success %}
+        <div class="message">
+          <p id="success-message">We’ve sent you an email with your new password!</p>
+        </div>
+        {% endif %}
+
+        {% if error %}
+        <div class="message">
+          <p id="error-message" style="color: red;">{{ error }}</p>
+        </div>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Success message management is handled by Flask in the template
+  </script>
+</body>
+</html>
