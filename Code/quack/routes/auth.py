@@ -1,98 +1,120 @@
 # first line
 
+from werkzeug.security import check_password_hash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
+from quack.services.auth_service import (
+    load_users,
+    login_user,
+    register_new_user,
+    recover_password,
+    contact_assistance
+)
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash
-# DECOMMENTARE riga sotto
-# from flask_login import login_user, logout_user, login_required
+auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
-# servizi per autenticazione, registrazione e pswd reset
-from quack.services.auth_service import authenticate_user, register_user, send_password_reset, contact_assistance
-# Importiamo il modello User, anche se non viene usato per ora
-# from quack.models.user import User
-
-# Creiamo un Blueprint per gestire le route relative all'autenticazione
-auth_bp = Blueprint('auth', __name__)
-
-# Route per la pagina di login
-# Se la richiesta è GET, renderizziamo il modulo di login
-# Se la richiesta è POST, verifichiamo se l'utente esiste e la password è corretta
+# modulo di login
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':  # Se è una richiesta POST, cioè l'utente ha inviato il form
-        username = request.form.get('username')  # ottiene username
-        password = request.form.get('password')  # ottiene password
-        user = authenticate_user(username, password)  # Verifica credenziali usate
-        if user:
-            # = credentials corrette -> home page
-            return redirect(url_for('startpage.index'))
-        else:
-            # = credentials wrong -> send error
-            error = "Username o password errati"
-            return render_template('login.html', error=error)  # Renderizziamo la pagina di login con l'errore
-    return render_template('login.html')  # Se è una richiesta GET, renderizziamo il modulo di login
+    if request.method == 'POST':
+        identifier = request.form.get('identifier')
+        password = request.form.get('password')
 
-# Route per la registrazione
+        user = login_user(identifier, password)
+        if user:
+            session['user_id'] = user.email
+            flash('Login effettuato con successo!', 'success')
+            return redirect(url_for('home.home'))
+        else:
+            flash('Credenziali non valide, riprova.', 'danger')
+
+    return render_template('login.html')
+
+# modulo di registrazione
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == 'POST':  # se POST, l'user sending modulo di registrazione
-        email = request.form.get('email')  # get email
-        username = request.form.get('username')  # get username
-        password = request.form.get('password')  # get pswd
-        birthday = request.form.get("birthday") # get birthdya
+    if request.method == 'POST':
+        email = request.form.get('email')
+        username = request.form.get('username')
+        password = request.form.get('password')
+        password_confirm = request.form.get('password_confirm')
+        birthday = request.form.get("birthday")
 
-        # registration attempt
-        success, error = register_user(email, username, password, birthday)
+        if password != password_confirm:
+            flash("Le password non coincidono", "warning")
+            return render_template('registration.html')
+
+        success, msg = register_new_user(email, username, password, birthday)
         if success:
-            # Se la registrazione è riuscita, mostriamo un messaggio di successo
-            flash("Registrazione riuscita! Effettua il login.")
-            return redirect(url_for('auth.login'))  # Reindirizziamo alla pagina di login
-        return render_template('registration.html', error=error)  # Se c'è un errore, lo mostriamo
-    return render_template('registration.html')  # Se è una richiesta GET, mostriamo il modulo di registrazione
+            flash("Registrazione avvenuta con successo, puoi fare il login!", "success")
+            return redirect(url_for('auth.login'))
+        else:
+            flash(msg or "Errore nella registrazione", "danger")
 
-# Route per il recupero della password
-# Se la richiesta è GET, renderizziamo il modulo di recupero
-# Se la richiesta è POST, inviamo un link di reset password all'utente
+    return render_template('registration.html')
+
+# modulo di recupero credenziali
 @auth_bp.route('/recover', methods=['GET', 'POST'])
 def recover():
-    if request.method == 'POST':  # Se è una richiesta POST, l'utente sta inviando il modulo di recupero
-        identifier = request.form.get('username_or_email')  # Otteniamo il nome utente o l'email
-        success = send_password_reset(identifier)  # Proviamo a inviare il link di reset
+    if request.method == 'POST':
+        identifier = request.form.get('identifier')
+        success = recover_password(identifier)
         if success:
-            # Se l'operazione ha avuto successo, informiamo l'utente che il link è stato inviato
-            success ="New credentials sent to your mail!"
-            return render_template("auth.login")
+            flash("Link per reset password inviato (debug: guarda console)", "info")
         else:
-            # Se l'utente non è stato trovato, mostriamo un errore
-            return render_template('recover_pswd.html', error="Utente non trovato")
-    return render_template('recover_pswd.html')  # Se è una richiesta GET, renderizziamo il modulo di recupero
+            flash("Utente non trovato", "warning")
 
+    return render_template('recover_pswd.html')
+
+# modulo per contattare l'assistenza
 @auth_bp.route('/assistance', methods=['GET', 'POST'])
 def assistance():
     if request.method == 'POST':
-        identifier = request.form.get('username_or_email')
-        problem = request.form.get('problem')
-        success = contact_assistance(identifier, problem)
+        user_info = request.form.get('user_info')
+        issue = request.form.get('issue')
+        success = contact_assistance(user_info, issue)
         if success:
-            msg="Assistance has been contacted!"
-            return render_template("auth.login",  form_type='assistance', success=msg)
+            flash("Assistance has been contacted on your behalf, please be patient", "info")
         else:
-            error = "an error occurred. please retry."
-            return render_template("assistance.html", form_type='assistance', error=error)
-    return render_template("assistance.html")
+            flash("An error has occurred.\nERROR 82", "warning")
+    return render_template('assistance.html')
 
-# Route per il logout
-# Se l'utente è loggato, lo logout (ma non utilizziamo Flask-Login, quindi questa parte è semplificata)
+# moduo per il logout
 @auth_bp.route('/logout')
-# Commentiamo o rimuoviamo il decoratore @login_required perché non lo stiamo usando
-# @login_required
 def logout():
-    # Commentiamo o rimuoviamo il logout_user() perché non stiamo usando Flask-Login
-    # logout_user()
-    return redirect(url_for('auth.login'))  # Reindirizziamo l'utente alla pagina di login dopo il logout
+    session.pop('user_id', None)
+    flash('Sei stato disconnesso.', 'info')
+    return redirect(url_for('auth.login'))
 
-@auth_bp.route ('/')
-def home():
-    return render_template('home.html')
+@auth_bp.route('/submit', methods=['POST'])
+def submit_login():
+    data = request.get_json() if request.is_json else request.form
+    username = data.get("username")
+    password = data.get("password")
+
+    print(url_for('home.home'))  # Verifica che la rotta sia corretta
+    print(session)  # Mostra la sessione per il debug
+    print(f"Redirecting to: {url_for('home.home')}")
+
+    # Controllo login
+    user = login_user(username, password)  # Non passare 'session' qui
+
+    if user:
+        print("Login OK")
+
+        # salva utente in sessione
+        session['user_id'] = user.email
+
+        if request.is_json:
+            return jsonify({"success":True, "Message":"Login Successful"})
+        else:
+            # Redirezione alla homepage
+            return redirect(url_for('home.home'))
+    else:
+        if request.is_json:
+            return jsonify({"Success": False, "message":"Username or password wrong"})
+        else:
+            print("Login FALLITO")
+            return redirect(url_for("auth.login"))
 
 
 # last line

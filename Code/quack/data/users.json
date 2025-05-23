@@ -1,12 +1,14 @@
 {
-  "pippo@email.com": {
-    "email": "pippo@email.com",
-    "username": "pippo",
-    "password_hash": "abc123"
-  },
-  "pluto@email.com": {
-    "email": "pluto@email.com",
-    "username": "pluto",
-    "password_hash": "xyz456"
-  }
+    "a@b.c": {
+        "username" : "root",
+        "email" : "a@b.c",
+        "password" : "noot",
+        "birthday" : "14/12/2002"
+    },
+    "d@e.f": {
+        "username" : "user",
+        "email" : "d@e.f",
+        "password_hash" : "hashed_pass_qui",
+        "birthday" : "04/02/2005"
+    }
 }

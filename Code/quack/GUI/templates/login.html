@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Modern Animated Login Form</title>
+  <title>Login Form</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='login_style.css') }}">
 </head>
 <body>
@@ -38,7 +38,7 @@
       };
 
       try {
-        const response = await fetch('/submit', {
+        const response = await fetch('/auth/submit', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -53,15 +53,15 @@
         if (result.success) {
           msg.style.color = '#45f3ff';
           msg.textContent = 'Login successful! Redirecting...';
-          // Redirect dopo breve delay (esempio)
-          setTimeout(() => window.location.href = '/', 1500);
+          // Redirect dopo breve delay
+          setTimeout(() => window.location.href = '/home/', 1500);
         } else {
           msg.style.color = '#ff2770';
           msg.textContent = result.message || 'Login failed';
         }
       } catch (error) {
         msg.style.color = '#ff2770';
-        msg.textContent = 'Errore di rete. Riprova.';
+        msg.textContent = 'an error has occurred, please retry.\nERROR 291.';
       }
     });
   </script>

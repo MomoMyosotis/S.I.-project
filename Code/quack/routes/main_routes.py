@@ -1,9 +1,19 @@
 # first line
 
-from flask import Blueprint, render_template, redirect, url_for
+from flask import Blueprint, render_template, redirect, url_for, send_from_directory
+import os
 from flask import request
 
 main = Blueprint('main', __name__)
+
+@main.route('/favicon.ico')
+def favicon():
+    return send_from_directory(
+        os.path.join(main.root_path, '..', 'GUI', 'static'),
+        'favicon.ico',
+        mimetype='image/vnd.microsoft.icon'
+    )
+
 
 # Route per la homepage
 @main.route('/')
@@ -74,6 +84,5 @@ def logout():
     # Gestisci il logout dell'utente
     # In questa versione senza login, forse non è necessario
     return redirect(url_for('main.index'))
-
 
 # last line

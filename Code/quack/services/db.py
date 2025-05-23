@@ -1,12 +1,11 @@
 # first line
 
-
 from werkzeug.security import generate_password_hash, check_password_hash
 from quack.models.user import User
 import json
 import os
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'fake_users.json')
+DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'users.json')
 
 # Caricamento utenti da file
 def load_users():
@@ -50,7 +49,5 @@ def get_user_by_email_or_username(identifier):
         if user.email == identifier or user.username == identifier:
             return user
     return None
-
-
 
 # last line

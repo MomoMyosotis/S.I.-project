@@ -1,18 +1,20 @@
 # first line
 
-from flask import Blueprint, render_template
-import os
+from flask import Blueprint, render_template, request, redirect, url_for, session
+from quack.services.user_service import get_logged_in_user  # Importa il servizio
 
-static_folder = os.path.join('GUI', 'static')  # senza virgola
-print("Static folder resolved to:", os.path.abspath(static_folder))  # <-- debug
+home_bp = Blueprint('home', __name__, url_prefix='/home')
 
-
-homepage_bp = Blueprint('homepage', __name__,
-                        template_folder='../GUI/templates',
-                        static_folder='../GUI/static')
-
-@homepage_bp.route('/home')
+# modulo per la schermata home
+@home_bp.route('/', methods=['GET', 'POST'])
 def home():
-    return render_template('login.html')  # Quando esisterà
+    user = get_logged_in_user(session)
+    if not user:
+        return redirect(url_for('auth.login'))
+
+    form_type = request.args.get('form_type', '')  # prendi il parametro dalla query string
+
+    return render_template('homepage.html', user=user, form_type=form_type)
+
 
 # last line

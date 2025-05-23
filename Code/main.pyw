@@ -4,6 +4,7 @@ import threading
 import webview
 import os
 from quack import create_app
+from quack.app_req import requisiti
 
 # crea l'app
 def run_flask():
@@ -17,6 +18,9 @@ def run_flask():
     app.run(host='127.0.0.1', port=5000, debug=True, use_reloader=False)
 
 def main():
+
+    #requisiti.check_dependencies()
+
     # Crea un thread chiamato flask_thread (il thread termina automaticamente quando il programma principale termina)
     flask_thread = threading.Thread(target=run_flask, daemon=True)
 
@@ -24,7 +28,7 @@ def main():
     flask_thread.start()
 
     # Crea una finestra web-server chiamata BBGG ^^ sull'URL localhost
-    webview.create_window("BBGG ^^", "http://127.0.0.1:5000",
+    webview.create_window("Boopie =^.^=", "http://127.0.0.1:5000",
                         # Stabilisce le dimensioni della finestra
                         width=1024, height=768, resizable=True)
 
@@ -34,7 +38,5 @@ def main():
 # Se il file viene eseguito direttamente, chiama la funzione main
 if __name__ == "__main__":
     main()
-
-
 
 # last line

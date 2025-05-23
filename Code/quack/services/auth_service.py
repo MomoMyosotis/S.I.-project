@@ -1,80 +1,62 @@
 # first line
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
-from werkzeug.security import generate_password_hash
-from quack.services.db import authenticate_user, register_user, send_password_reset
+# fornisce interfaccia semplificata al resto dell'app
 
-auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+import json as J
+import os
+from flask import session
+from quack.services.db import (
+                                authenticate_user,
+                                register_user,
+                                send_password_reset,
+                                load_users
+                                )
 
-@auth_bp.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        identifier = request.form.get('identifier')  # email o username
-        password = request.form.get('password')
+FAKE_USER_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'users.json')
 
-        user = authenticate_user(identifier, password)
-        if user:
-            session['user_id'] = user.email  # o un altro ID univoco
-            flash('Login effettuato con successo!', 'success')
-            return redirect(url_for('homepage.index'))
-        else:
-            flash('Credenziali non valide, riprova.', 'danger')
+def load_users():
+    # Carica utenti dal file JSON (debug o fallback)
+    with open(FAKE_USER_PATH, 'r') as file:
+        return J.load(file)
 
-    return render_template('auth_login.html')
+def login_user(identifier, password):
+    user, err = authenticate_user(identifier, password)
+    if user:
+        session['user_id'] = user.email  # Salva l'ID dell'utente nella sessione
+        print(f"User logged in: {user.email}")  # Log per verificare che l'ID venga impostato
+    return user
 
-@auth_bp.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        username = request.form.get('username')
-        password = request.form.get('password')
-        password_confirm = request.form.get('password_confirm')
-        birthday = request.form.get("birthday")
 
-        if password != password_confirm:
-            flash("Le password non coincidono", "warning")
-            return render_template('auth_register.html')
+def register_new_user(email, username, password, birthday):
+    # Registra nuovo utente nel DB
+    return register_user(email, username, password, birthday)
 
-        success, msg = register_user(email, username, password, birthday)
-        if success:
-            flash("Registrazione avvenuta con successo, puoi fare il login!", "success")
-            return redirect(url_for('auth.login'))
-        else:
-            flash(msg or "Errore nella registrazione", "danger")
-
-    return render_template('auth_register.html')
-
-@auth_bp.route('/recover', methods=['GET', 'POST'])
-def recover():
-    if request.method == 'POST':
-        identifier = request.form.get('identifier')  # email o username
-        success = send_password_reset(identifier)
-        if success:
-            flash("Link per reset password inviato (debug: guarda console)", "info")
-        else:
-            flash("Utente non trovato", "warning")
-
-    return render_template('auth_recover.html')
+def recover_password(identifier):
+    # Invia link di recupero password
+    return send_password_reset(identifier)
 
 def contact_assistance(identifier, problem):
-    """
-    Funzione che simula l'invio di una richiesta di assistenza.
-    Puoi qui implementare la logica per salvare la richiesta su DB,
-    inviare un'email o qualsiasi altra cosa serva.
-    """
+    # Simula invio richiesta assistenza
     if not identifier or not problem:
         return False
-
-    # Per ora solo stampa di debug
     print(f"[ASSISTANCE REQUEST] From: {identifier} - Problem: {problem}")
-
-    # Simula successo sempre
     return True
 
-@auth_bp.route('/logout')
-def logout():
-    session.pop('user_id', None)
-    flash('Sei stato disconnesso.', 'info')
-    return redirect(url_for('auth.login'))
+def get_logged_in_user(session):
+
+    # if logged -> return obj user
+    # else -> return none
+
+    user_id = session.get('user_id')  # get l'ID utente dalla sessione
+    print(f"User ID in session: {user_id}")  # Aggiungi un log per vedere l'ID utente
+    if user_id:
+        users = load_users()  # Ottieni la lista degli utenti dal file JSON
+        # Itera attraverso gli utenti per trovare quello con 'user_id'
+        user = users.get(user_id)
+        if user:
+            print(f"User found: {user}")  # Log per vedere l'utente trovato
+            return user  # Restituisci l'utente se trovato
+    print("User not found or not logged in")  # Log quando l'utente non viene trovato
+    return None
 
 # last line

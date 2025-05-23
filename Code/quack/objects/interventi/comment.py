@@ -51,6 +51,4 @@ def react(self):
 def set_font(self):
     sf()
 
-
-
 # last line
