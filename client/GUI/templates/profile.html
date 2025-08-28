@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profilo Utente - {{ username }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='profile_style.css') }}" />
+</head>
+<body>
+<main class="profile-container" role="main" aria-label="Profilo utente di {{ username }}">
+  <!-- Intestazione profilo -->
+  <section class="profile-header" aria-label="Informazioni utente">
+    <img
+      src="{{ url_for('static', filename=user_profile_picture) }}"
+      alt="Foto profilo di {{ username }}"
+      class="profile-picture"
+      width="180"
+      height="180"
+    />
+    <div class="profile-info">
+      <h1 tabindex="0">{{ username }}</h1>
+      <p class="bio" tabindex="0">{{ bio }}</p>
+    </div>
+  </section>
+
+  <!-- Statistiche profilo -->
+  <section class="profile-stats" aria-label="Statistiche utente" role="region">
+    <div><strong>Pubblicazioni:</strong> {{ publications_count or 0 }}</div>
+    <div><strong>Followers:</strong> {{ followers_count or 0 }}</div>
+    <div><strong>Following:</strong> {{ following_count or 0 }}</div>
+  </section>
+
+  <!-- Sezione Bio -->
+  <section class="profile-full-bio" aria-label="Biografia utente" role="region">
+    <h2 tabindex="0">about me</h2>
+    <p id="bio-text" class="bio-collapsed">
+      {{ full_bio or "Nessuna biografia disponibile." }}
+    </p>
+    {% if full_bio %}
+      <button id="toggle-bio-btn" class="toggle-bio-btn">Mostra di più</button>
+    {% endif %}
+  </section>
+
+  <!-- Azioni profilo -->
+  <section class="profile-actions" aria-label="Azioni profilo" role="region">
+    {% if user_id == logged_in_user_id %}
+      <button class="edit-btn" onclick="editProfile()" aria-label="Modifica il tuo profilo">Modifica Profilo</button>
+    {% else %}
+      <button class="block-btn" onclick="confirmBlockUser()" aria-label="Blocca questo utente">Blocca Utente</button>
+      <button class="get-id-btn" onclick="showUserId()" aria-label="Mostra ID utente">Ottieni ID</button>
+    {% endif %}
+  </section>
+
+  <!-- Pubblicazioni recenti -->
+  <section class="profile-recent-publications" aria-label="Pubblicazioni recenti" role="region">
+    <h2 tabindex="0">Pubblicazioni Recenti</h2>
+    {% if recent_publications and recent_publications|length > 0 %}
+      <ul>
+        {% for pub in recent_publications[:3] %}
+          <li class="publication-item" tabindex="0">
+            <strong>{{ pub.title }}</strong>
+            <p>{{ pub.description }}</p>
+            <small>{{ pub.date_published }}</small>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p tabindex="0">Nessuna pubblicazione recente.</p>
+    {% endif %}
+  </section>
+</main>
+
+
+  <div id="notification" role="alert" aria-live="assertive"></div>
+
+  <script>
+    const notification = document.getElementById('notification');
+
+    function showNotification(message) {
+      notification.textContent = message;
+      notification.style.display = 'block';
+      setTimeout(() => {
+        notification.style.display = 'none';
+      }, 3000);
+    }
+
+    function editProfile() {
+      window.location.href = "{{ url_for('home.profile') }}";
+    }
+
+    function confirmBlockUser() {
+      if (confirm("Sei sicuro di voler bloccare questo utente?")) {
+        showNotification("Utente bloccato con successo!");
+      }
+    }
+
+    function showUserId() {
+      showNotification("ID utente: {{ user_id }}");
+    }
+
+    // Toggle Bio
+    const bioText = document.getElementById("bio-text");
+    const toggleBioBtn = document.getElementById("toggle-bio-btn");
+
+    if (toggleBioBtn) {
+      toggleBioBtn.addEventListener("click", () => {
+        if (bioText.classList.contains("bio-collapsed")) {
+          bioText.classList.remove("bio-collapsed");
+          toggleBioBtn.textContent = "Mostra meno";
+        } else {
+          bioText.classList.add("bio-collapsed");
+          toggleBioBtn.textContent = "Mostra di più";
+        }
+      });
+    }
+  </script>
+</body>
+</html>

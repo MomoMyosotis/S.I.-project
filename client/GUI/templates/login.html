@@ -1,0 +1,68 @@
+<!-- login.html -->
+<div class="box">
+  <div class="login">
+    <link rel="stylesheet" href="{{ url_for('static', filename='login_style.css') }}">
+
+    <form id="loginForm" class="loginBx" method="post" action="{{ url_for('.login') }}">
+      {{ form.hidden_tag() }}  <!-- 👈 CSRF token e campi nascosti -->
+
+      <h2>
+        <i class="fa-solid fa-right-to-bracket"></i>
+        Login
+        <i class="fa-solid fa-heart"></i>
+      </h2>
+
+      <!-- Username -->
+      {{ form.username(class_="input", placeholder="Username") }}
+      {% for error in form.username.errors %}
+        <p class="error">{{ error }}</p>
+      {% endfor %}
+
+      <!-- Password -->
+      {{ form.password(class_="input", placeholder="Password") }}
+      {% for error in form.password.errors %}
+        <p class="error">{{ error }}</p>
+      {% endfor %}
+
+      <input type="submit" value="Sign in" />
+
+      <div class="group">
+        <a href="{{ url_for('auth.recover') }}">Forgot Password?</a>
+        <a href="{{ url_for('auth.register') }}">Sign up</a>
+      </div>
+
+      <p id="msg" style="color: #ff2770; text-align: center; margin-top: 1px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              {{ message }}
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+      </p>
+    </form>
+
+    <script>
+      function pollLoginStatus() {
+        fetch('/auth/login_status')
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'ACCEPTED') {
+              window.location.href = '/home';
+            } else if (data.status === 'PENDING') {
+              setTimeout(pollLoginStatus, 15000); // riprova tra 15 secondi
+            }
+          })
+          .catch(err => console.error(err));
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const msgText = document.getElementById('msg').innerText || '';
+        if (msgText.includes('attesa di approvazione admin')) {
+          pollLoginStatus();
+        }
+      });
+    </script>
+
+  </div>
+</div>

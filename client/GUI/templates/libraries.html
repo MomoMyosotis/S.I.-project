@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Libreria utente</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="{{ url_for('static', filename='libraries_style.css') }}">
+</head>
+<body>
+
+<header>Libreria</header>
+
+<div class="library-controls">
+  <select id="type-filter">
+    <option value="all">Tutti</option>
+    <option value="audio">Brani Musicali</option>
+    <option value="video">Video</option>
+    <option value="link">Link Concerti</option>
+    <option value="document">Documenti</option>
+  </select>
+
+  <select id="sort-filter">
+    <option value="title">Titolo (A-Z)</option>
+    <option value="author">Autore</option>
+    <option value="tag">Tag</option>
+  </select>
+</div>
+
+<div class="library" id="library-container"></div>
+
+<div class="loading" id="loading">Caricamento contenuti...</div>
+
+<script>
+  // Mock dati libreria
+  const libraryItems = [
+    {
+      id: 1,
+      type: 'audio',
+      title: 'Brano 1',
+      author: 'Autore A',
+      thumbnail: 'https://via.placeholder.com/100x100?text=Brano+1',
+      link: '#audio1',
+      tags: ['pop', 'energetico']
+    },
+    {
+      id: 2,
+      type: 'video',
+      title: 'Concerto Live',
+      author: 'Band XYZ',
+      thumbnail: 'https://via.placeholder.com/100x100?text=Video',
+      link: '#video1',
+      tags: ['live', 'rock']
+    },
+    {
+      id: 3,
+      type: 'document',
+      title: 'Spartito Jazz',
+      author: 'Musicista Q',
+      thumbnail: 'https://via.placeholder.com/100x100?text=Doc',
+      link: '#doc1',
+      tags: ['jazz', 'spartito']
+    },
+    {
+      id: 4,
+      type: 'link',
+      title: 'Evento Streaming',
+      author: 'Organizzatore Y',
+      thumbnail: 'https://via.placeholder.com/100x100?text=Link',
+      link: 'https://concerto.example.com',
+      tags: ['streaming']
+    }
+    // Puoi aggiungere altri item qui...
+  ];
+
+  const container = document.getElementById('library-container');
+  const loading = document.getElementById('loading');
+
+  function renderLibrary(items) {
+    container.innerHTML = '';
+    items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'library-item';
+      div.innerHTML = `
+        <img src="${item.thumbnail}" alt="thumb" />
+        <div class="info">
+          <h3><a href="${item.link}" target="_blank">${item.title}</a></h3>
+          <p>Autore: ${item.author}</p>
+          <p>Tag: ${item.tags.join(', ')}</p>
+        </div>
+        <div class="actions">
+          <button onclick="alert('Apri: ${item.title}')">Apri</button>
+          <button onclick="alert('Download placeholder per: ${item.title}')">Scarica</button>
+          <button onclick="removeItem(${item.id})">Rimuovi</button>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+  }
+
+  function applyFilters() {
+    const type = document.getElementById('type-filter').value;
+    const sortBy = document.getElementById('sort-filter').value;
+
+    let filtered = libraryItems.slice();
+
+    if (type !== 'all') {
+      filtered = filtered.filter(item => item.type === type);
+    }
+
+    filtered.sort((a, b) => {
+      const valA = (a[sortBy] || '').toString().toLowerCase();
+      const valB = (b[sortBy] || '').toString().toLowerCase();
+      return valA.localeCompare(valB);
+    });
+
+    renderLibrary(filtered);
+  }
+
+  function removeItem(id) {
+    const index = libraryItems.findIndex(item => item.id === id);
+    if (index !== -1) {
+      libraryItems.splice(index, 1);
+      applyFilters();
+    }
+  }
+
+  document.getElementById('type-filter').addEventListener('change', applyFilters);
+  document.getElementById('sort-filter').addEventListener('change', applyFilters);
+
+  // Inizializza
+  applyFilters();
+  loading.style.display = 'none';
+</script>
+
+</body>
+</html>
