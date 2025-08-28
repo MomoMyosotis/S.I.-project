@@ -1,0 +1,217 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Poppins", sans-serif;
+  background-color: #1e1b29;
+  color: #eee;
+}
+
+/* proprietà personalizzata --a per l'angolo - animazione */
+@property --a {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* animazione rotazione */
+@keyframes rotating {
+  0% {
+    --a: 0deg;
+  }
+  100% {
+    --a: 360deg;
+  }
+}
+
+/* header con animazione colori come .box */
+header {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  margin: 20px auto 10px;
+  padding: 20px 0;
+  font-weight: 700;
+  font-size: 1.8em;
+  text-align: center;
+  color: white;
+  border-radius: 20px;
+  background: repeating-conic-gradient(
+    from var(--a),
+    #ff2770 0%,
+    #ff2770 5%,
+    transparent 5%,
+    transparent 40%,
+    #ff2770 50%
+  );
+  filter: drop-shadow(0 15px 50px #000);
+  animation: rotating 4s linear infinite;
+  text-shadow: 0 0 10px #ff2770;
+  z-index: 1;
+  user-select: none;
+  box-shadow: 0 2px 5px rgba(255, 39, 112, 0.5);
+  letter-spacing: 0.05em;
+  position: sticky;
+  top: 0;
+}
+
+/* layer animato secondario per effetto dinamico */
+header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: repeating-conic-gradient(
+    from var(--a),
+    #45f3ff 0%,
+    #45f3ff 5%,
+    transparent 5%,
+    transparent 40%,
+    #45f3ff 50%
+  );
+  filter: drop-shadow(0 15px 50px #000);
+  animation: rotating 4s linear infinite;
+  animation-delay: -1s;
+  z-index: -1;
+}
+
+/* bordo interno scuro per profondità */
+header::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background: #2d2d39;
+  border-radius: 15px;
+  border: 8px solid #25252b;
+  z-index: -1;
+}
+
+/* resto del CSS inalterato */
+
+.search-bar {
+  display: flex;
+  gap: 10px;
+  padding: 15px 20px;
+  background-color: #2d2d39;
+  box-shadow: inset 0 0 10px #ff2770cc;
+  border-radius: 12px;
+  margin: 15px 20px;
+}
+
+.search-bar input[type="text"] {
+  flex: 1;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1em;
+  outline: none;
+  background-color: #3a374a;
+  color: #eee;
+  transition: box-shadow 0.3s ease;
+}
+
+.search-bar input[type="text"]:focus {
+  box-shadow: 0 0 10px #ff2770;
+}
+
+.search-bar select {
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  background-color: #3a374a;
+  color: #eee;
+  font-size: 1em;
+  cursor: pointer;
+  outline: none;
+  transition: box-shadow 0.3s ease;
+}
+
+.search-bar select:focus {
+  box-shadow: 0 0 10px #ff2770;
+}
+
+.search-bar button {
+  padding: 10px 20px;
+  background-color: #ff2770;
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 0 15px #ff2770;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.search-bar button:hover {
+  background-color: #e01f65;
+  box-shadow: 0 0 25px #ff2770;
+}
+
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 0 20px 60px;
+}
+
+.media-item {
+  display: flex;
+  background-color: #2d2d39;
+  border-radius: 15px;
+  box-shadow: 0 0 15px #ff2770aa;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.media-item:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 25px #ff2770ee;
+}
+
+.media-item img {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 15px 0 0 15px;
+  flex-shrink: 0;
+}
+
+.media-info {
+  padding: 15px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #eee;
+  flex: 1;
+}
+
+.media-info h3 {
+  margin: 0 0 8px;
+  font-weight: 700;
+  font-size: 1.2em;
+}
+
+.media-info h3 a {
+  color: #ff2770;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.media-info h3 a:hover {
+  color: #45f3ff;
+  text-shadow: 0 0 8px #45f3ff;
+}
+
+.media-info p {
+  margin: 0;
+  font-size: 0.9em;
+  color: #bbb;
+}
+
+.loading {
+  text-align: center;
+  padding: 15px;
+  font-size: 1.1em;
+  color: #ff2770;
+  text-shadow: 0 0 10px #ff2770;
+}

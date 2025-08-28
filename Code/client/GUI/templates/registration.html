@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Registrazione</title>
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v6.5.1/css/all.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Poppins:200,300,400,500,600,700,800,900&display=swap" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='registration_style.css') }}" />
+</head>
+<body>
+
+  <div class="box">
+    <div class="registration">
+      <div class="registrationBx">
+        <h2><i class="fas fa-user-plus"></i> Sign Up</h2>
+
+        <form action="{{ url_for('auth.register') }}" method="post" enctype="multipart/form-data">
+          {{ form.hidden_tag() }}  <!-- 👈 CSRF token e campi nascosti -->
+
+          <!-- Email -->
+          {{ form.email(class_="input", placeholder="Email") }}
+          {% for error in form.email.errors %}
+            <p class="error">{{ error }}</p>
+          {% endfor %}
+
+          <!-- Username -->
+          {{ form.username(class_="input", placeholder="Username") }}
+          {% for error in form.username.errors %}
+            <p class="error">{{ error }}</p>
+          {% endfor %}
+
+          <!-- Password -->
+          {{ form.password(class_="input", placeholder="Password") }}
+          {% for error in form.password.errors %}
+            <p class="error">{{ error }}</p>
+          {% endfor %}
+
+          <!-- Birthday -->
+          {{ form.birthday(class_="input", placeholder="Data di nascita") }}
+          {% for error in form.birthday.errors %}
+            <p class="error">{{ error }}</p>
+          {% endfor %}
+
+          <input type="submit" value="Crea account" />
+
+          <div class="group">
+            <a href="{{ url_for('auth.login') }}">Hai già un account?</a>
+            <a href="{{ url_for('auth.assistance') }}">Serve aiuto?</a>
+          </div>
+
+          <p id="msg" style="color: #ff2770; text-align: center; margin-top: 1px;">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                  {{ message }}
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+          </p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

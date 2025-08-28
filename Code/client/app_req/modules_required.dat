@@ -1,0 +1,5 @@
+flask
+pywebview
+requests
+wtforms
+flask_wtf

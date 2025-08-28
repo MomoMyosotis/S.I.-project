@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Favicon standard -->
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Start Page</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='index_style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}" />
+</head>
+<body>
+  <div class="start-container">
+    {% include 'auth.html' %}
+  </div>
+</body>
+</html>

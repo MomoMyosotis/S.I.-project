@@ -1,0 +1,40 @@
+<link rel="stylesheet" href="{{ url_for('static', filename='assistance_style.css') }}">
+
+<div class="box">
+  <form method="POST" action="{{ url_for('auth.assistance') }}" class="assistanceBx">
+    {{ form.hidden_tag() }}  <!-- 👈 CSRF token -->
+
+    <h2>
+      <i class="fa-solid fa-envelope"></i> Assistance
+    </h2>
+
+    <!-- identifier -->
+    {{ form.identifier(class_="input", placeholder="Username or Email") }}
+    {% for error in form.identifier.errors %}
+      <p class="error">{{ error }}</p>
+    {% endfor %}
+
+    <!-- message description -->
+    {{ form.message(class_="input", placeholder="What's wrong?") }}
+    {% for error in form.message.errors %}
+      <p class="error">{{ error }}</p>
+    {% endfor %}
+
+    <input type="submit" value="Send to Assistance" />
+
+    <div class="group">
+      <a href="{{ url_for('auth.login') }}">Back to Login</a>
+    </div>
+
+    <!-- Flash messages -->
+    <p id="msg" style="color: #ff2770; text-align: center; margin-top: 1px;">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            {{ message }}
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+    </p>
+  </form>
+</div>

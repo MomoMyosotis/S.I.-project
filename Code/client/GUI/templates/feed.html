@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Feed</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="{{ url_for('static', filename='feed_style.css') }}">
+</head>
+<body>
+
+<header>Feed</header>
+
+<div class="search-bar">
+  <input type="text" id="search" placeholder="Cerca...">
+  <select id="filter">
+    <option value="all">Tutti</option>
+    <option value="user">Utente</option>
+    <option value="title">Titolo</option>
+    <option value="file">File</option>
+    <option value="tag">Tag</option>
+  </select>
+  <button onclick="applySearch()">Cerca</button>
+</div>
+
+<div class="feed" id="feed"></div>
+<div class="loading" id="loading">Caricamento...</div>
+
+<script>
+  // Dati mock spaceholders (sostituibili con fetch API da Flask)
+  const allMedia = Array.from({ length: 100 }, (_, i) => ({
+    id: i,
+    title: `Brano ${i + 1}`,
+    username: `user${(i % 5) + 1}`,
+    thumbnail: `https://via.placeholder.com/100x100?text=IMG+${i + 1}`,
+    link: `#file${i + 1}`,
+    tags: ['pop', 'rock', 'jazz'][i % 3]
+  }));
+
+  let currentIndex = 0;
+  const batchSize = 10;
+  let currentFilter = 'all';
+  let currentSearch = '';
+
+  const feedEl = document.getElementById('feed');
+  const loadingEl = document.getElementById('loading');
+
+  function loadMore() {
+    const filtered = allMedia.filter(item => {
+      if (!currentSearch) return true;
+      const value = currentSearch.toLowerCase();
+      if (currentFilter === 'all') {
+        return Object.values(item).some(val => String(val).toLowerCase().includes(value));
+      }
+      return String(item[currentFilter]).toLowerCase().includes(value);
+    });
+
+    const nextItems = filtered.slice(currentIndex, currentIndex + batchSize);
+    nextItems.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'media-item';
+      div.innerHTML = `
+        <img src="${item.thumbnail}" alt="img">
+        <div class="media-info">
+          <h3><a href="${item.link}" target="_blank">${item.title}</a></h3>
+          <p>Autore: ${item.username}</p>
+        </div>
+      `;
+      feedEl.appendChild(div);
+    });
+
+    currentIndex += batchSize;
+
+    if (currentIndex >= filtered.length) {
+      loadingEl.textContent = "Fine dei risultati";
+      window.removeEventListener('scroll', handleScroll);
+    }
+  }
+
+  function handleScroll() {
+    if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
+      loadMore();
+    }
+  }
+
+  function applySearch() {
+    currentIndex = 0;
+    feedEl.innerHTML = '';
+    currentSearch = document.getElementById('search').value;
+    currentFilter = document.getElementById('filter').value;
+    loadingEl.textContent = "Caricamento...";
+    loadMore();
+    window.addEventListener('scroll', handleScroll);
+  }
+
+  // Caricamento iniziale
+  loadMore();
+  window.addEventListener('scroll', handleScroll);
+</script>
+
+</body>
+</html>
