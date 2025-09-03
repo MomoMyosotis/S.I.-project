@@ -179,3 +179,7 @@
 2025-08-28 05:04:35 - SERVER - SYSTEM - CREATE_SONG - ERROR: invalid year 'notanumber'
 2025-08-28 05:09:24 - SERVER - SYSTEM - CREATE_SONG - ERROR: invalid year 'notanumber'
 2025-08-28 05:14:52 - SERVER - SYSTEM - CREATE_SONG - ERROR: invalid year 'notanumber'
+2025-09-03 04:04:44 - 127.0.0.1 - unknown - ERROR - Object of type Root is not JSON serializable
+2025-09-03 04:04:44 - 127.0.0.1 - unknown - ERROR - Object of type Root is not JSON serializable
+2025-09-03 04:12:37 - 127.0.0.1 - unknown - ERROR - Object of type Root is not JSON serializable
+2025-09-03 04:12:37 - 127.0.0.1 - unknown - ERROR - Object of type Root is not JSON serializable

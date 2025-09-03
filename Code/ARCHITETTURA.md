@@ -1,96 +1,95 @@
 Code
-├── ARCHITETTURA.md                     // map of files and function
+├── server
+│   ├── main.py                        // entry point server
+│   ├── tester.py                       // stress test server
+│   ├── services
+│   │   ├── server_logic.py             // gestisce operazioni server
+│   │   ├── redirect.py                 // gestione utenti e interazione comandi
+│   │   ├── media_crud.py               // CRUD oggetti media
+│   │   ├── handle_obj.py               // validatore generico media prima del CRUD
+│   │   ├── handle_client.py            // gestisce client e sessioni utente
+│   │   ├── config_loader.py            // configura il server
+│   │   ├── cd.json                      // info configurazione server
+│   │   └── admin_console.py            // console gestione manuale server
+│   ├── objects
+│   │   ├── interventi
+│   │   │   ├── comment.py              // costruttore oggetto commento
+│   │   │   └── note.py                 // costruttore oggetto nota
+│   │   ├── media
+│   │   │   ├── document.py             // costruttore oggetto figlio documento (da media)
+│   │   │   ├── media.py                // costruttore oggetto generico media
+│   │   │   ├── song.py                 // costruttore oggetto figlio song (da media)
+│   │   │   └── video.py                // costruttore oggetto figlio video (da media)
+│   │   └── users
+│   │       └── user.py                 // costruttore oggetto user
+│   ├── logs
+│   │   ├── esito_test                  // esito stress test server\tester.py
+│   │   ├── logger.py                   // registra eventi (registrazione, connessione…)
+│   │   └── server.log                  // log degli eventi
+│   ├── db
+│   │   ├── __init__.py                 // connessione db PostgreSQL
+│   │   ├── connection.py               // tester integrità db
+│   │   ├── credentials.json            // credenziali db PostgreSQL
+│   │   ├── db.sql                       // query SQL per creare database
+│   │   ├── handle_obj_low.py           // accesso e logica db
+│   │   └── pita
+│   │       ├── pita_make.py            // script per ricreare db da zero
+│   │       ├── pita_populate.py        // logica popolamento db
+│   │       └── pita_tablefill.py       // query e dati per popolare db
+│   └── cache                           // (vuota, da valutare se rimuovere)
+│
 ├── client
+│   ├── __init__.py                     // configurazione app
+│   ├── forms.py                         // logica validazione form client (frontend)
+│   ├── run_client.py                    // esecuzione app
+│   ├── services
+│   │   ├── auth_service.py              // logica autenticazione
+│   │   ├── config.py                    // info configurazione client
+│   │   └── tcp_helper.py                // connessione TCP + invio/ricezione dati client-server
+│   ├── routes
+│   │   ├── __init__.py                  // registra blueprint Flask
+│   │   ├── auth_bp.py                   // rotte auth e support
+│   │   ├── content.py                   // rotte visualizzazione contenuti multimediali
+│   │   ├── home.py                      // rotte homepage
+│   │   └── logged
+│   │       ├── feed_bp.py               // rotte feed
+│   │       ├── home_bp.py               // rotte home
+│   │       ├── libraries_bp.py          // rotte librerie
+│   │       └── profile_bp.py            // rotte profile
+│   ├── models
+│   │   └── user.py                      // pseudo oggetto user lato client
 │   ├── GUI
 │   │   ├── static
-│   │   │   ├── app.js                  // client-side per gestire autenticazione e chiamate API
-│   │   │   ├── assistance_style.css    // stile schermata assistenza
-│   │   │   ├── auth.css                // fa da sfondo per la parte di login\register etc
-│   │   │   ├── auth_script.js          // gestisce switch tra i form pre-login
-│   │   │   ├── favicon.ico             // icona
-│   │   │   ├── feed_style.css          // stile del feed
-│   │   │   ├── homepage_style.css      // stile della homepage
 │   │   │   ├── images
-│   │   │   │   └── logo.jpg            // sempre l'icona (fa da logo, si)
-│   │   │   ├── index_style.css         // stile dell'indice di ricerca
-│   │   │   ├── libraries_style.css     // stile della sezione libreria
-│   │   │   ├── login_style.css         // stile schermata di login
-│   │   │   ├── profile_style.css       // stile profilo
-│   │   │   ├── recover_pswd_style.css  // stile pagina recupero credenziali
-│   │   │   └── registration_style.css  // stile pagina registrazione
+│   │   │   │   └── logo.jpg             // logo app
+│   │   │   ├── app.js                    // gestisce login, token e fetch verso API Flask
+│   │   │   ├── assistance_style.css     // stile pagina assistance.html
+│   │   │   ├── auth_script.js            // manipolazione DOM lato client
+│   │   │   ├── auth_style.css            // stile auth.html
+│   │   │   ├── favicon.ico               // icona logo
+│   │   │   ├── feed_style.css            // stile feed.html
+│   │   │   ├── homepage_style.css        // stile homepage.html
+│   │   │   ├── index_style.css           // stile index.html
+│   │   │   ├── libraries_style.css       // stile libraries.html
+│   │   │   ├── login_style.css           // stile login.html
+│   │   │   ├── recover_pswd_style.css    // stile recover_pswd.html
+│   │   │   └── registration_style.css   // stile registration.html
 │   │   └── templates
-│   │       ├── assistance.html         // struttura pagina di assistenza
-│   │       ├── auth.html               // struttura contenitore modulo pre-login
-│   │       ├── feed.html               // struttura feed
-│   │       ├── home.html               // struttura contenitore post-login
-│   │       ├── index.html              // contenitore esterno moduli (?)
-│   │       ├── libraries.html          // struttura pagina libreria
-│   │       ├── login.html              // struttura pagina login
-│   │       ├── profile.html            // struttura pagina profilo
-│   │       ├── recover_pswd.html       // struttura pagina recupero credenziali
-│   │       ├── registration.html       // struttura pagina registrazione
-│   │       └── settings.json           // specifica cheporta usare
-│   ├── __init__.py                     // crea e configura flask
-│   ├── app_req
-│   │   ├── modules_required.dat        // controlla che siano installati i moduli di python necessari
-│   │   ├── requisiti.py                // se i moduli richiesti non ci sono li scarica
-│   │   └── version                     // numero versione
-│   ├── config.py                       // configura porta TCP ed IP da usare
-│   ├── models
-│   │   └── user.py                     // versione minimal del obj User del server (x auth)
-│   ├── routes
-│   │   ├── __init__.py                 // inizializza i blueprint principali che fanno da contenitori
-│   │   ├── access.py                   // inizializza blueprint per contenitore accesso
-│   │   ├── content.py                  // inizializza blueprint per contenitore operazioni contenuti
-│   │   ├── entrata
-│   │   │   ├── assistance_bp.py        // blueprint assistenza
-│   │   │   ├── auth_bp.py              // blueprint contenitore autenticazione
-│   │   │   ├── login_bp.py             // blueprint login
-│   │   │   ├── recover_bp.py           // blueprint recupero credenziali
-│   │   │   └── register_bp.py          // blueprint registrazione
-│   │   ├── home.py                     // inizializza blueprint per contenitore home
-│   │   └── logged
-│   │       ├── feed_bp.py             // blueprint feed
-│   │       ├── home_bp.py             // blueprint homepage (prima di cliccaresu uno dei 3)
-│   │       ├── libraries_bp.py        // blueprint librerie
-│   │       └── profile_bp.py          // blueprint profilo
-│   ├── run_client.py                  // avvia app dal browser
-│   └── services
-│       ├── config.py                   // configura il server usando cd.json
-│       └── tcp_helper.py               // client TCP thread-safe (gestisce comunicazione lato client)
-├── notes.md                           // eventuali commenti su stato progetto
-└── server
-    ├── data
-    │   └── users.json                 // trasformare in zona cache(?)
-    ├── db
-    │   ├── __init__.py                // inizializza connessione db usandocredentials.json
-    │   ├── connection.py              // popola database
-    │   ├── credentials.json           // dati database postgresql
-    │   ├── db.sql                     // query SQL per creare tabelle database
-    │   ├── pita.py                    // crea il database in caso venga perso
-    │   ├── tablefill.py               // popola le tabelle del db (chiamato da connection.py)
-    │   └── users.py                   // si occupa di comunicare col db per gestire auth
-    ├── logs
-    │   └── server.log                  // contiene i log del server
-    ├── main.py                         // avvia il server
-    ├── objects                         // OBSOLETE (to fix)
-    │   ├── dizionari (obsoleto)
-    │   │   ├── formati consentiti.json
-    │   │   └── user lvl.json
-    │   ├── files
-    │   │   ├── documents.py
-    │   │   └── song.py
-    │   ├── interventi
-    │   │   ├── comment.py
-    │   │   └── notes.py
-    │   └── users
-    │       └── user.py
-    └── services
-        ├── admin_console.py          // gestisce i comandi inseribili dal terminale
-        ├── auth_handler.py           // gestisce autenticazione da parte del client
-        ├── cd.json                   // contiene i dati del server
-        ├── config_loader.py          // configura il server usando cd.json
-        ├── logger.py                 // registra esiti operazioni in server.log
-        └── server_logic.py           // gestisce comportamento del server e threading dei client
+│   │       ├── assistance.html           // pagina assistenza
+│   │       ├── auth.html                 // contenitore pagine autenticazione
+│   │       ├── feed.html                 // pagina feed
+│   │       ├── home.html                 // contenitore pagine homepage
+│   │       ├── index.html                // contenitore home e auth
+│   │       ├── libraries.html            // pagina libreria
+│   │       ├── login.html                // pagina login
+│   │       ├── recover_pswd.html         // pagina recupero credenziali
+│   │       ├── registration.html         // pagina registrazione
+│   │       └── setting.json              // connessione Flask-server
+│   └── app_req
+│       ├── modules_required.py           // moduli Python richiesti (scaricabili se mancanti)
+│       ├── requisiti.py                  // controlla versione aggiornata moduli
+│       └── version                       // versione
+├── Architettura                          // tu che dici?
+└── notes.md                              // note sul progresso raggiunto
 
 by: __Myosotis__

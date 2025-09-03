@@ -4,6 +4,9 @@ import time
 from tabulate import tabulate
 from db.pita.pita_make import connect_to_db as connect
 from db.pita.pita_tablefill import (
+    user_levels_tablefill as ul,
+    permissions_tablefill as pm,
+    role_permissions_tablefill as rp,
     user_tablefill as ut,
     # instruments_tablefill as it,
     # performers_tablefill as pt,
@@ -35,43 +38,28 @@ def tprint(cur, tname, limit=10):
 # =========================
 def populate(cnt, cur):
     tables = [
-        ("Users", ut),
-#         ("Instruments", it),
-#         ("Performers", pt),
-#         ("Genres", gt),
-#         ("Authors", at),
-        ("Media (Songs)", st),
-        ("Media (Documents)", dt),
-        ("Media (Videos)", vt),
-#         ("Song Performances", spt)
+        ("User Levels", ul, "user_levels"),
+        ("Permissions", pm, "permissions"),
+        ("Role-Permissions", rp, "role_permissions"),
+        ("Users", ut, "users"),
+#         ("Instruments", it, "instruments"),
+#         ("Performers", pt, "performers"),
+#         ("Genres", gt, "genres"),
+#         ("Authors", at, "authors"),
+        ("Media (Songs)", st, "songs"),
+        ("Media (Documents)", dt, "documents"),
+        ("Media (Videos)", vt, "videos"),
+#         ("Song Performances", spt, "song_performances")
     ]
 
     print("Starting database population...\n")
 
-    for name, func in tables:
+    for name, func, tname in tables:
         try:
             print(f"Populating {name}...")
             func(cnt, cur)  # passiamo connessione e cursore
             cnt.commit()
-            # stampa tabella per debug
-            if "Songs" in name:
-                tprint(cur, "songs")
-            elif "Documents" in name:
-                tprint(cur, "documents")
-            elif "Videos" in name:
-                tprint(cur, "videos")
-            elif "Performances" in name:
-                tprint(cur, "song_performances")
-            elif "Users" in name:
-                tprint(cur, "users")
-            elif "Instruments" in name:
-                tprint(cur, "instruments")
-            elif "Performers" in name:
-                tprint(cur, "performers")
-            elif "Genres" in name:
-                tprint(cur, "genres")
-            elif "Authors" in name:
-                tprint(cur, "authors")
+            tprint(cur, tname)
             print(f"{name} populated successfully.\n")
         except Exception as e:
             cnt.rollback()
@@ -107,7 +95,6 @@ def flow():
     conn.close()
     print("flow() ended")
     return True
-
 
 flow()
 

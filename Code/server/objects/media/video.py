@@ -1,19 +1,22 @@
 # first line
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from .media import Media
+from db.db_crud import advanced_video_search_db
 
 class Video(Media):
-    def __init__(self,
-                id: Optional[int] = None,
-                title: Optional[str] = None,
-                year: Optional[int] = None,
-                description: Optional[str] = None,
-                link: Optional[str] = None,
-                duration: Optional[int] = None,
-                location: Optional[str] = None,
-                additional_info: Optional[str] = None,
-                director: Optional[str] = None):
+    def __init__(
+        self,
+        id: Optional[int] = None,
+        title: Optional[str] = None,
+        year: Optional[int] = None,
+        description: Optional[str] = None,
+        link: Optional[str] = None,
+        duration: Optional[int] = None,
+        location: Optional[str] = None,
+        additional_info: Optional[str] = None,
+        director: Optional[str] = None
+    ):
         super().__init__(id, title, year, description, link)
         self.duration = duration
         self.location = location
@@ -33,8 +36,15 @@ class Video(Media):
         })
         return data
 
+    # =====================
+    # CLASS METHODS
+    # =====================
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Video":
+    def advanced_video_search(cls, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return advanced_video_search_db(filters)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Optional["Video"]:
         if not data:
             return None
         return cls(

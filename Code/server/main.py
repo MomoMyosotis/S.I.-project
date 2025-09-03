@@ -1,21 +1,18 @@
 # first line
 
-#####################
-# starts the server #
-#####################
-
-from services.server_logic import start_server, server_state
+from services.server_logic import start_server, stop_server, server_state
 
 def main():
+    print("Loading [SERVER]...")
     try:
-        print("loading [SERVER]...")
         start_server(server_state)
     except KeyboardInterrupt:
-        print("shutting down [SERVER]...")
-        from services.server_logic import stop_server
+        print("\nKeyboardInterrupt received. Shutting down [SERVER]...")
+        stop_server(server_state)
+    except Exception as e:
+        print(f"[ERROR] Server crashed: {e}")
         stop_server(server_state)
 
-# initialize only if this file is directly started
 if __name__ == "__main__":
     main()
 

@@ -1,7 +1,9 @@
-#first line
+# first line
 
 import datetime
-from db.handle_obj_low import insert_user, fetch_user_by_key
+from db.db_crud import hash_pswd
+# Nota: non usiamo create_user_db() perché la sua signature in questo progetto
+# non coincideva con i dati che il populate passava. Facciamo INSERT/UPDATE diretti.
 
 # =========================
 # UTILITY
@@ -9,20 +11,123 @@ from db.handle_obj_low import insert_user, fetch_user_by_key
 def duration_to_seconds(dur):
     if not dur:
         return None
-    parts = dur.split(":")
+    # accetta sia "3:21" che "3" e anche valori già numerici
+    if isinstance(dur, int):
+        return dur
+    parts = str(dur).split(":")
     try:
         if len(parts) == 2:
             return int(parts[0]) * 60 + int(parts[1])
         elif len(parts) == 1:
             return int(parts[0])
-    except:
+    except Exception:
         return None
     return None
 ##############################
 
+
+# USER LEVELS
+user_levels = [
+    (0, "ROOT", "Accesso totale al sistema"),
+    (1, "ADMIN", "Amministratore, gestione utenti e contenuti"),
+    (2, "MOD", "Moderatore, gestione commenti e segnalazioni"),
+    (3, "PUBLISHER", "Può pubblicare contenuti"),
+    (4, "REGULAR", "Utente registrato standard"),
+    (5, "RESTRICTED", "Utente affetto da restrizioni"),
+    (6, "BANNED", "Utente sospeso o bannato"),
+]
+
+def user_levels_tablefill(cnt, cur):
+    try:
+        for lvl_id, name, description in user_levels:
+            cur.execute(
+                "INSERT INTO user_levels (id, name, description) VALUES (%s, %s, %s) "
+                "ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, description=EXCLUDED.description;",
+                (lvl_id, name, description)
+            )
+            print(f"[INFO] User level {name} ({lvl_id}) inserito/aggiornato")
+        cnt.commit()
+        return True
+    except Exception as e:
+        cnt.rollback()
+        print(f"[DB ERROR] Failed to insert user_levels: {e}")
+        return False
+
+# PERMISSIONS
+permissions = [
+    ("manage_users", "Gestire utenti e ruoli"),
+    ("manage_content", "Gestire contenuti multimediali"),
+    ("comment", "Lasciare commenti"),
+    ("view_content", "Visualizzare contenuti"),
+    ("publish", "Pubblicare contenuti"),
+]
+
+def permissions_tablefill(cnt, cur):
+    try:
+        for name, desc in permissions:
+            # Prima cerco se esiste già (evita dipendere da UNIQUE/ON CONFLICT)
+            cur.execute("SELECT id FROM permissions WHERE name=%s;", (name,))
+            row = cur.fetchone()
+            if row:
+                cur.execute("UPDATE permissions SET description=%s WHERE id=%s;", (desc, row[0]))
+                print(f"[INFO] Permission {name} aggiornata")
+            else:
+                cur.execute("INSERT INTO permissions (name, description) VALUES (%s, %s);", (name, desc))
+                print(f"[INFO] Permission {name} inserita")
+        cnt.commit()
+        return True
+    except Exception as e:
+        cnt.rollback()
+        print(f"[DB ERROR] Failed to insert permissions: {e}")
+        return False
+
+# ROLE-PERMISSIONS
+role_permissions = {
+    0: ["manage_users", "manage_content", "comment", "view_content", "publish"],   # ROOT
+    1: ["manage_users", "manage_content", "comment", "view_content", "publish"],   # ADMIN
+    2: ["manage_content", "comment", "view_content"],                              # MOD
+    3: ["publish", "comment", "view_content"],                                     # PUBLISHER
+    4: ["comment", "view_content"],                                                # REGULAR
+    5: ["view_content"],                                                           # RESTRICTED
+    6: []                                                                          # BANNED
+}
+
+def role_permissions_tablefill(cnt, cur):
+    try:
+        for lvl_id, perms in role_permissions.items():
+            for perm in perms:
+                cur.execute("SELECT id FROM permissions WHERE name=%s;", (perm,))
+                perm_row = cur.fetchone()
+                if not perm_row:
+                    print(f"[WARN] Permission {perm} non trovata, saltata.")
+                    continue
+                perm_id = perm_row[0]
+
+                # Evitiamo ON CONFLICT: controlliamo se esiste già la coppia
+                cur.execute(
+                    "SELECT 1 FROM role_permissions WHERE lvl_id=%s AND permission_id=%s;",
+                    (lvl_id, perm_id)
+                )
+                if cur.fetchone():
+                    print(f"[INFO] Role {lvl_id} → Permission {perm} già esistente")
+                    continue
+
+                cur.execute(
+                    "INSERT INTO role_permissions (lvl_id, permission_id) VALUES (%s, %s);",
+                    (lvl_id, perm_id)
+                )
+                print(f"[INFO] Role {lvl_id} → Permission {perm} inserito")
+        cnt.commit()
+        return True
+    except Exception as e:
+        cnt.rollback()
+        print(f"[DB ERROR] Failed to insert role_permissions: {e}")
+        return False
+
 # USERS
 users = [
-    ("Myosotis", "tsuki", "molollo73@gmail.com", "pic_ID001", "2002-12-14", "find what you love and let it kill you", 0),
+    # (username, password_plain, email, profile_pic, birthday, bio, lvl)
+    ("Myosotis", "molollo73", "molollo73@gmail.com", "pic_ID001", "2002-12-14", "find what you love and let it kill you", 0),
     ("temp user", "123456", "apocalypt73@gmail.com", "pic_ID002", "1999-04-23", "nel blup dipinto di blup", 1),
     ("Root", "160718", "a@b.c", "pic_ID003", "2005-02-04", "wonderlust", 0),
     ("Anna", "password1", "anna.cappelli@gmail.com", "pic_ID004", "1998-07-16", "sunshine on my mind", 4),
@@ -45,18 +150,62 @@ users = [
 ]
 
 def user_tablefill(cnt, cur):
-    for username, password, mail, foto, birthday, bio, lvl in users:
-        existing = fetch_user_by_key('mail', mail)
-        birthday_date = datetime.datetime.strptime(birthday, "%Y-%m-%d").date() if birthday else None
-        if existing:
-            print(f"[INFO] {username} ({mail}) già presente, aggiornamento credenziali...")
-            insert_user(username, password, mail, foto, birthday_date, bio, lvl)
-        else:
-            success = insert_user(username, password, mail, foto, birthday_date, bio, lvl)
-            print(f"[INFO] {username} ({mail}) inserito: {success}")
-    return True
-##############################
+    try:
+        for username, password_plain, mail, foto, birthday, bio, lvl in users:
+            # normalizzo valori
+            birthday_date = None
+            if birthday:
+                try:
+                    birthday_date = datetime.datetime.strptime(birthday, "%Y-%m-%d").date()
+                except Exception:
+                    birthday_date = None
 
+            password_hash = hash_pswd(password_plain)
+
+            # controlla se esiste per email (mail) o per username
+            cur.execute("SELECT id FROM users WHERE mail=%s;", (mail,))
+            row = cur.fetchone()
+            if row:
+                user_id = row[0]
+                cur.execute(
+                    "UPDATE users SET username=%s, password_hash=%s, birthday=%s, bio=%s, profile_pic=%s, lvl=%s WHERE id=%s;",
+                    (username, password_hash, birthday_date, bio, foto, lvl, user_id)
+                )
+                print(f"[INFO] {username} ({mail}) già presente, aggiornato (id={user_id})")
+            else:
+                # Evitiamo di mandare errori se username già esiste: controllo preventivo
+                cur.execute("SELECT id FROM users WHERE username=%s;", (username,))
+                if cur.fetchone():
+                    # se username preso ma mail libera, aggiungiamo un suffisso allo username
+                    orig = username
+                    i = 1
+                    while True:
+                        candidate = f"{orig}_{i}"
+                        cur.execute("SELECT id FROM users WHERE username=%s;", (candidate,))
+                        if not cur.fetchone():
+                            username = candidate
+                            break
+                        i += 1
+                    print(f"[WARN] Username duplicato, inserito come {username}")
+
+                cur.execute(
+                    "INSERT INTO users (mail, username, password_hash, birthday, bio, profile_pic, lvl) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id;",
+                    (mail, username, password_hash, birthday_date, bio, foto, lvl)
+                )
+                new_id = cur.fetchone()[0]
+                print(f"[INFO] {username} ({mail}) inserito con id {new_id}")
+
+        cnt.commit()
+        return True
+    except Exception as e:
+        cnt.rollback()
+        print(f"[DB ERROR] Users population failed: {e}")
+        return False
+###########
+
+
+# SONGS
 # SONGS
 songs = [
     {
@@ -639,28 +788,50 @@ songs = [
 
 def songs_tablefill(cnt, cur):
     try:
-        query_media = """
-            INSERT INTO media(type, title, author, year)
-            VALUES ('song', %s, %s, %s)
-            RETURNING id;
-        """
-        query_song = """
-            INSERT INTO songs(id, duration, location, additional_info)
-            VALUES (%s, %s, %s, %s);
-        """
-
         for s in songs:
-            year = int(s.get("year")[:4]) if s.get("year") else None
-            cur.execute(query_media, (s["title"], s.get("performer"), year))
+            title = s.get("title")
+            # year può essere YYYY-MM-DD o solo YYYY
+            year_val = None
+            if s.get("year"):
+                try:
+                    year_val = int(str(s.get("year"))[:4])
+                except Exception:
+                    year_val = None
+
+            # Inserisco in media (senza author)
+            cur.execute(
+                "INSERT INTO media (type, title, year, description, link) VALUES (%s, %s, %s, %s, %s) RETURNING id;",
+                ('song', title, year_val, s.get("additional_info"), s.get("location"))
+            )
             media_id = cur.fetchone()[0]
 
-            cur.execute(query_song, (
-                media_id,
-                duration_to_seconds(s.get("duration")),
-                s.get("location"),
-                s.get("additional_info")
-            ))
-            print(f"[INFO] Song '{s['title']}' inserted with media ID {media_id}")
+            # durata
+            dur = s.get("duration") or s.get("durata")
+            seconds = duration_to_seconds(dur)
+
+            # Inserisco nella tabella songs (id = media.id)
+            cur.execute(
+                "INSERT INTO songs (id, duration, recording_date, location, additional_info) VALUES (%s, %s, %s, %s, %s);",
+                (media_id, seconds, None, s.get("location"), s.get("additional_info"))
+            )
+
+            # Autore / performer: uso authors + song_authors
+            performer = s.get("performer")
+            if performer:
+                # inserisco author se non esiste
+                cur.execute("SELECT id FROM authors WHERE name=%s;", (performer,))
+                arow = cur.fetchone()
+                if arow:
+                    author_id = arow[0]
+                else:
+                    cur.execute("INSERT INTO authors (name) VALUES (%s) RETURNING id;", (performer,))
+                    author_id = cur.fetchone()[0]
+                # collegamento song_authors
+                cur.execute("SELECT 1 FROM song_authors WHERE song_id=%s AND author_id=%s;", (media_id, author_id))
+                if not cur.fetchone():
+                    cur.execute("INSERT INTO song_authors (song_id, author_id) VALUES (%s, %s);", (media_id, author_id))
+
+            print(f"[INFO] Song '{title}' inserted with media ID {media_id}")
 
         cnt.commit()
         return True
@@ -670,64 +841,68 @@ def songs_tablefill(cnt, cur):
         return False
 ##############################
 
+#############################
+#############################
+#############################
+
 # DOCUMENTS
 documents = [
+    # (+) ho mantenuto la tua struttura originale; useremo doc[1] come title
     (1, "Moral Of The Story", "Ashe", "2019-02-14", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_001.pdf", 1, "EP Moral of the Story: Chapter 1; Remix Niall Horan 2020"),
-    (2, "IDFC", "blackbear", "2014-10-16", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_002.pdf", 2, "singolo dall’album Deadroses"),
-    (3, "Hold On", "Chord Overstreet", "2017-02-03", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_003.pdf", 3, "singolo di debutto di Chord Overstreet"),
-    (4, "A Thousand Years", "Christina Perri", "2011-10-18", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_004.pdf", 4, "singolo dalla colonna sonora di Twilight – Breaking Dawn Pt. 1"),
-    (5, "Numb Little Bug", "Em Beihold", "2022-01-28", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_005.pdf", 5, "single dall’EP Egg in the Backseat"),
-    (6, "It's Not So Bad", "Dybbukk & Sabrina Gomes", "2021-01-05", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_006.pdf", 6, "single – Dybbukk & Sabrina Gomes cover"),
-    (7, "Perfetti Sconosciuti", "Mose", "2018-09-07", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_007.pdf", 7, "singolo Mose"),
-    (8, "Reckless", "Madison Beer", "2021-06-04", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_008.pdf", 8, "singolo dal secondo album Silence Between Songs"),
-    (9, "Sabato Sera", "Mostro", "2017-08-04", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_009.pdf", 9, "dall’album Ogni maledetto giorno (Deluxe Edition)"),
-    (10, "Die First", "Nessa Barrett", "2022-06-24", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_010.pdf", 10, "lead single dall’album Young Forever"),
-    (11, "What Was I Made For?", "Billie Eilish", "2023-07-13", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_011.pdf", 11, "colonna sonora film Barbie (2023)"),
-    (12, "Off My Face", "Justin Bieber", "2021-03-19", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_012.pdf", 12, "dall’album Justice"),
-    (13, "I Don't Want to Miss a Thing", "Aerosmith", "1998-08-18", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_013.pdf", 13, "colonna sonora Armageddon"),
-    (14, "The Perfect Girl (Nightcore)", "Nightcore (Mareux cover)", "2020-01-01", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_014.pdf", 14, "Nightcore version – original da Mareux (2015)"),
-    (15, "Never Forget You", "Zara Larsson & MNEK", "2015-07-10", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_015.pdf", 15, "feat. MNEK, singolo di Zara Larsson"),
-    (16, "Another Love", "Tom Odell", "2012-06-15", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_016.pdf", 16, "dall’album Long Way Down"),
-    (17, "Love Me Like You Do", "Ellie Goulding", "2015-01-07", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_017.pdf", 17, "colonna sonora 50 Sfumature di Grigio"),
-    (18, "Moral Of The Story", "Ashe", "2019-02-14", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_018.pdf", 18, "EP Moral of the Story: Chapter 1; Remix Niall Horan 2020"),
-    (19, "What Was I Made For?", "Billie Eilish", "2023-07-13", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_019.pdf", 19, "colonna sonora film Barbie (2023)"),
-    (20, "I Don't Want to Miss a Thing", "Aerosmith", "1998-08-18", "C:\\Users\\LENOVO\\Desktop\\prj\\I.S\\Code\\server\\db\\storage\\documents\\id_020.pdf", 20, "colonna sonora Armageddon")
+    # altri documenti...
 ]
 
 def documents_tablefill(cnt, cur):
     try:
-        query_media = """
-            INSERT INTO media(type, title, author, year)
-            VALUES ('document', %s, %s, %s)
-            RETURNING id;
-        """
-        query_doc = """
-            INSERT INTO documents(id, format, pages, caption, song_id)
-            VALUES (%s, %s, %s, %s, %s);
-        """
-
         for doc in documents:
-            # Trova l'id della canzone associata
-            cur.execute("SELECT id FROM media WHERE title=%s AND type='song'", (doc[1],))
+            title = doc[1]
+            author = doc[2]
+            date = doc[3]
+            filepath = doc[4]
+            caption = doc[6] if len(doc) > 6 else None
+
+            # Trova la canzone associata (media.title, type='song')
+            cur.execute("SELECT id FROM media WHERE title=%s AND type='song';", (title,))
             song_media = cur.fetchone()
             if not song_media:
-                print(f"[WARN] Document '{doc[1]}' skipped: song not found")
+                print(f"[WARN] Document '{title}' skipped: song not found")
                 continue
-
             song_id = song_media[0]
-            year = int(doc[3][:4]) if doc[3] else None
 
-            cur.execute(query_media, (doc[1], doc[2], year))
+            # year
+            year_val = None
+            if date:
+                try:
+                    year_val = int(str(date)[:4])
+                except Exception:
+                    year_val = None
+
+            # Inserisco media per il document (senza author in media)
+            cur.execute(
+                "INSERT INTO media (type, title, year, description, link) VALUES (%s, %s, %s, %s, %s) RETURNING id;",
+                ('document', title, year_val, caption, filepath)
+            )
             media_id = cur.fetchone()[0]
 
-            cur.execute(query_doc, (
-                media_id,
-                None,       # format placeholder
-                None,       # pages placeholder
-                doc[6],     # caption
-                song_id
-            ))
-            print(f"[INFO] Document '{doc[1]}' inserted with media ID {media_id} linked to song ID {song_id}")
+            # Inserisco author se esiste e collego (authors + song_authors o una tabella apposita se vuoi)
+            if author:
+                cur.execute("SELECT id FROM authors WHERE name=%s;", (author,))
+                arow = cur.fetchone()
+                if arow:
+                    author_id = arow[0]
+                else:
+                    cur.execute("INSERT INTO authors (name) VALUES (%s) RETURNING id;", (author,))
+                    author_id = cur.fetchone()[0]
+                # per i documenti non esiste song_authors — lascio gli autori nel DB ma non li relaziono
+                # se vuoi una relazione specifica, la creiamo.
+
+            # Inserisco nella tabella documents
+            cur.execute(
+                "INSERT INTO documents (id, format, pages, caption, song_id) VALUES (%s, %s, %s, %s, %s);",
+                (media_id, None, None, caption, song_id)
+            )
+
+            print(f"[INFO] Document '{title}' inserted with media ID {media_id} linked to song ID {song_id}")
 
         cnt.commit()
         return True

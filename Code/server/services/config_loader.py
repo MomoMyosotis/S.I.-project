@@ -1,9 +1,5 @@
 # first line
 
-####################
-# gestisce cd.json #
-####################
-
 import json, os
 
 FILE = 'services/cd.json'

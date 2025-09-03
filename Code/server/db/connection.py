@@ -1,6 +1,5 @@
 # first line
 
-import time
 from db import connect
 from tabulate import tabulate
 
@@ -80,6 +79,5 @@ def flow():
 if __name__ == "__main__":
     status = flow()
     print(f"Database check result: {status}")
-
 
 # last line

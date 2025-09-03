@@ -1,19 +1,22 @@
 # first line
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from .media import Media
+from db.db_crud import advanced_document_search_db
 
 class Document(Media):
-    def __init__(self,
-                id: Optional[int] = None,
-                title: Optional[str] = None,
-                year: Optional[int] = None,
-                description: Optional[str] = None,
-                link: Optional[str] = None,
-                format: Optional[str] = None,
-                pages: Optional[int] = None,
-                caption: Optional[str] = None,
-                song_id: Optional[int] = None):
+    def __init__(
+        self,
+        id: Optional[int] = None,
+        title: Optional[str] = None,
+        year: Optional[int] = None,
+        description: Optional[str] = None,
+        link: Optional[str] = None,
+        format: Optional[str] = None,
+        pages: Optional[int] = None,
+        caption: Optional[str] = None,
+        song_id: Optional[int] = None
+    ):
         super().__init__(id, title, year, description, link)
         self.format = format
         self.pages = pages
@@ -33,8 +36,15 @@ class Document(Media):
         })
         return data
 
+    # =====================
+    # METODI DI CLASSE
+    # =====================
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Document":
+    def advanced_document_search(cls, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return advanced_document_search_db(filters)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Optional["Document"]:
         if not data:
             return None
         return cls(
@@ -48,6 +58,5 @@ class Document(Media):
             caption=data.get("caption"),
             song_id=data.get("song_id")
         )
-
 
 # last line

@@ -1,0 +1,407 @@
+
+C:\Users\LENOVO\Desktop\prj\I.S\Code\server>python tester.py
+
+==================== SERVER MEGA TESTER ====================
+
+==================== REGISTER / LOGIN - Happy path ====================
+>> REGISTER|quackerina5645@example.com|quackerina5645|pass1234|2000-01-01
+<< ACCEPTED
+>> REGISTER|bassettina5645@example.com|bassettina5645|pass1234|2000-01-01
+<< ACCEPTED
+>> LOGIN|quackerina5645|pass1234
+<< OK|6d109f88-0be6-4fac-bdd7-17a91739769b
+>> LOGIN|bassettina5645|pass1234
+<< OK|e48e8101-1c50-437c-b02f-03ec6475af83
+>> LOGIN|quackerina5645|wrongpassword
+<< WRONG_PASSWORD
+>> LOGIN|nonexistent|pass1234
+<< 404
+
+==================== FOLLOW / FOLLOWERS / FOLLOWED ====================
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|USER_FOLLOW|bassettina5645
+<< FOLLOWED
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|USER_GET_FOLLOWED
+<< bassettina5645
+>> e48e8101-1c50-437c-b02f-03ec6475af83|USER_GET_FOLLOWERS
+<< quackerina5645
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|USER_UNFOLLOW|bassettina5645
+<< UNFOLLOWED
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|USER_GET_FOLLOWED
+<<
+>> e48e8101-1c50-437c-b02f-03ec6475af83|USER_GET_FOLLOWERS
+<<
+
+==================== MEDIA CRUD - SONG ====================
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|SONG_CREATE|Imagine|John Lennon|1971
+<< OK|95
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|SONG_GET|95
+<< OK|<Song id=95, title=Imagine>
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|SONG_UPDATE|95|title|Imagine (Remastered)
+<< OK
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|SONG_DELETE|95
+<< OK
+
+==================== MEDIA CRUD - DOCUMENT ====================
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|DOC_CREATE|Resistenza|Primo Levi|1958
+<< OK|96
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|DOC_GET|96
+<< OK|<Document id=96, title=Resistenza>
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|DOC_DELETE|96
+<< OK
+
+==================== MEDIA CRUD - VIDEO ====================
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|VIDEO_CREATE|Metropolis|Fritz Lang|1927
+<< OK|97
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|VIDEO_GET|97
+<< OK|<Video id=97, title=Metropolis>
+>> 6d109f88-0be6-4fac-bdd7-17a91739769b|VIDEO_DELETE|97
+<< OK
+
+==================== ACCESS WITHOUT LOGIN ====================
+>> USER_GET_FOLLOWERS
+<< ERROR: NOT_LOGGED_IN
+>> SONG_CREATE|x|y|z
+<< ERROR: NOT_LOGGED_IN
+
+==================== CONCURRENCY - 8 parallel logins ====================
+>> REGISTER|user11211@example.com|user11211|pass1234|2000-01-01
+<< ACCEPTED
+>> REGISTER|user01211@example.com|user01211|pass1234|2000-01-01
+<< ACCEPTED
+>> REGISTER|user51212@example.com|user51212|pass1234|2000-01-01
+<< ACCEPTED
+>> REGISTER|user41212@example.com|user41212|pass1234|2000-01-01
+<< ACCEPTED
+>> REGISTER|user31212@example.com|user31212|pass1234|2000-01-01
+<< ACCEPTED
+>> REGISTER|user71213@example.com|user71213|pass1234|2000-01-01
+<< ACCEPTED
+>> REGISTER|user21211@example.com|user21211|pass1234|2000-01-01
+<< ACCEPTED
+>> REGISTER|user61213@example.com|user61213|pass1234|2000-01-01
+<< ACCEPTED
+>> LOGIN|user01211|pass1234
+<< OK|e9898f23-7d15-4c24-b2de-1ab4e1bc3e1f
+>> LOGIN|user11211|pass1234
+<< OK|a0525296-a6c9-402b-b2ce-ab18cb3964b0
+>> LOGIN|user41212|pass1234
+<< OK|933baa67-0918-4a40-8a5d-e9a601937fce
+>> LOGIN|user51212|pass1234
+<< OK|470740c8-50f5-4184-aa15-86b08df52449
+>> LOGIN|user31212|pass1234
+<< OK|f5c19211-da98-4bfa-b014-0d9681eb3a7b
+>> LOGIN|user21211|pass1234
+<< OK|ae9211c4-1c76-43d8-abe2-ca1165b68ca5
+>> LOGIN|user71213|pass1234
+<< OK|09d201eb-88eb-4d6d-8b2c-5fcadf7409bc
+>> LOGIN|user61213|pass1234
+<< OK|c9019398-de2d-4702-99b1-91214880c813
+Got 8 tokens.
+
+==================== DONE ====================
+
+C:\Users\LENOVO\Desktop\prj\I.S\Code\server>
+
+
+
+C:\Users\LENOVO\Desktop\prj\I.S\Code\server>python main.py
+loading [SERVER]...
+Server listening on 0.0.0.0:8000
+flow() started
+>> +----+----------------+------------------------------------------------------------------+-------------------------------+-----------+------------+----------------------------------------+---+
+|  1 | Myosotis       | e33887a1d6e2a5cf5588bf2c40ebe626e9274659f35c47264603247833b13802 | molollo73@gmail.com           | pic_ID001 | 2002-12-14 | find what you love and let it kill you | 0 |
+|  2 | temp user      | 8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92 | apocalypt73@gmail.com         | pic_ID002 | 1999-04-23 | nel blup dipinto di blup               | 1 |
+|  3 | Root           | 51f2a581cf55c13448510282cd5bb915112e1277e36a2d7d580540ae4874c008 | a@b.c                         | pic_ID003 | 2005-02-04 | wonderlust                             | 0 |
+|  4 | Anna           | 0b14d501a594442a01c6859541bcb3e8164d183d32937b851835442f69d5c94e | anna.cappelli@gmail.com       | pic_ID004 | 1998-07-16 | sunshine on my mind                    | 4 |
+|  5 | Marco          | ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f | marco.rossi@domain.com        | pic_ID005 | 2000-05-22 | chasing dreams                         | 4 |
+|  6 | Giulia         | 1c8bfe8f801d79745c4631d09fff36c82aa37fc4cce4fc946683d7b336b63032 | giulia@libero.it              | pic_ID006 | 1995-11-11 | peace and love                         | 4 |
+|  7 | Luca           | 9a900403ac313ba27a1bc81f0932652b8020dac92c234d98fa0b06bf0040ecfd | luca.martini@example.com      | pic_ID007 | 2001-02-05 | just do it                             | 4 |
+|  8 | Francesca      | f75778f7425be4db0369d09af37a6c2b9a83dea0e53e7bd57412e4b060e607f7 | francesca.smith@yahoo.com     | pic_ID008 | 1997-12-04 | living the dream                       | 4 |
+|  9 | Tommaso        | 15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225 | tommyboy@outlook.com          | pic_ID009 | 1996-09-30 | never stop learning                    | 3 |
+| 10 | Giovanni       | e9cee71ab932fde863338d08be4de9dfe39ea049bdafb342ce659ec5450b69ae | giovanni.r@gmail.com          | pic_ID010 | 1993-01-12 | always improving                       | 3 |
+| 11 | Elena          | a8499c7caacdbfaaa57f8e6f84fc7321d4cbcd0a97514dd4b350936066037183 | elena.andrea@mail.com         | pic_ID011 | 2000-07-29 | seek the unknown                       | 3 |
+| 12 | Alessandra     | 89e01536ac207279409d4de1e5253e01f4a1769e696db0d6062ca9b8f56767c8 | alessandra@domain.net         | pic_ID012 | 1994-04-18 | one step at a time                     | 3 |
+| 13 | Francesco      | 3baff57541a4f5dd1ebdddf30c6a4df665416727d56ece310b0f56ee86d80dd1 | francesco.cano@live.it        | pic_ID013 | 1999-03-09 | music is life                          | 3 |
+| 14 | Chiara         | 6df916421585c53089114761af42d875e4f8335d201dc9bedb59dae8c257e1a6 | chiara.martini@protonmail.com | pic_ID014 | 2003-05-22 | be happy                               | 4 |
+| 15 | Stefano        | fbb4a8a163ffa958b4f02bf9cabb30cfefb40de803f2c4c346a9d39b3be1b544 | stefano.ferro@gmail.com       | pic_ID015 | 1995-10-02 | work hard, play hard                   | 4 |
+| 16 | Federico       | b9c950640e1b3740e98acb93e669c65766f6670dd1609ba91ff41052ba48c6f3 | federico.scarpelli@me.com     | pic_ID016 | 1992-06-15 | keep going                             | 4 |
+| 17 | Valentina      | 221b37fcdb52d0f7c39bbd0be211db0e1c00ca5fbecd5788780463026c6b964b | valentina.sardi@domain.it     | pic_ID017 | 2001-11-09 | stay positive                          | 4 |
+| 18 | Alessio        | 4bcc1a1f9a705c98ebdecc35aa5bc65f61bfbf38595d43d6855b79e598720876 | alessio.viviani@outlook.com   | pic_ID018 | 1998-03-14 | embrace the challenge                  | 4 |
+| 19 | Cristina       | 14f8f4bb8c0e79a02670a5fea5682da717a5b3d3dc7b1706f7a4bab9afae18c2 | cristina.morandi@yahoo.it     | pic_ID019 | 2000-08-30 | dream big                              | 4 |
+| 20 | Riccardo       | 9b0eb22aef89516d6fb4b31ccf008a68abe0d10a3fc606316389613eccf96854 | riccardo.zappa@gmail.com      | pic_ID020 | 2002-02-17 | you only live once                     | 4 |
+| 21 | quackerina8693 | bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f | quackerina8693@example.com    |           | 2000-01-01 | About me:                              | 4 |
+| 22 | bassettina8693 | bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f | bassettina8693@example.com    |           | 2000-01-01 | About me:                              | 4 |
+| 23 | quackerina8364 | bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f | quackerina8364@example.com    |           | 2000-01-01 | About me:                              | 4 |
+| 24 | bassettina8364 | bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f | bassettina8364@example.com    |           | 2000-01-01 | About me:                              | 4 |
+| 25 | quackerina5149 | bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f | quackerina5149@example.com    |           | 2000-01-01 | About me:                              | 4 |
+| 26 | bassettina5149 | bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f | bassettina5149@example.com    |           | 2000-01-01 | About me:                              | 4 |
+| 27 | quackerina5260 | bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f | quackerina5260@example.com    |           | 2000-01-01 | About me:                              | 4 |
+| 28 | bassettina5260 | bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f | bassettina5260@example.com    |           | 2000-01-01 | About me:                              | 4 |
++----+----------------+------------------------------------------------------------------+-------------------------------+-----------+------------+----------------------------------------+---+
++----+--+--------------------------------------------------------------------------------------------+----------------------------------------------------------------+
+|  1 |  | music/ashe-moral-of-the-story-lyrics-128-ytshorts.savetube.me.mp3                          | EP Moral of the Story: Chapter 1; Remix Niall Horan 2020       |
+|  2 |  | music/blackbear-idfc-lyrics-128-ytshorts.savetube.me.mp3                                   | singolo dall’album Deadroses                                   |
+|  3 |  | music/chord-overstreet-hold-on-lyric-video-128-ytshorts.savetube.me.mp3                    | singolo di debutto di Chord Overstreet                         |
+|  4 |  | music/christina-perri-a-thousand-years-128-ytshorts.savetube.me.mp3                        | singolo dalla colonna sonora di Twilight – Breaking Dawn Pt. 1 |
+|  5 |  | music/em-beihold-numb-little-bug-lyrics-128-ytshorts.savetube.me.mp3                       | single dall’EP Egg in the Backseat                             |
+|  6 |  | music/its-not-so-bad-dybbukk-sabrina-gomes-lyrics-128-ytshorts.savetube.me.mp3             | single – Dybbukk & Sabrina Gomes cover                         |
+|  7 |  | music/mose-perfetti-sconosciuti-official-video-128-ytshorts.savetube.me.mp3                | singolo Mose                                                   |
+|  8 |  | music/madison-beer-reckless-lyrics-128-ytshorts.savetube.me.mp3                            | singolo dal secondo album Silence Between Songs                |
+|  9 |  | music/mostro-12-sabato-sera-128-ytshorts.savetube.me.mp3                                   | dall’album Ogni maledetto giorno (Deluxe Edition)              |
+| 10 |  | music/nessa-barrett-die-first-official-music-video-128-ytshorts.savetube.me.mp3            | lead single dall’album Young Forever                           |
+| 11 |  | music/billie-eilish-what-was-i-made-for-official-music-video-128-ytshorts.savetube.me.mp3  | colonna sonora film Barbie (2023)                              |
+| 12 |  | music/off-my-face-128-ytshorts.savetube.me.mp3                                             | dall’album Justice                                             |
+| 13 |  | music/aerosmith-i-dont-want-to-miss-a-thing-official-hd-video-128-ytshorts.savetube.me.mp3 | colonna sonora Armageddon                                      |
+| 14 |  | music/nightcore-the-perfect-girl-128-ytshorts.savetube.me.mp3                              | Nightcore version – original da Mareux (2015)                  |
+| 15 |  | music/zaralarsson-never-forget-you-128-ytshorts.savetube.me.mp3                            | feat. MNEK, singolo di Zara Larsson                            |
+| 16 |  | music/tom-odell-another-love-128-ytshorts.savetube.me.mp3                                  | dall’album Long Way Down                                       |
+| 17 |  | music/ellie-goulding-love-me-like-you-do-128-ytshorts.savetube.me.mp3                      | colonna sonora 50 Sfumature di Grigio                          |
+| 18 |  | music/billie-eilish-khalid-lovely-128-ytshorts.savetube.me.mp3                             | feat. Khalid                                                   |
+| 19 |  | music/hozier-take-me-to-church-128-ytshorts.savetube.me.mp3                                | singolo d’esordio                                              |
+| 20 |  | music/passenger-let-her-go-128-ytshorts.savetube.me.mp3                                    | album All the Little Lights                                    |
+| 21 |  | music/sia-unstoppable-128-ytshorts.savetube.me.mp3                                         | album This Is Acting                                           |
+| 22 |  | music/duncan-laurence-arcade-128-ytshorts.savetube.me.mp3                                  | Eurovision 2019 winner                                         |
+| 23 |  | music/ruth-b-dandelions-128-ytshorts.savetube.me.mp3                                       | album Safe Haven                                               |
+| 24 |  | music/james-arthur-say-you-wont-let-go-128-ytshorts.savetube.me.mp3                        | album Back from the Edge                                       |
+| 25 |  | music/alec-benjamin-let-me-down-slowly-128-ytshorts.savetube.me.mp3                        | singolo da Narrated for You                                    |
+| 26 |  | music/glass-animals-heat-waves-128-ytshorts.savetube.me.mp3                                | album Dreamland                                                |
+| 27 |  | music/tones-and-i-dance-monkey-128-ytshorts.savetube.me.mp3                                | singolo mondiale                                               |
+| 28 |  | music/lady-gaga-bradley-cooper-shallow-128-ytshorts.savetube.me.mp3                        | colonna sonora A Star Is Born                                  |
+| 29 |  | music/lewis-capaldi-someone-you-loved-128-ytshorts.savetube.me.mp3                         | album Divinely Uninspired to a Hellish Extent                  |
+| 30 |  | music/imagine-dragons-believer-128-ytshorts.savetube.me.mp3                                | album Evolve                                                   |
+| 31 |  | music/imagine-dragons-thunder-128-ytshorts.savetube.me.mp3                                 | album Evolve                                                   |
+| 32 |  | music/imagine-dragons-whatever-it-takes-128-ytshorts.savetube.me.mp3                       | album Evolve                                                   |
+| 33 |  | music/imagine-dragons-natural-128-ytshorts.savetube.me.mp3                                 | album Origins                                                  |
+| 34 |  | music/imagine-dragons-bones-128-ytshorts.savetube.me.mp3                                   | album Mercury – Act 2                                          |
+| 35 |  | music/imagine-dragons-enemy-128-ytshorts.savetube.me.mp3                                   | con JID – colonna sonora serie Arcane                          |
+| 36 |  | music/imagine-dragons-demons-128-ytshorts.savetube.me.mp3                                  | album Night Visions                                            |
+| 37 |  | music/imagine-dragons-on-top-of-the-world-128-ytshorts.savetube.me.mp3                     | album Night Visions                                            |
+| 38 |  | music/imagine-dragons-radioactive-128-ytshorts.savetube.me.mp3                             | album Night Visions                                            |
+| 39 |  | music/imagine-dragons-warriors-128-ytshorts.savetube.me.mp3                                | realizzata per League of Legends Worlds 2014                   |
+| 40 |  | music/imagine-dragons-birds-128-ytshorts.savetube.me.mp3                                   | feat. Elisa – album Origins                                    |
+| 41 |  | music/imagine-dragons-sharks-128-ytshorts.savetube.me.mp3                                  | album Mercury – Act 2                                          |
+| 42 |  | music/mr-probz-waves-128-ytshorts.savetube.me.mp3                                          | hit remixata da Robin Schulz                                   |
+| 43 |  | music/david-guetta-sia-lets-love-128-ytshorts.savetube.me.mp3                              | collaborazione David Guetta e Sia                              |
+| 44 |  | music/david-guetta-sia-flames-128-ytshorts.savetube.me.mp3                                 | collaborazione David Guetta e Sia                              |
+| 45 |  | music/david-guetta-titanium-128-ytshorts.savetube.me.mp3                                   | feat. Sia – album Nothing but the Beat                         |
+| 46 |  | music/david-guetta-shewolf-128-ytshorts.savetube.me.mp3                                    | feat. Sia                                                      |
+| 47 |  | music/david-guetta-say-my-name-128-ytshorts.savetube.me.mp3                                | feat. Bebe Rexha & J Balvin                                    |
+| 48 |  | music/david-guetta-dangerous-128-ytshorts.savetube.me.mp3                                  | feat. Sam Martin                                               |
+| 49 |  | music/david-guetta-play-hard-128-ytshorts.savetube.me.mp3                                  | feat. Ne-Yo & Akon                                             |
+| 50 |  | music/david-guetta-lovers-on-the-sun-128-ytshorts.savetube.me.mp3                          | feat. Sam Martin                                               |
+| 51 |  | music/laufey-from-the-start-lyrics-yt.savetube.me.mp3                                      | album Everything I Know About Love                             |
+| 52 |  | music/alfa-il-filo-rosso-yt.savetube.me.mp3                                                |                                                                |
+| 53 |  | music/adventure-time-distant-lands-obsidian-monster-yt.savetube.me.mp3                     | feat. Olivia Olson & Half Shy – colonna sonora                 |
+| 54 |  | music/derivakat-aint-no-crying-yt.savetube.me.mp3                                          | Dream SMP original song                                        |
+| 55 |  | music/ashe-always-lyrics-yt.savetube.me.mp3                                                | singolo                                                        |
+| 56 |  | music/ashe-im-fine-lyrics-yt.savetube.me.mp3                                               | singolo                                                        |
+| 57 |  | music/ashe-love-is-not-enough-yt.savetube.me.mp3                                           | Official Audio                                                 |
+| 58 |  | music/ashe-moral-of-the-story-lyric-video-yt.savetube.me.mp3                               | singolo                                                        |
+| 59 |  | music/ashe-save-myself-lyrics-yt.savetube.me.mp3                                           | singolo                                                        |
+| 60 |  | music/ashe-we-get-high-lyrics-yt.savetube.me.mp3                                           | singolo                                                        |
+| 61 |  | music/barbara-pravi-voila-paroles-lyrics-yt.savetube.me.mp3                                | singolo                                                        |
+| 62 |  | music/chandler-leighton-when-you-say-my-name-lyrics-yt.savetube.me.mp3                     | singolo                                                        |
+| 63 |  | music/clairo-sofia-lyrics-yt.savetube.me.mp3                                               | singolo                                                        |
+| 64 |  | music/cody-fry-i-hear-a-symphony-lyrics-yt.savetube.me.mp3                                 | singolo                                                        |
+| 65 |  | music/ellie-goulding-juice-wrld-hate-me-lyrics-yt.savetube.me.mp3                          | singolo                                                        |
+| 66 |  | music/em-beihold-city-of-angels-official-audio-yt.savetube.me.mp3                          | singolo                                                        |
+| 67 |  | music/fifty-fifty-cupid-official-mv-yt.savetube.me.mp3                                     | MV ufficiale                                                   |
+| 68 |  | music/idgaf-yt.savetube.me.mp3                                                             | singolo                                                        |
+| 69 |  | music/lady-gaga-bruno-mars-die-with-a-smile-lyrics-yt.savetube.me.mp3                      |                                                                |
+| 70 |  | music/lana-del-rey-diet-mountain-dew-lyrics-yt.savetube.me.mp3                             | album Born to Die                                              |
+| 71 |  | music/loveless-happier-than-ever-cover-yt.savetube.me.mp3                                  | cover di Billie Eilish                                         |
+| 72 |  | music/lyn-lapid-the-alternative-lyric-video-yt.savetube.me.mp3                             | singolo                                                        |
+| 93 |  |                                                                                            |                                                                |
+| 94 |  |                                                                                            |                                                                |
++----+--+--------------------------------------------------------------------------------------------+----------------------------------------------------------------+
++----+--+--+----------------------------------------------------------------+----+
+| 73 |  |  | EP Moral of the Story: Chapter 1; Remix Niall Horan 2020       |  1 |
+| 74 |  |  | singolo dall’album Deadroses                                   |  2 |
+| 75 |  |  | singolo di debutto di Chord Overstreet                         |  3 |
+| 76 |  |  | singolo dalla colonna sonora di Twilight – Breaking Dawn Pt. 1 |  4 |
+| 77 |  |  | single dall’EP Egg in the Backseat                             |  5 |
+| 78 |  |  | single – Dybbukk & Sabrina Gomes cover                         |  6 |
+| 79 |  |  | singolo Mose                                                   |  7 |
+| 80 |  |  | singolo dal secondo album Silence Between Songs                |  8 |
+| 81 |  |  | dall’album Ogni maledetto giorno (Deluxe Edition)              |  9 |
+| 82 |  |  | lead single dall’album Young Forever                           | 10 |
+| 83 |  |  | colonna sonora film Barbie (2023)                              | 11 |
+| 84 |  |  | dall’album Justice                                             | 12 |
+| 85 |  |  | colonna sonora Armageddon                                      | 13 |
+| 86 |  |  | Nightcore version – original da Mareux (2015)                  | 14 |
+| 87 |  |  | feat. MNEK, singolo di Zara Larsson                            | 15 |
+| 88 |  |  | dall’album Long Way Down                                       | 16 |
+| 89 |  |  | colonna sonora 50 Sfumature di Grigio                          | 17 |
+| 90 |  |  | EP Moral of the Story: Chapter 1; Remix Niall Horan 2020       |  1 |
+| 91 |  |  | colonna sonora film Barbie (2023)                              | 11 |
+| 92 |  |  | colonna sonora Armageddon                                      | 13 |
++----+--+--+----------------------------------------------------------------+----+
+flow() ended
+
+connected to the database, yay!
+>> Connection from ('127.0.0.1', 64306)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'quackerina5645@example.com', 'quackerina5645', 'pass1234', '2000-01-01']
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('quackerina5645', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'quackerina5645@example.com', '', '2000-01-01', 'About me:', '4')
+Connection from ('127.0.0.1', 64310)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'bassettina5645@example.com', 'bassettina5645', 'pass1234', '2000-01-01']
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('bassettina5645', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'bassettina5645@example.com', '', '2000-01-01', 'About me:', '4')
+Connection from ('127.0.0.1', 64314)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'quackerina5645', 'pass1234']
+[DEBUG] fetch_one success: (29, 'quackerina5645', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'quackerina5645@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+Connection from ('127.0.0.1', 64316)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'bassettina5645', 'pass1234']
+[DEBUG] fetch_one success: (30, 'bassettina5645', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'bassettina5645@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+Connection from ('127.0.0.1', 64318)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'quackerina5645', 'wrongpassword']
+[DEBUG] fetch_one success: (29, 'quackerina5645', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'quackerina5645@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+Connection from ('127.0.0.1', 64320)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'nonexistent', 'pass1234']
+Connection from ('127.0.0.1', 64322)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'USER_FOLLOW', 'bassettina5645']
+[DEBUG] fetch_one success: (30, 'bassettina5645', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'bassettina5645@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+[DEBUG] execute success: INSERT INTO Follows(follower_id,followed_id) VALUES (%s,%s) ON CONFLICT DO NOTHING (29, 30)
+Connection from ('127.0.0.1', 64325)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'USER_GET_FOLLOWED']
+[DEBUG] fetch_all returned 1 rows
+[DEBUG] fetch_one success: (30, 'bassettina5645', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'bassettina5645@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+Connection from ('127.0.0.1', 64328)
+[DEBUG] Ricevuto da 127.0.0.1: ['e48e8101-1c50-437c-b02f-03ec6475af83', 'USER_GET_FOLLOWERS']
+[DEBUG] fetch_all returned 1 rows
+[DEBUG] fetch_one success: (29, 'quackerina5645', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'quackerina5645@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+Connection from ('127.0.0.1', 64331)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'USER_UNFOLLOW', 'bassettina5645']
+[DEBUG] fetch_one success: (30, 'bassettina5645', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'bassettina5645@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+[DEBUG] execute success: DELETE FROM Follows WHERE follower_id=%s AND followed_id=%s (29, 30)
+Connection from ('127.0.0.1', 64334)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'USER_GET_FOLLOWED']
+[DEBUG] fetch_all returned 0 rows
+Connection from ('127.0.0.1', 64336)
+[DEBUG] Ricevuto da 127.0.0.1: ['e48e8101-1c50-437c-b02f-03ec6475af83', 'USER_GET_FOLLOWERS']
+[DEBUG] fetch_all returned 0 rows
+Connection from ('127.0.0.1', 64338)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'SONG_CREATE', 'Imagine', 'John Lennon', '1971']
+[DEBUG] create_media: inserimento in media {'title': 'Imagine', 'performer': 'John Lennon', 'year': '1971', 'duration': None, 'location': None, 'additional_info': None, 'type': 'song'}
+[DEBUG] create_media: media_id creato = 95
+[DEBUG] create_media: inserimento in songs con valori [95, None, None, None]
+[DEBUG] create_media: commit avvenuto per media 95
+[DEBUG] create_song success: media_id=95
+[DEBUG] fetch_media: eseguo query per media_id=95
+[DEBUG] fetch_one success: (95, 'song', 'Imagine', 'John Lennon', 1971, None, None, datetime.datetime(2025, 8, 29, 0, 9, 28, 680635), None, None, None)
+[DEBUG] create_media_generic(SONG) -> <Song id=95, title=Imagine>
+Connection from ('127.0.0.1', 64341)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'SONG_GET', '95']
+[DEBUG] fetch_media: eseguo query per media_id=95
+[DEBUG] fetch_one success: (95, 'song', 'Imagine', 'John Lennon', 1971, None, None, datetime.datetime(2025, 8, 29, 0, 9, 28, 680635), None, None, None)
+[DEBUG] get_object(Song, id=95) -> <Song id=95, title=Imagine>
+Connection from ('127.0.0.1', 64343)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'SONG_UPDATE', '95', 'title', 'Imagine (Remastered)']
+[DEBUG] update_media: aggiornamento media {'title': 'Imagine (Remastered)'}
+[DEBUG] execute success: UPDATE media SET title=%s WHERE id=%s ('Imagine (Remastered)', '95')
+[DEBUG] update_object(song, id=95) -> True
+Connection from ('127.0.0.1', 64345)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'SONG_DELETE', '95']
+[DEBUG] delete_media: eliminazione songs + media 95
+[DEBUG] execute success: DELETE FROM songs WHERE id=%s ('95',)
+[DEBUG] execute success: DELETE FROM media WHERE id=%s ('95',)
+[DEBUG] delete_object(song, id=95) -> True
+Connection from ('127.0.0.1', 64349)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'DOC_CREATE', 'Resistenza', 'Primo Levi', '1958']
+[DEBUG] create_media: inserimento in media {'title': 'Resistenza', 'author': 'Primo Levi', 'year': '1958', 'format': None, 'pages': None, 'caption': None, 'song_id': None, 'type': 'doc'}
+[DEBUG] create_media: media_id creato = 96
+[DEBUG] create_media: inserimento in documents con valori [96, None, None, None, None]
+[DEBUG] create_media: commit avvenuto per media 96
+[DEBUG] create_document success: media_id=96
+[DEBUG] fetch_media: eseguo query per media_id=96
+[DEBUG] fetch_one success: (96, 'document', 'Resistenza', 'Primo Levi', 1958, None, None, datetime.datetime(2025, 8, 29, 0, 9, 29, 769113), None, None, None, None)
+[DEBUG] create_media_generic(DOC) -> <Document id=96, title=Resistenza>
+Connection from ('127.0.0.1', 64352)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'DOC_GET', '96']
+[DEBUG] fetch_media: eseguo query per media_id=96
+[DEBUG] fetch_one success: (96, 'document', 'Resistenza', 'Primo Levi', 1958, None, None, datetime.datetime(2025, 8, 29, 0, 9, 29, 769113), None, None, None, None)
+[DEBUG] get_object(Document, id=96) -> <Document id=96, title=Resistenza>
+Connection from ('127.0.0.1', 64354)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'DOC_DELETE', '96']
+[DEBUG] delete_media: eliminazione documents + media 96
+[DEBUG] execute success: DELETE FROM documents WHERE id=%s ('96',)
+[DEBUG] execute success: DELETE FROM media WHERE id=%s ('96',)
+[DEBUG] delete_object(document, id=96) -> True
+Connection from ('127.0.0.1', 64357)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'VIDEO_CREATE', 'Metropolis', 'Fritz Lang', '1927']
+[DEBUG] create_media: inserimento in media {'title': 'Metropolis', 'director': 'Fritz Lang', 'year': '1927', 'duration': None, 'location': None, 'additional_info': None, 'type': 'video'}
+[DEBUG] create_media: media_id creato = 97
+[DEBUG] create_media: inserimento in videos con valori [97, None, None, None, 'Fritz Lang']
+[DEBUG] create_media: commit avvenuto per media 97
+[DEBUG] create_video success: media_id=97
+[DEBUG] fetch_media: eseguo query per media_id=97
+[DEBUG] fetch_one success: (97, 'video', 'Metropolis', None, 1927, None, None, datetime.datetime(2025, 8, 29, 0, 9, 30, 436520), None, None, None, 'Fritz Lang')
+[DEBUG] create_media_generic(VIDEO) -> <Video id=97, title=Metropolis>
+Connection from ('127.0.0.1', 64360)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'VIDEO_GET', '97']
+[DEBUG] fetch_media: eseguo query per media_id=97
+[DEBUG] fetch_one success: (97, 'video', 'Metropolis', None, 1927, None, None, datetime.datetime(2025, 8, 29, 0, 9, 30, 436520), None, None, None, 'Fritz Lang')
+[DEBUG] get_object(Video, id=97) -> <Video id=97, title=Metropolis>
+Connection from ('127.0.0.1', 64362)
+[DEBUG] Ricevuto da 127.0.0.1: ['6d109f88-0be6-4fac-bdd7-17a91739769b', 'VIDEO_DELETE', '97']
+[DEBUG] delete_media: eliminazione videos + media 97
+[DEBUG] execute success: DELETE FROM videos WHERE id=%s ('97',)
+[DEBUG] execute success: DELETE FROM media WHERE id=%s ('97',)
+[DEBUG] delete_object(video, id=97) -> True
+Connection from ('127.0.0.1', 64365)
+[DEBUG] Ricevuto da 127.0.0.1: ['USER_GET_FOLLOWERS']
+Connection from ('127.0.0.1', 64366)
+[DEBUG] Ricevuto da 127.0.0.1: ['SONG_CREATE', 'x', 'y', 'z']
+Connection from ('127.0.0.1', 64367)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'user01211@example.com', 'user01211', 'pass1234', '2000-01-01']
+Connection from ('127.0.0.1', 64368)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'user11211@example.com', 'user11211', 'pass1234', '2000-01-01']
+Connection from ('127.0.0.1', 64369)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'user21211@example.com', 'user21211', 'pass1234', '2000-01-01']
+Connection from ('127.0.0.1', 64370)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'user31212@example.com', 'user31212', 'pass1234', '2000-01-01']
+Connection from ('127.0.0.1', 64371)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'user41212@example.com', 'user41212', 'pass1234', '2000-01-01']
+Connection from ('127.0.0.1', 64372)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'user51212@example.com', 'user51212', 'pass1234', '2000-01-01']
+Connection from ('127.0.0.1', 64373)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'user61213@example.com', 'user61213', 'pass1234', '2000-01-01']
+Connection from ('127.0.0.1', 64374)
+[DEBUG] Ricevuto da 127.0.0.1: ['REGISTER', 'user71213@example.com', 'user71213', 'pass1234', '2000-01-01']
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('user11211', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user11211@example.com', '', '2000-01-01', 'About me:', '4')
+Connection from ('127.0.0.1', 64399)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'user11211', 'pass1234']
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('user01211', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user01211@example.com', '', '2000-01-01', 'About me:', '4')
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('user51212', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user51212@example.com', '', '2000-01-01', 'About me:', '4')
+Connection from ('127.0.0.1', 64401)
+Connection from ('127.0.0.1', 64402)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'user01211', 'pass1234']
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('user41212', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user41212@example.com', '', '2000-01-01', 'About me:', '4')
+Connection from ('127.0.0.1', 64404)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'user51212', 'pass1234']
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'user41212', 'pass1234']
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('user31212', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user31212@example.com', '', '2000-01-01', 'About me:', '4')
+Connection from ('127.0.0.1', 64407)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'user31212', 'pass1234']
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('user71213', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user71213@example.com', '', '2000-01-01', 'About me:', '4')
+Connection from ('127.0.0.1', 64409)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'user71213', 'pass1234']
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('user21211', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user21211@example.com', '', '2000-01-01', 'About me:', '4')
+Connection from ('127.0.0.1', 64410)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'user21211', 'pass1234']
+[DEBUG] execute success: INSERT INTO users(username,password,mail,foto_profilo,birthday,bio,lvl) VALUES (%s,%s,%s,%s,%s,%s,%s) ('user61213', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user61213@example.com', '', '2000-01-01', 'About me:', '4')
+Connection from ('127.0.0.1', 64413)
+[DEBUG] Ricevuto da 127.0.0.1: ['LOGIN', 'user61213', 'pass1234']
+[DEBUG] fetch_one success: (32, 'user01211', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user01211@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+[DEBUG] fetch_one success: (31, 'user11211', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user11211@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+[DEBUG] fetch_one success: (34, 'user41212', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user41212@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+[DEBUG] fetch_one success: (33, 'user51212', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user51212@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+[DEBUG] fetch_one success: (35, 'user31212', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user31212@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+[DEBUG] fetch_one success: (37, 'user21211', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user21211@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+[DEBUG] fetch_one success: (36, 'user71213', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user71213@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+[DEBUG] fetch_one success: (38, 'user61213', 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11d4f', 'user61213@example.com', '', datetime.date(2000, 1, 1), 'About me:', 4)
+c
+Server closing...
+
+All connections closed.
+
+
+C:\Users\LENOVO\Desktop\prj\I.S\Code\server>

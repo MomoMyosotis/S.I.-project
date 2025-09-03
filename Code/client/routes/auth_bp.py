@@ -98,5 +98,4 @@ def assistance():
 
     return render_template("auth.html", form_type="assistance", form=form)
 
-
 # last line

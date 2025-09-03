@@ -1,6 +1,9 @@
+# first line
+
 import socket
 import threading
 import time
+import json
 from typing import Optional, Tuple, List
 
 HOST = "127.0.0.1"
@@ -9,37 +12,45 @@ PORT = 8000
 # -------------------------------
 # Helpers base
 # -------------------------------
-def send_command(cmd: str, recv_size: int = 65536) -> str:
+def send_command(cmd_dict: dict, recv_size: int = 65536) -> str:
+    """Invia un dizionario come JSON al server e riceve la risposta."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((HOST, PORT))
-        s.sendall(cmd.encode() + b"\n")
+        payload = json.dumps(cmd_dict).encode() + b"\n"
+        s.sendall(payload)
         resp = s.recv(recv_size).decode(errors="replace").strip()
     return resp
 
 def section(title: str):
     print("\n" + "="*20 + f" {title} " + "="*20)
 
-def show(cmd: str, resp: str):
-    print(f">> {cmd}")
+def show(cmd_dict: dict, resp: str):
+    print(f">> {json.dumps(cmd_dict)}")
     print(f"<< {resp}")
 
-def try_cmd(cmd: str, expect: Optional[str] = None) -> str:
-    resp = send_command(cmd)
-    show(cmd, resp)
+def try_cmd_json(cmd_dict: dict, expect: Optional[str] = None) -> str:
+    resp = send_command(cmd_dict)
+    show(cmd_dict, resp)
     if expect is not None and expect not in resp:
         raise AssertionError(f"Expected '{expect}' in response but got: {resp}")
     return resp
 
 def parse_token(resp: str) -> Optional[str]:
-    if resp.startswith("OK|"):
-        parts = resp.split("|", 1)
-        return parts[1]
-    return None
+    """Estrae il token da una risposta di login/register"""
+    try:
+        data = json.loads(resp)
+        return data.get("token")
+    except:
+        return None
 
 def parse_id(resp: str) -> Optional[str]:
-    if resp.startswith("OK|"):
-        parts = resp.split("|", 1)
-        return parts[1]
+    """Estrae l'ID da una risposta di creazione media"""
+    try:
+        data = json.loads(resp)
+        if "response" in data and isinstance(data["response"], dict):
+            return data["response"].get("id")
+    except:
+        pass
     return None
 
 def unique_user(base_name: str) -> Tuple[str, str]:
@@ -56,21 +67,37 @@ def test_register_login() -> Tuple[str, str, str, str]:
     email1, username1 = unique_user("quackerina")
     email2, username2 = unique_user("bassettina")
 
-    resp1 = try_cmd(f"REGISTER|{email1}|{username1}|pass1234|2000-01-01")
-    resp2 = try_cmd(f"REGISTER|{email2}|{username2}|pass1234|2000-01-01")
+    # Registrazione
+    resp1 = try_cmd_json({
+        "command": "register_user",
+        "args": [email1, username1, "pass1234", "2000-01-01"]
+    })
+    resp2 = try_cmd_json({
+        "command": "register_user",
+        "args": [email2, username2, "pass1234", "2000-01-01"]
+    })
 
-    assert "ERROR" not in resp1, f"Register fallito: {resp1}"
-    assert "ERROR" not in resp2, f"Register fallito: {resp2}"
+    token_alice = parse_token(resp1)
+    token_bob = parse_token(resp2)
+    assert token_alice and token_bob, "Register fallito"
 
     # Login
-    token_alice = parse_token(try_cmd(f"LOGIN|{username1}|pass1234", expect="OK|"))
-    token_bob = parse_token(try_cmd(f"LOGIN|{username2}|pass1234", expect="OK|"))
+    resp1 = try_cmd_json({
+        "command": "login_user",
+        "args": [username1, "pass1234"]
+    })
+    resp2 = try_cmd_json({
+        "command": "login_user",
+        "args": [username2, "pass1234"]
+    })
+    token_alice = parse_token(resp1)
+    token_bob = parse_token(resp2)
     assert token_alice and token_bob, "Login fallito"
 
     # Wrong password / not found
     try:
-        try_cmd(f"LOGIN|{username1}|wrongpassword", expect="WRONG_PASSWORD")
-        try_cmd("LOGIN|nonexistent|pass1234", expect="404")
+        try_cmd_json({"command": "login_user", "args": [username1, "wrongpassword"]}, expect="WRONG_PASSWORD")
+        try_cmd_json({"command": "login_user", "args": ["nonexistent", "pass1234"]}, expect="404")
     except AssertionError as e:
         print("[Expected error] ", e)
 
@@ -78,42 +105,41 @@ def test_register_login() -> Tuple[str, str, str, str]:
 
 def test_follow_flow(token_alice: str, token_bob: str, username_alice: str, username_bob: str):
     section("FOLLOW / FOLLOWERS / FOLLOWED")
-    try_cmd(f"{token_alice}|USER_FOLLOW|{username_bob}", expect="FOLLOWED")
-    try_cmd(f"{token_alice}|USER_GET_FOLLOWED")
-    try_cmd(f"{token_bob}|USER_GET_FOLLOWERS")
-    try_cmd(f"{token_alice}|USER_UNFOLLOW|{username_bob}", expect="UNFOLLOWED")
-    try_cmd(f"{token_alice}|USER_GET_FOLLOWED")
-    try_cmd(f"{token_bob}|USER_GET_FOLLOWERS")
+    try_cmd_json({"command": "follow_user", "args": [username_bob], "token": token_alice}, expect="FOLLOWED")
+    try_cmd_json({"command": "get_followed", "args": [], "token": token_alice})
+    try_cmd_json({"command": "get_followers", "args": [], "token": token_bob})
+    try_cmd_json({"command": "unfollow_user", "args": [username_bob], "token": token_alice}, expect="UNFOLLOWED")
+    try_cmd_json({"command": "get_followed", "args": [], "token": token_alice})
+    try_cmd_json({"command": "get_followers", "args": [], "token": token_bob})
 
 def test_media_crud(token_alice: str):
     section("MEDIA CRUD - SONG")
-    r = try_cmd(f"{token_alice}|SONG_CREATE|Imagine|John Lennon|1971", expect="OK|")
+    r = try_cmd_json({"command": "create_song", "args": ["Imagine", "John Lennon", 1971], "token": token_alice}, expect="OK")
     song_id = parse_id(r)
     assert song_id, "Creazione canzone fallita"
-
-    try_cmd(f"{token_alice}|SONG_GET|{song_id}")
-    try_cmd(f"{token_alice}|SONG_UPDATE|{song_id}|title|Imagine (Remastered)", expect="OK")
-    try_cmd(f"{token_alice}|SONG_DELETE|{song_id}", expect="OK")
+    try_cmd_json({"command": "get_song", "args": [song_id], "token": token_alice})
+    try_cmd_json({"command": "update_song", "args": [song_id, "title", "Imagine (Remastered)"], "token": token_alice}, expect="OK")
+    try_cmd_json({"command": "delete_song", "args": [song_id], "token": token_alice}, expect="OK")
 
     section("MEDIA CRUD - DOCUMENT")
-    r = try_cmd(f"{token_alice}|DOC_CREATE|Resistenza|Primo Levi|1958", expect="OK|")
+    r = try_cmd_json({"command": "create_document", "args": ["Resistenza", "Primo Levi", 1958], "token": token_alice}, expect="OK")
     doc_id = parse_id(r)
     assert doc_id
-    try_cmd(f"{token_alice}|DOC_GET|{doc_id}")
-    try_cmd(f"{token_alice}|DOC_DELETE|{doc_id}", expect="OK")
+    try_cmd_json({"command": "get_document", "args": [doc_id], "token": token_alice})
+    try_cmd_json({"command": "delete_document", "args": [doc_id], "token": token_alice}, expect="OK")
 
     section("MEDIA CRUD - VIDEO")
-    r = try_cmd(f"{token_alice}|VIDEO_CREATE|Metropolis|Fritz Lang|1927", expect="OK|")
+    r = try_cmd_json({"command": "create_video", "args": ["Metropolis", "Fritz Lang", 1927], "token": token_alice}, expect="OK")
     vid_id = parse_id(r)
     assert vid_id
-    try_cmd(f"{token_alice}|VIDEO_GET|{vid_id}")
-    try_cmd(f"{token_alice}|VIDEO_DELETE|{vid_id}", expect="OK")
+    try_cmd_json({"command": "get_video", "args": [vid_id], "token": token_alice})
+    try_cmd_json({"command": "delete_video", "args": [vid_id], "token": token_alice}, expect="OK")
 
 def test_not_logged_in():
     section("ACCESS WITHOUT LOGIN")
     try:
-        try_cmd("USER_GET_FOLLOWERS", expect="ERROR: NOT_LOGGED_IN")
-        try_cmd("SONG_CREATE|x|y|z", expect="ERROR: NOT_LOGGED_IN")
+        try_cmd_json({"command": "get_followers", "args": []}, expect="ERROR: NOT_LOGGED_IN")
+        try_cmd_json({"command": "create_song", "args": ["x","y",0]}, expect="ERROR: NOT_LOGGED_IN")
     except AssertionError as e:
         print("[Expected error] ", e)
 
@@ -124,8 +150,8 @@ def concurrency_login_test(users: int = 5):
 
     def worker(i: int):
         email, uname = unique_user(f"user{i}")
-        try_cmd(f"REGISTER|{email}|{uname}|pass1234|2000-01-01")
-        resp = try_cmd(f"LOGIN|{uname}|pass1234", expect="OK|")
+        try_cmd_json({"command": "register_user", "args": [email, uname, "pass1234", "2000-01-01"]})
+        resp = try_cmd_json({"command": "login_user", "args": [uname, "pass1234"]}, expect="OK")
         t = parse_token(resp)
         if t:
             with lock:
@@ -149,3 +175,6 @@ if __name__ == '__main__':
     test_not_logged_in()
     concurrency_login_test(8)
     section("DONE")
+
+
+# last line
