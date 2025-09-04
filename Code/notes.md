@@ -1,99 +1,109 @@
-Server
+note:
 
-✅ Gestione media (song, video, documenti) con CRUD già implementata
-✅ Gestione utenti (class User)
-✅ Logging e tester già pronti
+- i folder models e objects benché simili hanno scopi !=
 
-⚠ Mancano:
+- models    -> contiene le entità così come vengono usate a lvl applicativo
+            -> quello che viene effettivamente usato per fare le operazioni
 
-Gestione commenti e note multilivello (innestati a qualsiasi profondità)
+- objects   -> contiene gli stessi obj main modi più complessi
+            -> destinato all'uso interno del sistema o da parte di root
 
-Ruoli e permessi differenziati (root, admin, moderatore, publisher, regulare, blocked, followed, banned)
 
-Informazioni aggiuntive per media: esecutori, strumenti, durata, luogo e data registrazione per mp3/mp4/video live
+================================================
+what's been done:
+- objects defined with attributes (yet to do methods)
+- defined folder && file organization
+- flask app initialization
+- SQL prototype ready to use (sort of, gotta reconfigure it first)
+- UI:
+    - routes defined for authentification - login, recover pswd, registration, assistance
+    - form .html and .css for - login, recover pswd, registration, assistance
+    - module "auth" that contains said modules
+- protoype of model for user
+=================================================
 
-Meta-informazioni per video/link YouTube dei concerti (inizio/fine brani, strumenti, commenti)
+to do list:
 
-Cancellazione commenti offensivi da parte admin o commenti altrui da parte dell’utente proprietario
+##############################################
+##############################################
+__UI__
 
-Dizionari aggiornabili: strumenti, generi, autori, titoli (per ricerche e dropdown)
+- modulo home che contiene:
+    - pagina profilo
+    - pagina ricerca
+    - feed - (lazy loading)
+            JS che rileva quando sei in fondo alla pagina
+            Route Flask per dare nuovi contenuti in formato JSON
+            Un backend che restituisce “pagine” (es: 10 post alla volta)
 
-Client
+- modulo interventions che contiene:
+    - sezione notifiche
+    - sezione video commentati
 
-✅ Login, registrazione base
-✅ Struttura blueprint e HTML/CSS per home, feed, librerie, profili
-⚠ Mancano:
+- modulo tendina che contiene:
+    - sezione per i commenti sotto ai video
+    - sezione per le note nei file
 
-Interazione reale con server per commenti/note multilivello
+- modulo visualize che contiene:
+    - pagina per i documenti
+    - sezione video commentati
+    - pulsante x form "report" (form simile a contact assistance?)
 
-Interfaccia gestione ruoli/permessi
+- modulo lvl
+    - finestra invisibile che a seconda del livello dell'utente facomparire determinati pulsanti
+        - block user
+        - deleate content || account
+        - costumize note || cmment
+        - add info (4 files)
+        - hide content based on lvl (?)
 
-Inserimento meta-info brani live/video concerti
 
-Player integrato per file multimediali o link YouTube
+requisiti struttura __UI__:
+modulo autentificazione
+- login -> collegato a recover credentials e registration form
+- recover credentials -> collegato solo a login
+- registration -> collegato a login e assistance
+- assistance -> collegato a login
 
-Form aggiornamento dizionari e ricerca avanzata
+effettuato il login -> carica la home
+home struttura:
+- 3 finestre tra cui si può shiftare come con ig o whatsapp
+- sx -> profilo
+- centro -> feed -> pulsante per il form di ricerca
+- dx -> libreria (da implementare una logica per salvare gli id dei brani piaciuti)
 
-Streaming/Player
+resto yet to define
 
-⚠ Streaming live è richiesto solo per YouTube o file locali. In pratica serve un player che possa riprodurre mp3/mp4/video YouTube con possibilità di annotare segmenti del brano. Questo è core per la parte multimediale, ma non deve necessariamente essere un vero “live streaming server” custom.
+##############################################
+##############################################
 
-#####################################################
-#####################################################
-#####################################################
+__backend__:
+define all the modules
+    - user
+    - comment
+    - note
+    - song
+    - concert
+    - file
 
-__Sprint 1: Core server__
+configure the database
+    - convert "SQL temp" folder
+    - prepare an input listener -> converts requests into query
+                                -> returns the SQL data into acceptable format i.e. dict
 
-Obiettivo: struttura dei dati e permessi completa
+configure the objects methods
 
-Gestione ruoli utenti con permessi differenziati (CRUD, commenti, gestione contenuti)
+prepare a logic for differnt users
 
-CRUD commenti e note multilivello (possibilità di innestare commenti a qualsiasi profondità)
+prepare a logic for the concerts
 
-Meta-info per media: esecutori, strumenti, durata, luogo/data registrazione
 
-Cancellazione commenti da parte di admin o proprietario
 
-Output: server pronto a gestire qualsiasi tipo di operazione prevista dalla consegna.
-
-__Sprint 2: Core client__
-
-Obiettivo: collegare server e interfaccia utente
-
-Blueprint e HTML/CSS per feed, librerie, profili
-
-Visualizzazione, inserimento e innesto di commenti/note multilivello
-
-Form per inserimento meta-info su media
-
-Validazione permessi lato client (ad esempio, utente blocked non può commentare)
-
-Implementazione fetch/POST verso server per tutte le operazioni sopra
-
-Output: client funzionante con dati reali, testabile su utenti e media diversi.
-
-__Sprint 3: Funzionalità multimediali avanzate__
-
-Obiettivo: integrare player e annotazioni segmenti
-
-Player per mp3/mp4 e YouTube
-
-Annotazioni su segmenti di brani/video (assoli, strumenti, ritmi)
-
-Differenziazione commenti proprietario vs altri utenti
-
-Meta-info concerti: inizio/fine brani, strumenti, commenti
-
-Dizionari aggiornabili per strumenti, generi, autori, titoli
-
-Output: esperienza completa di fruizione e annotazione multimediale.
-
-__Sprint 4: Funzionalità opzionali / polish__
-
-Dashboard admin/moderatore (gestione utenti, rimozione commenti)
-
-Ricerca avanzata: titolo, autore, esecutore, genere
-
-Caching o ottimizzazioni frontend (opzionale)
-
-Bugfix e test di integrazione
+| **Aspetto**             | `auth_service.py`                                                   | `db.py`                                                          |
+| ----------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **Ruolo**               | Interfaccia logica di alto livello (service layer)                  | Gestione utenti e accesso ai dati                                |
+| **Responsabilità**      | Orchestrare il login, registrazione ecc. usando funzioni di `db.py` | Gestire utenti: caricarli, salvarli, validarli, hashare password |
+| **Accesso ai dati**     | *Non diretto* (delega a `db.py`)                                    | Diretto (carica/salva da JSON)                                   |
+| **Login demo (grezzo)** | Sperimentale, senza hashing, solo per fake\_user.json               | Completo, con `check_password_hash()`                            |
+| **Hashing password**    | ❌ Non gestito                                                       | ✅ Gestito con `werkzeug.security`                                |
+| **Modello utente**      | Dict semplice                                                       | Oggetti `User`, con `.to_dict()` e validazione                   |
