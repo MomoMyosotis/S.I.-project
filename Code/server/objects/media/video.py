@@ -2,28 +2,13 @@
 
 from typing import Optional, Dict, Any, List
 from .media import Media
-from db.db_crud import advanced_video_search_db, fetch_interventions_db
+from db.db_crud import fetch_relations, fetch_interventions_db, advanced_video_search_db, create_relation, delete_relation
 
 class Video(Media):
-    def __init__(
-        self,
-        id: Optional[int] = None,
-        title: Optional[str] = None,
-        user_id: Optional[str] = None,
-        year: Optional[int] = None,
-        description: Optional[str] = None,
-        link: Optional[str] = None,
-        duration: Optional[int] = None,
-        location: Optional[str] = None,
-        additional_info: Optional[str] = None,
-        director: Optional[str] = None,
-        **kwargs
-    ):
-        super().__init__(id, title, user_id, year, description, link, **kwargs)
-        self.duration = duration
-        self.location = location
-        self.additional_info = additional_info
-        self.director = director
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.type = "video"
+        self.director = kwargs.get("director")
 
     def media_type(self) -> str:
         return "video"
@@ -39,37 +24,40 @@ class Video(Media):
         return data
 
     # =====================
-    # CLASS METHODS SPECIFICHE VIDEO
+    # RELAZIONI M:N
+    # =====================
+    def _sync_relations(self):
+        relation_map = {
+            "media_authors": ("author_id", self.authors),
+            "media_performances": ("performer_id", self.performers),
+            "media_genres": ("genre_id", self.genres)
+        }
+        for table, (col, values) in relation_map.items():
+            delete_relation(table, {f"media_id": self.media_id})
+            for val in values:
+                create_relation(table, ("media_id", col), (self.media_id, val))
+
+    # =====================
+    # CLASS METHODS
     # =====================
     @classmethod
-    def fetch_full_video(cls, video_id: int) -> Optional[Dict[str, Any]]:
-        media = Media.fetch_media(video_id)
-        if not media:
+    def fetch_full_video(cls, video_id: int) -> Optional["Video"]:
+        media_data = cls.fetch(media_id=video_id)
+        if not media_data:
             return None
-        # eventuali relazioni future tipo authors, performers possono essere aggiunte qui
-        media["comments"] = fetch_interventions_db("comments", "media_id", video_id)
-        media["notes"] = fetch_interventions_db("notes", "media_id", video_id)
-        return media
 
-    @classmethod
-    def advanced_video_search(cls, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        return advanced_video_search_db(filters)
+        media_data.genres = [r["genre_id"] for r in fetch_relations("media_genres", "media_id", video_id)]
+        media_data.authors = [r["author_id"] for r in fetch_relations("media_authors", "media_id", video_id)]
+        media_data.performers = [r["performer_id"] for r in fetch_relations("media_performances", "media_id", video_id)]
+        media_data.comments = fetch_interventions_db("comments", "media_id", video_id)
+        media_data.notes = fetch_interventions_db("notes", "media_id", video_id)
+
+        return media_data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Optional["Video"]:
         if not data:
             return None
-        return cls(
-            id=data.get("id"),
-            title=data.get("title"),
-            user_id=data.get("user_id"),
-            year=data.get("year"),
-            description=data.get("description"),
-            link=data.get("link"),
-            duration=data.get("duration"),
-            location=data.get("location"),
-            additional_info=data.get("additional_info"),
-            director=data.get("director")
-        )
+        return cls(**data)
 
 # last line

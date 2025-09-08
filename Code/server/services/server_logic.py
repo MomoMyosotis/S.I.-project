@@ -51,12 +51,12 @@ def handle_client(conn, addr):
                         continue
 
                 # Dispatcher principale
-                response, new_user_obj, new_token = dispatch_command(command, args, user_obj)
+                response, new_user_obj, new_token, status = dispatch_command(command, args, user_obj)
                 if new_token:
                     sessions[new_token] = new_user_obj
 
                 conn.sendall(json.dumps({
-                    "status": "OK",
+                    "status": status,
                     "response": response,
                     "token": new_token
                 }).encode())

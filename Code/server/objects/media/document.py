@@ -2,28 +2,14 @@
 
 from typing import Optional, Dict, Any, List
 from .media import Media
-from db.db_crud import advanced_document_search_db, fetch_interventions_db
+from db.db_crud import fetch_relations, fetch_interventions_db, create_relation, delete_relation
 
 class Document(Media):
-    def __init__(
-        self,
-        id: Optional[int] = None,
-        title: Optional[str] = None,
-        user_id: Optional[str] = None,
-        year: Optional[int] = None,
-        description: Optional[str] = None,
-        link: Optional[str] = None,
-        format: Optional[str] = None,
-        pages: Optional[int] = None,
-        caption: Optional[str] = None,
-        song_id: Optional[int] = None,
-        **kwargs
-    ):
-        super().__init__(id, title, user_id, year, description, link, **kwargs)
-        self.format = format
-        self.pages = pages
-        self.caption = caption
-        self.song_id = song_id
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.type = "document"
+        self.pages = kwargs.get("pages")
+        self.format = kwargs.get("format")
 
     def media_type(self) -> str:
         return "document"
@@ -31,44 +17,47 @@ class Document(Media):
     def to_dict(self) -> Dict[str, Any]:
         data = super().to_dict()
         data.update({
-            "format": self.format,
+            "stored_at": self.stored_at,
             "pages": self.pages,
-            "caption": self.caption,
-            "song_id": self.song_id
+            "format": self.format,
+            "references": getattr(self, "references", [])
+            # in futuro puoi aggiungere "comments": self.comments, "notes": self.notes
         })
         return data
 
     # =====================
-    # CLASS METHODS SPECIFICHE DOCUMENT
+    # RELAZIONI M:N
+    # =====================
+    def _sync_relations(self):
+        relation_map = {
+            "media_authors": ("author_id", self.authors)
+        }
+        for table, (col, values) in relation_map.items():
+            delete_relation(table, {f"media_id": self.media_id})
+            for val in values:
+                create_relation(table, ("media_id", col), (self.media_id, val))
+
+    # =====================
+    # CLASS METHODS
     # =====================
     @classmethod
-    def fetch_full_document(cls, doc_id: int) -> Optional[Dict[str, Any]]:
-        media = Media.fetch_media(doc_id)
-        if not media:
+    def fetch_full_document(cls, doc_id: int) -> Optional["Document"]:
+        media_data = cls.fetch(media_id=doc_id)
+        if not media_data:
             return None
-        media["comments"] = fetch_interventions_db("comments", "media_id", doc_id)
-        media["notes"] = fetch_interventions_db("notes", "media_id", doc_id)
-        return media
 
-    @classmethod
-    def advanced_document_search(cls, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        return advanced_document_search_db(filters)
+
+        media_data.authors = [r["author_id"] for r in fetch_relations("media_authors", "media_id", doc_id)]
+        #media_data.comments = fetch_interventions_db("comments", "media_id", doc_id)
+        #media_data.notes = fetch_interventions_db("notes", "media_id", doc_id)
+        media_data.references = [r["passive_id"] for r in fetch_relations("media_references", "active_id", doc_id)]
+
+        return media_data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Optional["Document"]:
         if not data:
             return None
-        return cls(
-            id=data.get("id"),
-            title=data.get("title"),
-            user_id=data.get("user_id"),
-            year=data.get("year"),
-            description=data.get("description"),
-            link=data.get("link"),
-            format=data.get("format"),
-            pages=data.get("pages"),
-            caption=data.get("caption"),
-            song_id=data.get("song_id")
-        )
+        return cls(**data)
 
 # last line

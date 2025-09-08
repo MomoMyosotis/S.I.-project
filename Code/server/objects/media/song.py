@@ -2,31 +2,16 @@
 
 from typing import Optional, Dict, Any, List
 from .media import Media
-from db.db_crud import (
-    fetch_media_db,
-    fetch_relations,
-    fetch_interventions_db,
-    advanced_song_search_db
-)
+from db.db_crud import fetch_relations, advanced_song_search_db, create_relation, delete_relation
 
 class Song(Media):
+
     def __init__(
         self,
-        id: Optional[int] = None,
-        title: Optional[str] = None,
-        user_id: Optional[str] = None,
-        year: Optional[int] = None,
-        description: Optional[str] = None,
-        link: Optional[str] = None,
-        duration: Optional[int] = None,
-        location: Optional[str] = None,
-        additional_info: Optional[str] = None,
         **kwargs
     ):
-        super().__init__(id, title, user_id, year, description, link, **kwargs)
-        self.duration = duration
-        self.location = location
-        self.additional_info = additional_info
+        super().__init__(**kwargs)
+        self.type = "song"  # forza tipo song
 
     def media_type(self) -> str:
         return "song"
@@ -41,38 +26,39 @@ class Song(Media):
         return data
 
     # =====================
-    # CLASS METHODS SPECIFICHE SONG
+    # RELAZIONI M:N
+    # =====================
+    def _sync_relations(self):
+        relation_map = {
+            "media_authors": ("author_id", self.authors),
+            "media_performances": ("performer_id", self.performers),
+            "media_genres": ("genre_id", self.genres)
+        }
+        for table, (col, values) in relation_map.items():
+            delete_relation(table, {f"media_id": self.media_id})
+            for val in values:
+                create_relation(table, ("media_id", col), (self.media_id, val))
+
+    # =====================
+    # CLASS METHODS
     # =====================
     @classmethod
-    def fetch_full_song(cls, song_id: int) -> Optional[Dict[str, Any]]:
-        media = fetch_media_db(song_id)
-        if not media:
+    def fetch_full_song(cls, song_id: int) -> Optional["Song"]:
+        media_data = cls.fetch(media_id=song_id)  # usa fetch generico di Media
+        if not media_data:
             return None
-        media["genres"] = fetch_relations("song_genres", "song_id", song_id)
-        media["authors"] = fetch_relations("song_authors", "song_id", song_id)
-        media["performers"] = fetch_relations("song_performances", "song_id", song_id)
-        media["comments"] = fetch_interventions_db("comments", "media_id", song_id)
-        media["notes"] = fetch_interventions_db("notes", "media_id", song_id)
-        return media
+
+        media_data.genres = [r["genre_id"] for r in fetch_relations("media_genres", "media_id", song_id)]
+        media_data.authors = [r["author_id"] for r in fetch_relations("media_authors", "media_id", song_id)]
+        media_data.performers = [r["performer_id"] for r in fetch_relations("media_performances", "media_id", song_id)]
+#        media_data.comments = fetch_interventions_db("comments", "media_id", song_id)
+#        media_data.notes = fetch_interventions_db("notes", "media_id", song_id)
+
+        return media_data
 
     @classmethod
-    def advanced_song_search(cls, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        return advanced_song_search_db(filters)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Optional["Song"]:
-        if not data:
-            return None
-        return cls(
-            id=data.get("id"),
-            title=data.get("title"),
-            user_id=data.get("user_id"),
-            year=data.get("year"),
-            description=data.get("description"),
-            link=data.get("link"),
-            duration=data.get("duration"),
-            location=data.get("location"),
-            additional_info=data.get("additional_info")
-        )
+    def advanced_song_search(cls, filters: Dict[str, Any]) -> List["Song"]:
+        results = advanced_song_search_db(filters)
+        return [cls.from_dict(r) for r in results]
 
 # last line

@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, List, Optional
 from . import connection
-import hashlib
+import hashlib, time
 
 # =====================
 # DEBUG
@@ -51,6 +51,7 @@ def execute(query: str, params: tuple = ()) -> bool:
             cur.execute(query, params)
             conn.commit()
             debug(f"execute success: {query} {params}")
+            time.sleep(0.5)
             return True
     except Exception as e:
         print(f"[DB ERROR execute] {e}")
@@ -145,33 +146,158 @@ def delete_user_db(user_id: int, child_table: Optional[str] = None) -> bool:
 # =====================
 # MEDIA CRUD
 # =====================
-def create_media_db(main_fields: tuple, child_table: str = None, child_columns: tuple = (), child_values: tuple = ()) -> Optional[int]:
-    conn = None
+def create_media_db(data: Dict[str, Any]) -> Optional[int]:
+    """
+    Inserisce un record nella tabella media e nelle tabelle collegate
+    (documents, concerts, media_authors, media_performances, media_genres, references).
+    """
+    conn = connection.connect()
     try:
-        conn = connection.connect()
         with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO media (type, title, user_id, year, description, link, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id
-            """, main_fields)
-            media_id = cur.fetchone()[0]
 
-            if child_table and child_columns and child_values:
-                columns = ','.join(['id'] + list(child_columns))
-                placeholders = ','.join(['%s'] * (len(child_values) + 1))
-                cur.execute(
-                    f"INSERT INTO {child_table} ({columns}) VALUES ({placeholders})",
-                    (media_id, *child_values)
+            # 1. INSERT nella tabella media
+            media_query = """
+                INSERT INTO media
+                    (type, title, description, duration, location, link,
+                    additional_info, is_author, is_performer, year, user_id)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING id;
+            """
+
+            media_values = (
+                data.get("type"),
+                data.get("title"),
+                data.get("description"),
+                data.get("duration"),
+                data.get("stored_at"),
+                data.get("link"),
+                data.get("additional_info"),
+                data.get("is_author", False),
+                data.get("is_performer", False),
+                data.get("year"),
+                data.get("user_id"),
+            )
+
+            cur.execute(media_query, media_values)
+            media_id = cur.fetchone()[0]
+            debug(f"Inserted into media id={media_id}")
+
+            # 2. DOCUMENTS
+            if data.get("type") == "document":
+                doc_query = """
+                    INSERT INTO documents (media_id, format, pages, caption)
+                    VALUES (%s, %s, %s, %s);
+                """
+                doc_values = (
+                    media_id,
+                    data.get("format"),
+                    data.get("pages"),
+                    data.get("caption"),
                 )
+                cur.execute(doc_query, doc_values)
+                debug(f"Inserted document for media_id={media_id}")
+
+            # 3. CONCERTI
+            if data.get("type") == "concert_video":
+                # Inserisci nella tabella concerts
+                concert_query = """
+                    INSERT INTO concerts (video_id, title, description)
+                    VALUES (%s, %s, %s)
+                    RETURNING id;
+                """
+                cur.execute(concert_query, (media_id, data.get("title"), data.get("description")))
+                concert_id = cur.fetchone()[0]
+                debug(f"Inserted concert id={concert_id} for media_id={media_id}")
+
+                # Inserisci i segmenti del concerto
+                for seg in data.get("tracklist", []):
+                    seg_query = """
+                        INSERT INTO concert_segments (concert_id, media_id, start_time, end_time, comment)
+                        VALUES (%s,%s,%s,%s,%s)
+                        RETURNING id;
+                    """
+                    cur.execute(seg_query, (
+                        concert_id,
+                        seg.get("media_id"),
+                        seg.get("start_time"),
+                        seg.get("end_time"),
+                        seg.get("comment")
+                    ))
+                    segment_id = cur.fetchone()[0]
+
+                    # performers del segmento
+                    for performer_id in seg.get("performers", []):
+                        cur.execute(
+                            "INSERT INTO concert_segment_performers (segment_id, performer_id) VALUES (%s,%s);",
+                            (segment_id, performer_id)
+                        )
+                    # instruments del segmento
+                    for instrument_id in seg.get("instruments", []):
+                        cur.execute(
+                            "INSERT INTO concert_segment_instruments (segment_id, instrument_id) VALUES (%s,%s);",
+                            (segment_id, instrument_id)
+                        )
+                    debug(f"Inserted segment id={segment_id} for concert_id={concert_id}")
+
+            # 4. Inserimento relazioni: authors
+            for author_id in data.get("authors", []):
+                cur.execute(
+                    "INSERT INTO media_authors (media_id, author_id) VALUES (%s,%s);",
+                    (media_id, author_id),
+                )
+                debug(f"Added author_id={author_id} to media_id={media_id}")
+
+            # 5. Inserimento relazioni: performers
+            for performer in data.get("performers", []):
+                if performer.get("type") == "user":
+                    # usa direttamente l'id numerico
+                    performer_id = performer["id"]
+                elif performer.get("type") == "external":
+                    # controlla se il performer esiste già nella tabella performers
+                    cur.execute("SELECT id FROM performers WHERE name=%s", (performer["name"],))
+                    row = cur.fetchone()
+                    if row:
+                        performer_id = row[0]
+                    else:
+                        # crea nuovo performer esterno
+                        cur.execute("INSERT INTO performers (name) VALUES (%s) RETURNING id", (performer["name"],))
+                        performer_id = cur.fetchone()[0]
+                else:
+                    raise ValueError("Tipo performer non valido")
+
+                cur.execute(
+                    "INSERT INTO media_performances (media_id, performer_id) VALUES (%s,%s);",
+                    (media_id, performer_id),
+                )
+                debug(f"Added performer_id={performer_id} to media_id={media_id}")
+
+
+            # 6. Inserimento relazioni: genres
+            for genre_id in data.get("genres", []):
+                cur.execute(
+                    "INSERT INTO media_genres (media_id, genre_id) VALUES (%s,%s);",
+                    (media_id, genre_id),
+                )
+                debug(f"Added genre_id={genre_id} to media_id={media_id}")
+
+            # 7. Inserimento relazioni: references
+            for ref_id in data.get("references", []):
+                cur.execute(
+                    "INSERT INTO media_references (active_id, passive_id) VALUES (%s,%s);",
+                    (media_id, ref_id),
+                )
+                debug(f"Linked media_id={media_id} to reference_id={ref_id}")
 
             conn.commit()
-            return media_id
+            return {"id": media_id}
+
     except Exception as e:
-        if conn: conn.rollback()
-        debug(f"[DB ERROR create_media_db]: {e}")
+        conn.rollback()
+        debug(f"ERROR in create_media_db: {e}")
         return None
+
     finally:
-        if conn: connection.close(None, conn)
+        conn.close()
 
 def fetch_media_db(media_id: int, child_table: str = None, child_fields: List[str] = None) -> Optional[Dict[str, Any]]:
     if child_table and child_fields:
@@ -191,8 +317,8 @@ def delete_media_db(media_id: int) -> bool:
     success = True
     for table in ["comments", "notes"]:
         success &= execute(f"DELETE FROM {table} WHERE media_id=%s", (media_id,))
-    for table in ["song_genres", "song_authors", "song_performances"]:
-        success &= execute(f"DELETE FROM {table} WHERE song_id=%s", (media_id,))
+    for table in ["media_genres", "media_authors", "media_performances"]:
+        success &= execute(f"DELETE FROM {table} WHERE media_id=%s", (media_id,))
     success &= execute("DELETE FROM media WHERE id=%s", (media_id,))
     return success
 
@@ -269,17 +395,17 @@ def advanced_song_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
     joins, conditions, params = [], [], []
 
     if filters.get("author_ids"):
-        joins.append("JOIN song_authors sa ON sa.song_id = s.id")
+        joins.append("JOIN media_authors sa ON sa.media_id = s.id")
         conditions.append("sa.author_id = ANY(%s)")
         params.append(filters["author_ids"])
 
     if filters.get("genre_ids"):
-        joins.append("JOIN song_genres sg ON sg.song_id = s.id")
+        joins.append("JOIN media_genres sg ON sg.media_id = s.id")
         conditions.append("sg.genre_id = ANY(%s)")
         params.append(filters["genre_ids"])
 
     if filters.get("performer_ids"):
-        joins.append("JOIN song_performances sp ON sp.song_id = s.id")
+        joins.append("JOIN media_performances sp ON sp.media_id = s.id")
         conditions.append("sp.performer_id = ANY(%s)")
         params.append(filters["performer_ids"])
 
@@ -295,7 +421,7 @@ def advanced_song_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def advanced_document_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
     base_query = """
-        SELECT m.id, m.title, m.year, m.description, m.link, d.format, d.pages, d.caption, d.song_id
+        SELECT m.id, m.title, m.year, m.description, m.link, d.format, d.pages, d.caption, d.media_id
         FROM documents d
         JOIN media m ON d.id = m.id
         WHERE m.type = 'document'
@@ -337,81 +463,41 @@ def advanced_video_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def get_user_id_by_username(username: str) -> Optional[int]:
     """Restituisce l'id di un utente dato lo username."""
+    print(f"[DEBUG] get_user_id_by_username called with: {username}")
     row = fetch_one("SELECT id FROM users WHERE username=%s", (username,))
+    print(f"[DEBUG] fetch_one returned: {row}")
     if row:
         return row["id"]
     return None
 
-def follow_user(follower_id_or_username: Any, followed_id_or_username: Any) -> bool:
-    """
-    follower_id_or_username / followed_id_or_username possono essere ID (int) o username (str).
-    Recupera l'ID se serve.
-    """
-    if isinstance(follower_id_or_username, str):
-        follower_id = get_user_id_by_username(follower_id_or_username)
-    else:
-        follower_id = follower_id_or_username
-
-    if isinstance(followed_id_or_username, str):
-        followed_id = get_user_id_by_username(followed_id_or_username)
-    else:
-        followed_id = followed_id_or_username
-
-    if follower_id is None or followed_id is None:
-        return False
-
+def db_add_follow(follower_id: int, followee_id: int) -> bool:
     return execute(
         "INSERT INTO user_follow (follower_id, followed_id) VALUES (%s, %s)",
-        (follower_id, followed_id)
+        (follower_id, followee_id)
     )
 
-def unfollow_user(follower_id_or_username: Any, followed_id_or_username: Any) -> bool:
-    if isinstance(follower_id_or_username, str):
-        follower_id = get_user_id_by_username(follower_id_or_username)
-    else:
-        follower_id = follower_id_or_username
-
-    if isinstance(followed_id_or_username, str):
-        followed_id = get_user_id_by_username(followed_id_or_username)
-    else:
-        followed_id = followed_id_or_username
-
-    if follower_id is None or followed_id is None:
-        return False
-
+def db_remove_follow(follower_id: int, followee_id: int) -> bool:
     return execute(
-        "DELETE FROM user_follow WHERE follower_id=%s AND followed_id=%s",
-        (follower_id, followed_id)
+        "DELETE FROM user_follow WHERE follower_id = %s AND followed_id = %s",
+        (follower_id, followee_id)
     )
 
-def db_get_following(user_id_or_username: Any) -> List[Dict[str, Any]]:
-    if isinstance(user_id_or_username, str):
-        user_id = get_user_id_by_username(user_id_or_username)
-    else:
-        user_id = user_id_or_username
-    if user_id is None:
-        return []
-    return fetch_all(
-        "SELECT u.id, u.username, u.mail "
-        "FROM users u "
-        "JOIN user_follow uf ON u.id = uf.followed_id "
-        "WHERE uf.follower_id = %s",
-        (user_id,)
-    )
+def db_get_following(user_id: int) -> List[Dict[str, Any]]:
+    sql = """
+        SELECT u.id, u.username, u.mail
+        FROM users u
+        JOIN user_follow uf ON u.id = uf.followed_id
+        WHERE uf.follower_id = %s
+    """
+    return fetch_all(sql, (user_id,))
 
-def db_get_followers(user_id_or_username: Any) -> List[Dict[str, Any]]:
-    if isinstance(user_id_or_username, str):
-        user_id = get_user_id_by_username(user_id_or_username)
-    else:
-        user_id = user_id_or_username
-    if user_id is None:
-        return []
-    return fetch_all(
-        "SELECT u.id, u.username, u.mail "
-        "FROM users u "
-        "JOIN user_follow uf ON u.id = uf.follower_id "
-        "WHERE uf.followed_id = %s",
-        (user_id,)
-    )
+def db_get_followers(user_id: int) -> List[Dict[str, Any]]:
+    sql = """
+        SELECT u.id, u.username, u.mail
+        FROM users u
+        JOIN user_follow uf ON u.id = uf.follower_id
+        WHERE uf.followed_id = %s
+    """
+    return fetch_all(sql, (user_id,))
 
 # last line

@@ -10,15 +10,17 @@ from db.db_crud import (
     update_user_db,
     delete_user_db,
     fetch_user_roles_db,
-    follow_user as db_add_follow,
-    unfollow_user as db_remove_follow,
+    db_add_follow as db_add_follow,
+    db_remove_follow as db_remove_follow,
     create_media_db,
     fetch_media_db,
     update_media_db,
     delete_media_db,
     advanced_document_search_db,
     advanced_video_search_db,
-    advanced_song_search_db
+    advanced_song_search_db,
+    db_get_followers,
+    db_get_following
 )
 
 class UserLevel(Enum):
@@ -31,8 +33,14 @@ class UserLevel(Enum):
     BANNED = 6
 
 class Root:
-    def __init__(self, id: int, mail: str, username: str, password_hash: str, birthday: date,
-                bio: str = "", profile_pic: Optional[str] = None, lvl: UserLevel = UserLevel.REGULAR):
+    def __init__(self, id: int,
+                mail: str,
+                username: str,
+                password_hash: str,
+                birthday: date,
+                bio: str = "",
+                profile_pic: Optional[str] = None,
+                lvl: UserLevel = UserLevel.REGULAR):
         self.id = id
         self.mail = mail
         self.username = username
@@ -48,7 +56,28 @@ class Root:
     # PERMESSI
     # =====================
     def get_permissions(self):
-        return []
+        return ["create user",
+                "update any data",
+                "ban any user",
+                "access any user's data",
+                "create meda",
+                "access any media",
+                "update any media",
+                "delete any media",
+                "create interventions",
+                "access any interventions",
+                "update any intervention",
+                "delete any intervention",
+                "allow login",
+                "refuse login",
+                "access all contents",
+                "follow users",
+                "unfollow users",
+                "see any profile",
+                "advanced media search",
+                "see media commented by itself",
+                "create own library" # definita in db sql
+                ]
 
     def can_post_content(self) -> bool:
         return True
@@ -83,6 +112,8 @@ class Root:
             link = fields.pop("link", "")
             created_at = fields.pop("created_at", datetime.now())
             return create_media_db((media_type, title, year, description, link, created_at))
+        elif action == "read":
+            return fetch_media_db(media_id)
         elif action == "update":
             return update_media_db(media_id, fields)
         elif action == "delete":
@@ -187,17 +218,36 @@ class Root:
         return delete_user_db(user_id)
 
     @classmethod
-    def follow_user(cls, follower_id: int, followee_id: int):
+    def follow_user(cls, follower_id: int, followee_id: int, user_obj: Optional[Dict] = None):
+        if follower_id == followee_id:
+            return {"status": "ERROR", "error_msg": "Cannot follow yourself"}
+
         if not cls.get_user(user_id=follower_id) or not cls.get_user(user_id=followee_id):
-            return {"status": "ERROR", "error_msg": "Utente non trovato"}
-        db_add_follow(follower_id, followee_id)
+            return {"status": "ERROR", "error_msg": "User not found"}
+
+        if not db_add_follow(follower_id, followee_id):
+            return {"status": "ERROR", "error_msg": "Follow failed"}
+
+        if user_obj:
+            user_obj["followed_count"] = len(db_get_following(follower_id))
+            user_obj["followers_count"] = len(db_get_followers(follower_id))
+
         return {"status": "OK", "response": "FOLLOWED"}
 
     @classmethod
-    def unfollow_user(cls, follower_id: int, followee_id: int):
+    def unfollow_user(cls, follower_id: int, followee_id: int, user_obj: Optional[Dict] = None):
+        if follower_id == followee_id:
+            return {"status": "ERROR", "error_msg": "User not found"}
         if not cls.get_user(user_id=follower_id) or not cls.get_user(user_id=followee_id):
-            return {"status": "ERROR", "error_msg": "Utente non trovato"}
-        db_remove_follow(follower_id, followee_id)
+            return {"status": "ERROR", "error_msg": "User not found"}
+
+        if not db_remove_follow(follower_id, followee_id):
+            return {"status": "ERROR", "error_msg": "Unfollow failed"}
+
+        if user_obj:
+            user_obj["followed_count"] = len(db_get_following(follower_id))
+            user_obj["followers_count"] = len(db_get_followers(follower_id))
+
         return {"status": "OK", "response": "UNFOLLOWED"}
 
     # =====================
@@ -229,4 +279,4 @@ class Root:
         user = cls.get_user(user_id=user_id)
         return user["username"] if user else None
 
-# last lined
+# last line

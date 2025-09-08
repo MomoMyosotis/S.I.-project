@@ -20,7 +20,11 @@ class Admin(Root):
         super().__init__(id, mail, username, password_hash, birthday, bio, profile_pic, lvl)
 
     def get_permissions(self):
-        return ["manage_content", "moderate_content", "edit_user", "remove_user", "access_advanced_search"]
+        return ["manage_content",
+                "moderate_content",
+                "edit_user",
+                "remove_user",
+                "access_advanced_search"]
 
     # =====================
     # METODI DI AMMINISTRAZIONE / CONTENT

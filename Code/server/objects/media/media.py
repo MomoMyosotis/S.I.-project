@@ -11,155 +11,175 @@
 # ABC = Abstract Base Class → libreria di Python per creare classi astratte
 # (cioè classi che non possono essere istanziate direttamente).
 # Le classi figlie DEVONO implementare i metodi definiti come @abstractmethod.
+# ============================================================
+# MEDIA BASE CLASS (con debug)
+# ============================================================
 from abc import ABC, abstractmethod
-
-# Per i tipi (Optional = può essere None, Dict/Any = per serializzazione JSON)
 from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 from db.db_crud import (
-                        create_media_db,
-                        fetch_media_db,
-                        update_media_db,
-                        delete_media_db,
-                        fetch_interventions_db
+    create_media_db,
+    fetch_media_db,
+    update_media_db,
+    delete_media_db
 )
 
 class Media(ABC):
-    def __init__(self,
-                id=None,
-                title=None,
-                user_id=None,
-                year=None,
-                description=None,
-                link=None,
-                created_at=None,
-                **kwargs
-                ):
-        self.id = id
+    def __init__(
+        self,
+        media_id: Optional[int] = None,
+        type: str = None,
+        user_id: Optional[int] = None,
+        title: Optional[str] = None,
+        year: Optional[int] = None,
+        description: Optional[str] = None,
+        link: Optional[str] = None,
+        duration: Optional[int] = None,
+        location: Optional[str] = None,
+        additional_info: Optional[str] = None,
+        stored_at: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        genres: Optional[List[str]] = None,
+        authors: Optional[List[int]] = None,
+        performers: Optional[List[int]] = None,
+        references: Optional[List[int]] = None,
+        is_author: Optional[bool] = None,
+        is_performer: Optional[bool] = None,
+        **kwargs
+    ):
+        print(f"[DEBUG][Media.__init__] Called with title={title}, type={type}, year={year}, user_id={user_id}, kwargs={kwargs}")
+        self.media_id = media_id
+        self.type = type
         self.title = title
         self.user_id = user_id
         self.year = year
         self.description = description
         self.link = link
-        self.created_at = created_at
+        self.duration = duration
+        self.location = location
+        self.additional_info = additional_info
+        self.stored_at = stored_at
+        self.created_at = created_at or datetime.now()
+        self.genres = genres or []
+        self.authors = authors or []
+        self.performers = performers or []
+        self.references = references or []
+        self.is_author = bool(is_author)
+        self.is_performer = bool(is_performer)
+        self._deleted = False
         for k, v in kwargs.items():
+            print(f"[DEBUG][Media.__init__] Extra attr: {k}={v}")
             setattr(self, k, v)
+        print(f"[DEBUG][Media.__init__] Finished -> {self}")
 
     @abstractmethod
     def media_type(self) -> str:
         pass
 
     # =====================
-    # STATIC / CLASS METHODS
+    # CRUD BASE
     # =====================
-    @staticmethod
-    def validate_media_data(media_data: Dict[str, Any]) -> Union[bool, str]:
-        ALLOWED_TYPES = {
-            "song","video","document","score","lyrics","chords",
-            "mp3","mp4","midi","youtube","podcast","concert"
-        }
-        print(f"[DEBUG] validate_media_data | media_data={media_data}")
-        if "type" not in media_data or media_data["type"] not in ALLOWED_TYPES:
-            return "Tipo media non valido"
-        if "title" not in media_data or not media_data["title"].strip():
-            return "Titolo mancante"
-        if "year" in media_data and not isinstance(media_data["year"], int):
-            return "Anno non valido"
+    def save(self):
+        print(f"[DEBUG][Media.save] Called on {self}")
+        if self._deleted:
+            raise Exception("Cannot save a deleted object")
+        payload = self.to_dict()  # dict completo con duration, location, additional_info
+        print(f"[DEBUG][Media.save] Payload to create_media_db={payload}")
+
+        if not self.media_id:
+            print("[DEBUG][Media.save] No media_id -> creating new record")
+            result = create_media_db(payload)
+            print(f"[DEBUG][Media.save] Result from create_media_db={result}")
+            self.media_id = result["id"] if result else None
+            print(f"[DEBUG][Media.save] Assigned new media_id={self.media_id}")
+        else:
+            print(f"[DEBUG][Media.save] Updating existing media_id={self.media_id}")
+            updates = {
+                "title": self.title,
+                "description": self.description,
+                "link": self.link,
+                "year": self.year,
+                "duration": self.duration,
+                "location": self.location,
+                "additional_info": self.additional_info,
+                "is_author": self.is_author,
+                "is_performer": self.is_performer
+            }
+            print(f"[DEBUG][Media.save] Updates dict={updates}")
+            update_media_db(self.media_id, updates)
+
+        print(f"[DEBUG][Media.save] Syncing relations for {self}")
+        self._sync_relations()
+        print(f"[DEBUG][Media.save] END for {self}")
+
+    def delete(self):
+        print(f"[DEBUG][Media.delete] Called on {self}")
+        if self._deleted:
+            print(f"[DEBUG][Media.delete] Object already deleted")
+            return False
+
+        if self.media_id:
+            delete_media_db(self.media_id)
+            print(f"[DEBUG][Media.delete] Deleted media_id={self.media_id}")
+            self.media_id = None
+        # Marcare come cancellato
+        self._deleted = True
         return True
 
     @classmethod
-    def create_media(
-        cls,
-        media_data: Dict[str, Any],
-        child_table: str = None,
-        child_columns: tuple = (),
-        child_values: tuple = ()
-    ) -> Optional[int]:
-        print(f"[DEBUG] create_media | media_data={media_data} child_table={child_table} child_columns={child_columns} child_values={child_values}")
-
-        # Validazione dei dati
-        valid = cls.validate_media_data(media_data)
-        if valid is not True:
-            raise ValueError(valid)
-
-        # Campi principali della tabella media
-        fields = (
-            media_data.get("type"),
-            media_data.get("title"),
-            media_data.get("user_id"),
-            media_data.get("year"),
-            media_data.get("description", ""),
-            media_data.get("link", ""),
-            media_data.get("created_at", datetime.now()),
-        )
-        print(f"[DEBUG] create_media prepared fields: {fields}")
-
-        # Creazione effettiva nel DB
-        media_id = create_media_db(fields, child_table, child_columns, child_values)
-        print(f"[DEBUG] create_media_db returned media_id={media_id}")
-        return media_id
-
-
-    @classmethod
-    def fetch_media(cls, media_id: int, child_table: str = None, child_fields: List[str] = None) -> Optional[Dict[str, Any]]:
-        print(f"[DEBUG] fetch_media | media_id={media_id}, child_table={child_table}, child_fields={child_fields}")
-        data = fetch_media_db(media_id, child_table, child_fields)
-        print(f"[DEBUG] fetch_media_db returned: {data}")
-        return data
-
-    @classmethod
-    def update_media(cls, media_id: int, updates: Dict[str, Any], table: str = "media") -> bool:
-        print(f"[DEBUG] update_media | media_id={media_id}, updates={updates}, table={table}")
-        result = update_media_db(media_id, updates, table)
-        print(f"[DEBUG] update_media_db returned: {result}")
-        return result
-
-    @classmethod
-    def delete_media(cls, media_id: int):
-        print(f"[DEBUG] delete_media | media_id={media_id}")
-        result = delete_media_db(media_id)
-        print(f"[DEBUG] delete_media_db returned: {result}")
-        return result
-
-    @classmethod
-    def fetch_interventions(cls, table: str, field: str, value: Any) -> List[Dict[str, Any]]:
-        print(f"[DEBUG] fetch_interventions | table={table}, field={field}, value={value}")
-        interventions = fetch_interventions_db(table, field, value)
-        print(f"[DEBUG] fetch_interventions_db returned {len(interventions)} items")
-        return interventions
+    def fetch(cls, media_id: int):
+        print(f"[DEBUG][Media.fetch] Called cls={cls.__name__}, media_id={media_id}")
+        data = fetch_media_db(media_id)
+        print(f"[DEBUG][Media.fetch] Data from DB={data}")
+        if not data:
+            print("[DEBUG][Media.fetch] No data found -> returning None")
+            return None
+        obj = cls.from_dict(data)
+        print(f"[DEBUG][Media.fetch] Built object={obj}")
+        return obj
 
     # =====================
-    # ISTANZA
+    # RELAZIONI M:N
     # =====================
-    @classmethod
-    def build_object(cls, data: dict):
-        """
-        Metodo generico per costruire un oggetto Media o sottoclasse (Song, Document, ecc.)
-        passando dinamicamente tutti i campi ricevuti.
-        """
-        return cls(**data)
+    def _sync_relations(self):
+        print(f"[DEBUG][Media._sync_relations] Called for {self}")
+        # Override nelle sottoclassi per gestire relazioni come authors, performers, genres.
 
     def to_dict(self) -> Dict[str, Any]:
-        base = {
-            "id": self.id,
+        d = {
+            "media_id": self.media_id,
+            "type": self.type,
             "title": self.title,
             "user_id": self.user_id,
             "year": self.year,
             "description": self.description,
             "link": self.link,
-            "media_type": self.media_type(),
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "duration": self.duration,
+            "location": self.location,
+            "additional_info": self.additional_info,
+            "stored_at": self.stored_at,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "genres": self.genres,
+            "authors": self.authors,
+            "performers": self.performers,
+            "references": self.references,
+            "is_author": self.is_author,
+            "is_performer": self.is_performer
         }
-        extras = {k: v for k, v in self.__dict__.items() if k not in base}
-        return {**base, **extras}
+        print(f"[DEBUG][Media.to_dict] {self} -> {d}")
+        return d
 
     @classmethod
-    def from_dict(cls, data: dict):
-        return cls(**data)
-
-
+    def from_dict(cls, data: Dict[str, Any]):
+        # Rinomina 'id' in 'media_id' se presente
+        if 'id' in data:
+            data['media_id'] = data.pop('id')
+        print(f"[DEBUG][Media.from_dict] cls={cls.__name__}, data={data}")
+        obj = cls(**data)
+        print(f"[DEBUG][Media.from_dict] Built object={obj}")
+        return obj
 
     def __repr__(self) -> str:
-        return f"<{self.media_type().capitalize()} id={self.id}, title={self.title}>"
+        return f"<{self.media_type().capitalize()} id={self.media_id}, title={self.title}>"
 
 # last line

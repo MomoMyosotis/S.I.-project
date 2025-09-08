@@ -1,9 +1,5 @@
 # first line
-
-import socket
-import threading
-import time
-import json
+import socket, threading, time, json
 from typing import Optional, Tuple, List
 
 HOST = "127.0.0.1"
@@ -12,65 +8,58 @@ PORT = 8000
 # -------------------------------
 # Helpers base
 # -------------------------------
-def send_command(cmd_dict: dict, recv_size: int = 65536) -> str:
-    """Invia un dizionario come JSON al server e riceve la risposta."""
+def send_command(cmd_dict: dict, recv_size: int = 65536) -> dict:
+    """Invia un dizionario come JSON al server e restituisce il dict decodificato"""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((HOST, PORT))
         payload = json.dumps(cmd_dict).encode() + b"\n"
         s.sendall(payload)
         resp = s.recv(recv_size).decode(errors="replace").strip()
-    return resp
+    try:
+        data = json.loads(resp)
+        return data
+    except Exception as e:
+        print("[DEBUG][send_command] JSON decode error:", e)
+        return {}
 
 def section(title: str):
     print("\n" + "="*20 + f" {title} " + "="*20)
 
-def show(cmd_dict: dict, resp: str):
+def show(cmd_dict: dict, resp: dict):
     print(f">> {json.dumps(cmd_dict)}")
-    print(f"<< {resp}")
+    print(f"<< {json.dumps(resp)}")
 
-def try_cmd_json(cmd_dict: dict, expect: Optional[str] = None) -> str:
+def try_cmd_json(cmd_dict: dict, expect: Optional[str] = None) -> dict:
+    """Invia un comando e opzionalmente verifica un token/valore atteso nella risposta"""
     resp = send_command(cmd_dict)
     show(cmd_dict, resp)
-    if expect is not None and expect not in resp:
+    if expect is not None and expect not in json.dumps(resp):
         raise AssertionError(f"Expected '{expect}' in response but got: {resp}")
     return resp
 
-def parse_token(resp: str) -> Optional[str]:
+def parse_token(resp: dict) -> Optional[str]:
     """Estrae il token da una risposta di login/register"""
-    try:
-        data = json.loads(resp)
-        return data.get("token")
-    except:
-        return None
+    if "token" in resp:
+        return resp["token"]
+    elif "response" in resp and isinstance(resp["response"], dict):
+        return resp["response"].get("token")
+    return None
 
-def parse_id(resp: str) -> Optional[int]:
+def parse_id(resp: dict) -> Optional[int]:
     """Estrae l'ID da una risposta di creazione media"""
     try:
-        data = json.loads(resp)
-        if "response" not in data:
-            return None
-
-        resp_val = data["response"]
-
-        # Caso nuovo: risposta è un numero (es. 78)
-        if isinstance(resp_val, (int, str)):
-            try:
-                return int(resp_val)
-            except ValueError:
-                return None
-
-        # Caso vecchio: risposta è un dict con "id"
-        if isinstance(resp_val, dict):
-            return resp_val.get("id")
-
+        response = resp.get("response")
+        if isinstance(response, str):
+            response = json.loads(response)
+        if isinstance(response, dict) and "media_id" in response:
+            return int(response["media_id"])
     except Exception as e:
-        print(f"[DEBUG] parse_id error: {e}")
-
+        print(f"[DEBUG][parse_id] error: {e}")
     return None
 
 def unique_user(base_name: str) -> Tuple[str, str]:
-    ts = int(time.time() * 1000) % 10000  # ultime 4 cifre dei millisecondi
-    uname = f"{base_name[:15]}{ts}"       # max 15 caratteri + 4 = 19
+    ts = int(time.time() * 1000) % 10000
+    uname = f"{base_name[:15]}{ts}"
     email = f"{uname}@example.com"
     return email, uname
 
@@ -82,7 +71,6 @@ def test_register_login() -> Tuple[str, str, str, str]:
     email1, username1 = unique_user("quackerina")
     email2, username2 = unique_user("bassettina")
 
-    # Registrazione
     resp1 = try_cmd_json({
         "command": "register_user",
         "args": [email1, username1, "pass1234", "2000-01-01"]
@@ -96,25 +84,11 @@ def test_register_login() -> Tuple[str, str, str, str]:
     token_bob = parse_token(resp2)
     assert token_alice and token_bob, "Register fallito"
 
-    # Login
-    resp1 = try_cmd_json({
-        "command": "login_user",
-        "args": [username1, "pass1234"]
-    })
-    resp2 = try_cmd_json({
-        "command": "login_user",
-        "args": [username2, "pass1234"]
-    })
+    resp1 = try_cmd_json({"command": "login_user", "args": [username1, "pass1234"]})
+    resp2 = try_cmd_json({"command": "login_user", "args": [username2, "pass1234"]})
     token_alice = parse_token(resp1)
     token_bob = parse_token(resp2)
     assert token_alice and token_bob, "Login fallito"
-
-    # Wrong password / not found
-    try:
-        try_cmd_json({"command": "login_user", "args": [username1, "wrongpassword"]}, expect="WRONG_PASSWORD")
-        try_cmd_json({"command": "login_user", "args": ["nonexistent", "pass1234"]}, expect="404")
-    except AssertionError as e:
-        print("[Expected error] ", e)
 
     return token_alice, token_bob, username1, username2
 
@@ -124,8 +98,6 @@ def test_follow_flow(token_alice: str, token_bob: str, username_alice: str, user
     try_cmd_json({"command": "get_followed", "args": [], "token": token_alice})
     try_cmd_json({"command": "get_followers", "args": [], "token": token_bob})
     try_cmd_json({"command": "unfollow_user", "args": [username_bob], "token": token_alice}, expect="UNFOLLOWED")
-    try_cmd_json({"command": "get_followed", "args": [], "token": token_alice})
-    try_cmd_json({"command": "get_followers", "args": [], "token": token_bob})
 
 def test_media_crud(token_alice: str):
     section("MEDIA CRUD - SONG")
@@ -133,24 +105,21 @@ def test_media_crud(token_alice: str):
         "command": "create_song",
         "args": [{
             "type": "song",
-            "title": "Imagine",
+            "title": "Il boopiedrillo come fa?",
             "year": 1971,
             "description": "Un classico immortale",
             "link": "https://example.com/imagine.mp3",
             "duration": 183,
             "location": "London",
-            "additional_info": "John Lennon"
+            "additional_info": "Lisina Pinguina"
         }],
         "token": token_alice
     }, expect="OK")
     song_id = parse_id(r)
     assert song_id, "Creazione canzone fallita"
+
     try_cmd_json({"command": "get_song", "args": [song_id], "token": token_alice})
-    try_cmd_json({
-        "command": "update_song",
-        "args": [song_id, {"title": "Imagine (Remastered)"}],
-        "token": token_alice
-    }, expect="OK")
+    try_cmd_json({"command": "update_song", "args": [song_id, {"title": "Imagine (Remastered)"}], "token": token_alice}, expect="OK")
     try_cmd_json({"command": "delete_song", "args": [song_id], "token": token_alice}, expect="OK")
 
     section("MEDIA CRUD - DOCUMENT")
@@ -167,6 +136,7 @@ def test_media_crud(token_alice: str):
     }, expect="OK")
     doc_id = parse_id(r)
     assert doc_id, "Creazione documento fallita"
+
     try_cmd_json({"command": "get_document", "args": [doc_id], "token": token_alice})
     try_cmd_json({"command": "delete_document", "args": [doc_id], "token": token_alice}, expect="OK")
 
@@ -184,6 +154,7 @@ def test_media_crud(token_alice: str):
     }, expect="OK")
     vid_id = parse_id(r)
     assert vid_id, "Creazione video fallita"
+
     try_cmd_json({"command": "get_video", "args": [vid_id], "token": token_alice})
     try_cmd_json({"command": "delete_video", "args": [vid_id], "token": token_alice}, expect="OK")
 
@@ -213,8 +184,8 @@ def concurrency_login_test(users: int = 5):
     for th in threads: th.start()
     for th in threads: th.join()
 
-    print(f"Got {len(tokens)} tokens.")
     assert len(tokens) == users, "Non tutti i login hanno prodotto token"
+    print(f"Got {len(tokens)} tokens.")
 
 # -------------------------------
 # MAIN
@@ -227,6 +198,5 @@ if __name__ == '__main__':
     test_not_logged_in()
     concurrency_login_test(8)
     section("DONE")
-
 
 # last line

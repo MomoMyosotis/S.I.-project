@@ -12,21 +12,20 @@ from db.db_crud import (
 )
 from objects.media.song import Song
 from objects.media.media import Media
-from objects.users.root import Root
 
 
 def get_followers(user_id: int) -> list[dict]:
-
-    print(f"[DEBUG] user_id is: {user_id} (type={type(user_id)})")
+    print(f"[DEBUG] get_followers called with user_id={user_id} (type={type(user_id)})")
     followers = db_get_followers(user_id)
     print(f"[DEBUG] raw followers: {followers}")
     return followers
 
 def get_followed(user_id: int) -> list[dict]:
-    print(f"[DEBUG] user_id is: {user_id} (type={type(user_id)})")
+    print(f"[DEBUG] get_followed called with user_id={user_id} (type={type(user_id)})")
     followed = db_get_following(user_id)
     print(f"[DEBUG] raw followed: {followed}")
     return followed
+
 
 def get_media(media_id: int) -> Optional[Dict[str, Any]]:
     """Recupera media con eventuali dettagli."""

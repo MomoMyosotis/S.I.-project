@@ -134,37 +134,31 @@ def follow_user(user_obj: Any, target_name: str) -> str:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
     follower_id = user_obj["id"] if isinstance(user_obj, dict) else user_obj.id
-
     target = Root.get_user_by_username(target_name)
     if not target:
         return "ERROR: User not found"
-
-    result = Root.follow_user(follower_id, target["id"])
+    result = Root.follow_user(follower_id, target["id"], user_obj if isinstance(user_obj, dict) else None)
     return result["response"] if result["status"] == "OK" else f"ERROR: {result['error_msg']}"
 
 def unfollow_user(user_obj: Any, target_name: str) -> str:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
     follower_id = user_obj["id"] if isinstance(user_obj, dict) else user_obj.id
-
     target = Root.get_user_by_username(target_name)
     if not target:
         return "ERROR: User not found"
-
-    result = Root.unfollow_user(follower_id, target["id"])
+    result = Root.unfollow_user(follower_id, target["id"], user_obj if isinstance(user_obj, dict) else None)
     return result["response"] if result["status"] == "OK" else f"ERROR: {result['error_msg']}"
 
 def get_followers(user_obj: dict) -> list[dict]:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
-    followers = utils.get_followers(user_obj["id"])
-    return followers
+    return utils.get_followers(user_obj["id"])
 
 def get_followed(user_obj: dict) -> list[dict]:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
-    followed = utils.get_followed(user_obj["id"])
-    return followed
+    return utils.get_followed(user_obj["id"])
 
 # =====================
 # RECUPERO / ASSISTENZA

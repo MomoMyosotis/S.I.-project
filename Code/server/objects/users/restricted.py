@@ -7,9 +7,6 @@ from datetime import date, datetime
 from server.objects.users.root import Root, UserLevel
 
 class Restricted(Root):
-    """
-    Utente con accesso limitato: può solo visualizzare contenuti.
-    """
     def __init__(
         self,
         id: int,

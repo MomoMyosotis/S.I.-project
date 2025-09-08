@@ -30,8 +30,7 @@ class Regular(Root):
             "can_post_content",
             "can_comment",
             "can_add_video_meta",
-            "can_comment_own_and_other_content",
-            "can_access_advanced_search"
+            "access_advanced_search"
         ]
 
     def can_post_content(self) -> bool:

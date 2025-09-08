@@ -1,7 +1,16 @@
 # first line
 
+import json
 from typing import Optional, Any, Tuple
 from services import user_services, media_services, interventions_services
+
+# =====================
+# ENCODER JSON
+# =====================
+def default_encoder(obj):
+    if hasattr(obj, "to_dict"):
+        return obj.to_dict()
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 # =====================
 # DISPATCH COMMANDS
@@ -49,27 +58,34 @@ COMMAND_MAP = {
     "get_entries": interventions_services.get_entries,
 }
 
-def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple[Any, Optional[Any], Optional[str]]:
+def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple[str, Optional[Any], Optional[str], str]:
+
+    print(f"[DEBUG][dispatch_command] START - command={command}, args={args}, user_obj={user_obj}")
 
     func = COMMAND_MAP.get(command)
     if not func:
-        return {"error_msg": f"Unknown command {command}"}, None, None
+        print(f"[DEBUG][dispatch_command] ERROR - Unknown command {command}")
+        return json.dumps({"error_msg": f"Unknown command {command}"}), None, None, "ERROR"
 
     try:
-        # LOGIN/REGISTER non richiedono user_obj già esistente
+        # LOGIN/REGISTER rimangono speciali
         if command in ["login_user", "register_user"]:
-            result = func(args)  # login/register ricevono args come lista
+            result = func(args)
         else:
-            result = func(user_obj, *args)  # tutte le altre richiedono user_obj
+            result = func(user_obj, *args)
 
         new_token = None
-        # Gestione token per login/register
         if command in ["login_user", "register_user"] and isinstance(result, dict):
             if "token" in result:
                 new_token = result["token"]
                 user_obj = result.get("user_obj")
-        return result, user_obj, new_token
+
+        serialized = json.dumps(result, default=default_encoder)
+        return serialized, user_obj, new_token, "OK"
+
     except Exception as e:
-        return {"error_msg": str(e)}, None, None
+        import traceback
+        traceback.print_exc()
+        return json.dumps({"error_msg": str(e)}), None, None, "ERROR"
 
 # last line
