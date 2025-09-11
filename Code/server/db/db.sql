@@ -102,7 +102,7 @@ CREATE TABLE instruments (
 CREATE TABLE performers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(150) UNIQUE NOT NULL,
-    user_id INT REFERENCES users(id) -- se registrato nel sistema
+    user_id INT REFERENCES users(id) UNIQUE
 );
 
 -- ========================================

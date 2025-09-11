@@ -62,6 +62,11 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
 
     print(f"[DEBUG][dispatch_command] START - command={command}, args={args}, user_obj={user_obj}")
 
+    # Verifica se l'utente è loggato, tranne per i comandi speciali (login, register, recover, assistance)
+    if user_obj is None and command not in ["login_user", "register_user", "recover", "assistance"]:
+        print(f"[DEBUG][dispatch_command] ERROR - User is not logged in, access denied for command {command}")
+        return json.dumps({"error_msg": "User is not logged in. Please log in to proceed."}), None, None, "ERROR"
+
     func = COMMAND_MAP.get(command)
     if not func:
         print(f"[DEBUG][dispatch_command] ERROR - Unknown command {command}")

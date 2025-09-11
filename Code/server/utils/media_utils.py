@@ -47,8 +47,8 @@ def delete_relation_entry(table: str, conditions: Dict[str, Any]) -> bool:
 # Helper combinati / utility
 # ---------------------------
 def set_execution_details(media_id: int, duration_sec: int = None,
-                          recorded_at: Optional[str] = None,
-                          location: Optional[str] = None) -> bool:
+                        recorded_at: Optional[str] = None,
+                        location: Optional[str] = None) -> bool:
     updates = {}
     if duration_sec is not None: updates["duration_sec"] = duration_sec
     if recorded_at is not None:  updates["recorded_at"] = recorded_at

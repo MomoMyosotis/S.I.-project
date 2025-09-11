@@ -240,37 +240,78 @@ def create_media_db(data: Dict[str, Any]) -> Optional[int]:
                     debug(f"Inserted segment id={segment_id} for concert_id={concert_id}")
 
             # 4. Inserimento relazioni: authors
-            for author_id in data.get("authors", []):
-                cur.execute(
-                    "INSERT INTO media_authors (media_id, author_id) VALUES (%s,%s);",
-                    (media_id, author_id),
-                )
+            authors_list = []
+            for author in data.get("authors", []):
+                if isinstance(author, dict):
+                    if author.get("type") == "user":
+                        # collegamento ad un utente esistente
+                        user_id = author["id"]
+                        # cerca se già esiste un author legato a quell’utente
+                        cur.execute("SELECT id FROM authors WHERE user_id=%s", (user_id,))
+                        row = cur.fetchone()
+                        if row:
+                            author_id = row[0]
+                        else:
+                            # crea un record "anonimo" collegato a user_id
+                            cur.execute("INSERT INTO authors (name, user_id) VALUES (%s,%s) RETURNING id",
+                                        (f"user_{user_id}", user_id))
+                            author_id = cur.fetchone()[0]
+                    elif author.get("type") == "external":
+                        # autore esterno con solo nome
+                        cur.execute("SELECT id FROM authors WHERE name=%s", (author["name"],))
+                        row = cur.fetchone()
+                        if row:
+                            author_id = row[0]
+                        else:
+                            cur.execute("INSERT INTO authors (name) VALUES (%s) RETURNING id", (author["name"],))
+                            author_id = cur.fetchone()[0]
+                    else:
+                        raise ValueError("Tipo autore non valido")
+                else:
+                    # se è già un id numerico
+                    author_id = author
+
+                authors_list.append(author_id)
+                cur.execute("INSERT INTO media_authors (media_id, author_id) VALUES (%s,%s);", (media_id, author_id))
                 debug(f"Added author_id={author_id} to media_id={media_id}")
 
             # 5. Inserimento relazioni: performers
             for performer in data.get("performers", []):
                 if performer.get("type") == "user":
-                    # usa direttamente l'id numerico
-                    performer_id = performer["id"]
-                elif performer.get("type") == "external":
-                    # controlla se il performer esiste già nella tabella performers
-                    cur.execute("SELECT id FROM performers WHERE name=%s", (performer["name"],))
+                    user_id = performer["id"]
+                    # cerca performer associato a user_id
+                    cur.execute("SELECT id FROM performers WHERE user_id=%s", (user_id,))
                     row = cur.fetchone()
                     if row:
                         performer_id = row[0]
                     else:
-                        # crea nuovo performer esterno
-                        cur.execute("INSERT INTO performers (name) VALUES (%s) RETURNING id", (performer["name"],))
+                        # crea performer per l’utente
+                        cur.execute(
+                            "INSERT INTO performers (name, user_id) VALUES (%s,%s) RETURNING id",
+                            (f"user_{user_id}", user_id)
+                        )
                         performer_id = cur.fetchone()[0]
-                else:
-                    raise ValueError("Tipo performer non valido")
 
+                elif performer.get("type") == "external":
+                    name = performer.get("name")
+                    # cerca se esiste già un performer esterno con lo stesso nome
+                    cur.execute("SELECT id FROM performers WHERE name=%s", (name,))
+                    row = cur.fetchone()
+                    if row:
+                        performer_id = row[0]  # già esistente
+                    else:
+                        # crea performer esterno
+                        cur.execute(
+                            "INSERT INTO performers (name) VALUES (%s) RETURNING id",
+                            (name,)
+                        )
+                        performer_id = cur.fetchone()[0]
+
+                # inserisci relazione con la media
                 cur.execute(
                     "INSERT INTO media_performances (media_id, performer_id) VALUES (%s,%s);",
                     (media_id, performer_id),
                 )
-                debug(f"Added performer_id={performer_id} to media_id={media_id}")
-
 
             # 6. Inserimento relazioni: genres
             for genre_id in data.get("genres", []):
@@ -299,13 +340,26 @@ def create_media_db(data: Dict[str, Any]) -> Optional[int]:
     finally:
         conn.close()
 
-def fetch_media_db(media_id: int, child_table: str = None, child_fields: List[str] = None) -> Optional[Dict[str, Any]]:
-    if child_table and child_fields:
-        child_select = ','.join([f"{child_table}.{f}" for f in child_fields])
-        query = f"SELECT m.*, {child_select} FROM media m JOIN {child_table} ON {child_table}.id = m.id WHERE m.id=%s"
-    else:
-        query = "SELECT * FROM media WHERE id=%s"
-    return fetch_one(query, (media_id,))
+def fetch_media_db(media_id: int) -> Optional[Dict[str, Any]]:
+    query = """
+    SELECT m.*, mp.performer_id, mp.additional_info
+    FROM media m
+    LEFT JOIN media_performances mp ON mp.media_id = m.id
+    WHERE m.id=%s
+    """
+    row = fetch_one(query, (media_id,))
+    if not row:
+        return None
+
+    # Trasforma performer_id in lista di performer
+    performers = []
+    if row.get("performer_id"):
+        performers.append({"id": row["performer_id"], "type": "user"})
+
+    media_dict = dict(row)
+    media_dict["performers"] = performers
+    return media_dict
+
 
 def update_media_db(media_id: int, updates: Dict[str, Any], table: str = "media") -> bool:
     if not updates: return True
@@ -313,14 +367,27 @@ def update_media_db(media_id: int, updates: Dict[str, Any], table: str = "media"
     params = tuple(updates.values()) + (media_id,)
     return execute(f"UPDATE {table} SET {set_clause} WHERE id=%s", params)
 
-def delete_media_db(media_id: int) -> bool:
+def delete_media_db(media_id: Optional[int]) -> Dict[str, Any]:
+    if media_id is None:
+        return {"status": "ERROR", "reason": "Invalid media_id"}
+
+    # Controlla se il media esiste
+    row = fetch_one("SELECT id FROM media WHERE id=%s", (media_id,))
+    if not row:
+        return {"status": "NOT_FOUND", "reason": f"Media id={media_id} does not exist"}
+
     success = True
-    for table in ["comments", "notes"]:
-        success &= execute(f"DELETE FROM {table} WHERE media_id=%s", (media_id,))
-    for table in ["media_genres", "media_authors", "media_performances"]:
-        success &= execute(f"DELETE FROM {table} WHERE media_id=%s", (media_id,))
-    success &= execute("DELETE FROM media WHERE id=%s", (media_id,))
-    return success
+    try:
+        for table in ["comments", "notes", "media_genres", "media_authors", "media_performances"]:
+            success &= execute(f"DELETE FROM {table} WHERE media_id=%s", (media_id,))
+        success &= execute("DELETE FROM media WHERE id=%s", (media_id,))
+    except Exception as e:
+        return {"status": "ERROR", "reason": str(e)}
+
+    if success:
+        return {"status": "OK", "media_id": media_id}
+    else:
+        return {"status": "ERROR", "reason": "Deletion failed"}
 
 # =====================
 # INTERVENTIONS CRUD

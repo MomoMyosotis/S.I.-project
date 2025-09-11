@@ -27,15 +27,8 @@ class Video(Media):
     # RELAZIONI M:N
     # =====================
     def _sync_relations(self):
-        relation_map = {
-            "media_authors": ("author_id", self.authors),
-            "media_performances": ("performer_id", self.performers),
-            "media_genres": ("genre_id", self.genres)
-        }
-        for table, (col, values) in relation_map.items():
-            delete_relation(table, {f"media_id": self.media_id})
-            for val in values:
-                create_relation(table, ("media_id", col), (self.media_id, val))
+        # Nessuna azione, perché create_media_db() ha già gestito tutto
+        pass
 
     # =====================
     # CLASS METHODS
@@ -49,8 +42,8 @@ class Video(Media):
         media_data.genres = [r["genre_id"] for r in fetch_relations("media_genres", "media_id", video_id)]
         media_data.authors = [r["author_id"] for r in fetch_relations("media_authors", "media_id", video_id)]
         media_data.performers = [r["performer_id"] for r in fetch_relations("media_performances", "media_id", video_id)]
-        media_data.comments = fetch_interventions_db("comments", "media_id", video_id)
-        media_data.notes = fetch_interventions_db("notes", "media_id", video_id)
+        #media_data.comments = fetch_interventions_db("comments", "media_id", video_id)
+        #media_data.notes = fetch_interventions_db("notes", "media_id", video_id)
 
         return media_data
 

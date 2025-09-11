@@ -5,6 +5,7 @@ from objects.media.song import Song
 from objects.media.document import Document
 from objects.media.video import Video
 from objects.media.media import Media
+from utils.media_utils import fetch_dict_entry, create_dict_entry
 
 # =========================
 # GENERIC CREATION (optional, CLI/debug)
@@ -83,7 +84,21 @@ def get_song_services(user_obj, song_id: int):
 
 def create_song_services(user_obj: dict, data: dict):
     print(f"[DEBUG][create_song_services] user_obj={user_obj}, data={data}")
-    return create_object(Song, user_obj, data)
+
+    # Prepara performer
+    if "performers" in data:
+        data["performers"] = prepare_performers(data["performers"])
+
+    # Costruisci oggetto (non salva ancora relazioni M:N)
+    song = Song.from_dict(data)
+
+    # Associa l'utente creatore
+    if user_obj and "id" in user_obj:
+        song.user_id = user_obj["id"]
+
+    # Salva nel DB
+    song.save()
+    return song
 
 def update_song_services(user_obj, song_id: int, updates: dict):
     print(f"[DEBUG][update_song_services] song_id={song_id}, updates={updates}")
@@ -122,7 +137,6 @@ def delete_document_services(user_obj, doc_id: int):
         return {"error": "Document not found"}
     return delete_object(doc_obj)
 
-
 # =========================
 # VIDEO SERVICES
 # =========================
@@ -144,29 +158,30 @@ def delete_video_services(user_obj, video_id: int):
         return {"error": "Video not found"}
     return delete_object(video)
 
+# ========================
+# SUPPORT
 # =========================
-# GENERIC CREATION
-# =========================
-def create_media_generic(cmd: str, args: List[Any]):
-    print(f"[DEBUG][create_media_generic] cmd={cmd}, args={args}")
-    media_type = cmd.split("_")[0].upper()
-    print(f"[DEBUG][create_media_generic] Derived media_type={media_type}")
-    func_map = {
-        "SONG": create_song_services,
-        "DOC": create_document_services,
-        "VIDEO": create_video_services
-    }
-    func = func_map.get(media_type)
-    if not func:
-        print(f"[DEBUG][create_media_generic] ERROR - no func found for {media_type}")
-        return None
-    keys = FIELDS_MAP.get(media_type, [])
-    data = {k: args[i] if i < len(args) else None for i, k in enumerate(keys)}
-    data["type"] = media_type.lower()
-    print(f"[DEBUG][create_media_generic] Final data dict={data}")
-    result = func(data)
-    print(f"[DEBUG][create_media_generic] Result from {func.__name__}: {result}")
-    return result
 
+def prepare_performers(performers: list) -> list:
+    """
+    Controlla e crea performer esterni e assicura che gli utenti siano performer.
+    Restituisce la lista di performer pronta da associare al media.
+    """
+    result = []
+    for p in performers:
+        if p["type"] == "user":
+            # L'utente esiste già, mantieni solo id
+            result.append({"type": "user", "id": p["id"]})
+        elif p["type"] == "external":
+            # Controlla se esiste nel dict performers
+            existing = fetch_dict_entry("performers", p["name"])
+            if existing:
+                pid = existing["id"]
+            else:
+                pid = create_dict_entry("performers", p["name"])
+            result.append({"type": "external", "id": pid, "name": p["name"]})
+        else:
+            raise ValueError(f"Tipo performer non valido: {p['type']}")
+    return result
 
 # last line

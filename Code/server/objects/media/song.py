@@ -29,15 +29,8 @@ class Song(Media):
     # RELAZIONI M:N
     # =====================
     def _sync_relations(self):
-        relation_map = {
-            "media_authors": ("author_id", self.authors),
-            "media_performances": ("performer_id", self.performers),
-            "media_genres": ("genre_id", self.genres)
-        }
-        for table, (col, values) in relation_map.items():
-            delete_relation(table, {f"media_id": self.media_id})
-            for val in values:
-                create_relation(table, ("media_id", col), (self.media_id, val))
+        # Nessuna azione, perché create_media_db() ha già gestito tutto
+        pass
 
     # =====================
     # CLASS METHODS

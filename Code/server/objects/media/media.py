@@ -12,17 +12,13 @@
 # (cioè classi che non possono essere istanziate direttamente).
 # Le classi figlie DEVONO implementare i metodi definiti come @abstractmethod.
 # ============================================================
-# MEDIA BASE CLASS (con debug)
+# MEDIA BASE CLASS
 # ============================================================
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List
 from datetime import datetime
-from db.db_crud import (
-    create_media_db,
-    fetch_media_db,
-    update_media_db,
-    delete_media_db
-)
+import json
+from db.db_crud import create_media_db, fetch_media_db, update_media_db, delete_media_db
 
 class Media(ABC):
     def __init__(
@@ -48,7 +44,11 @@ class Media(ABC):
         **kwargs
     ):
         print(f"[DEBUG][Media.__init__] Called with title={title}, type={type}, year={year}, user_id={user_id}, kwargs={kwargs}")
-        self.media_id = media_id
+
+        # Alias tra id e media_id
+        self.id = media_id or kwargs.get("id")
+        self.media_id = self.id
+
         self.type = type
         self.title = title
         self.user_id = user_id
@@ -67,9 +67,17 @@ class Media(ABC):
         self.is_author = bool(is_author)
         self.is_performer = bool(is_performer)
         self._deleted = False
+
+        # Gestione extra attr
         for k, v in kwargs.items():
             print(f"[DEBUG][Media.__init__] Extra attr: {k}={v}")
             setattr(self, k, v)
+
+        # Gestione tracklist
+        tracklist = kwargs.get("tracklist")
+        if tracklist is not None:
+            self.additional_info = json.dumps(tracklist)
+
         print(f"[DEBUG][Media.__init__] Finished -> {self}")
 
     @abstractmethod
@@ -83,7 +91,8 @@ class Media(ABC):
         print(f"[DEBUG][Media.save] Called on {self}")
         if self._deleted:
             raise Exception("Cannot save a deleted object")
-        payload = self.to_dict()  # dict completo con duration, location, additional_info
+
+        payload = self.to_dict()
         print(f"[DEBUG][Media.save] Payload to create_media_db={payload}")
 
         if not self.media_id:
@@ -122,7 +131,7 @@ class Media(ABC):
             delete_media_db(self.media_id)
             print(f"[DEBUG][Media.delete] Deleted media_id={self.media_id}")
             self.media_id = None
-        # Marcare come cancellato
+
         self._deleted = True
         return True
 
@@ -166,12 +175,19 @@ class Media(ABC):
             "is_author": self.is_author,
             "is_performer": self.is_performer
         }
+
+        # Deserializza tracklist se presente
+        if self.additional_info:
+            try:
+                d["tracklist"] = json.loads(self.additional_info)
+            except Exception:
+                d["tracklist"] = None
+
         print(f"[DEBUG][Media.to_dict] {self} -> {d}")
         return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
-        # Rinomina 'id' in 'media_id' se presente
         if 'id' in data:
             data['media_id'] = data.pop('id')
         print(f"[DEBUG][Media.from_dict] cls={cls.__name__}, data={data}")
