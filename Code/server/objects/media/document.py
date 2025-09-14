@@ -1,8 +1,8 @@
 # first line
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from .media import Media
-from db.db_crud import fetch_relations, fetch_interventions_db, create_relation, delete_relation
+from db.db_crud import fetch_relations
 
 class Document(Media):
     def __init__(self, **kwargs):

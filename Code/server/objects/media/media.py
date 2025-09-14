@@ -188,10 +188,20 @@ class Media(ABC):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
+        print(f"[DEBUG][Media.from_dict] cls={cls.__name__}, data={data}")
         if 'id' in data:
             data['media_id'] = data.pop('id')
-        print(f"[DEBUG][Media.from_dict] cls={cls.__name__}, data={data}")
-        obj = cls(**data)
+        if data['type'] == 'song':
+            from .song import Song
+            obj = Song(**data)
+        elif data['type'] == 'video':
+            from .video import Video
+            obj = Video(**data)
+        elif data['type'] == 'document':
+            from .document import Document
+            obj = Document(**data)
+        else:
+            raise ValueError (f"invalid media type: {data['type']}")
         print(f"[DEBUG][Media.from_dict] Built object={obj}")
         return obj
 

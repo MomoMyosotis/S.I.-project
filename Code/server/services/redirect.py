@@ -46,7 +46,7 @@ COMMAND_MAP = {
     "update_comment" : interventions_services.update_comment,
     "delete_comment" : interventions_services.delete_comment,
     "create_note" : interventions_services.create_note,
-    "fetch_note" : interventions_services.get_note,
+    "fetch_note" : interventions_services.get_notes,
     "update_note" : interventions_services.update_note,
     "delete_note" : interventions_services.delete_note,
     # SEARCH/DIZIONARI

@@ -155,15 +155,18 @@ CREATE TABLE media_references (
 -- ========================================
 CREATE TABLE notes (
     id SERIAL PRIMARY KEY,
+    author INT REFERENCES users(id),
     media_id INT REFERENCES media(id) ON DELETE CASCADE,
-    note_type VARCHAR(20) CHECK (note_type IN ('time','graphic')),
+    note_type VARCHAR(20) CHECK (note_type IN ('regular','graphic')),
     start_time NUMERIC(8,2),
     end_time NUMERIC(8,2),
     x_coord NUMERIC(8,2),
     y_coord NUMERIC(8,2),
+    page INT,
     solos TEXT,
     rhythm VARCHAR(50),
-    comment TEXT
+    content TEXT,
+    stored_at VARCHAR(255)
 );
 
 CREATE TABLE note_performers_instruments (
@@ -183,8 +186,7 @@ CREATE TABLE comments (
     note_id INT REFERENCES notes(id) ON DELETE CASCADE,
     parent_comment_id INT REFERENCES comments(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
-    like_count INT DEFAULT 0,
-    dislike_count INT DEFAULT 0
+    created_at DATE DEFAULT NOW()
 );
 
 -- ========================================

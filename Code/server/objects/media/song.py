@@ -2,7 +2,10 @@
 
 from typing import Optional, Dict, Any, List
 from .media import Media
-from db.db_crud import fetch_relations, advanced_song_search_db, create_relation, delete_relation
+from db.db_crud import (fetch_relations,
+                        advanced_song_search_db,
+                        create_relation,
+                        delete_relation)
 
 class Song(Media):
 

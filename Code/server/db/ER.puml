@@ -1,179 +1,192 @@
 @startuml
+!theme plain
+hide circle
+hide methods
+hide stereotypes
+skinparam linetype ortho
 
-entity "Roles" as roles {
-    +id : INT
-    name : VARCHAR(50)
+entity "user_levels" as user_levels {
+    *id : SERIAL PK
+    --
+    code : VARCHAR(50) UNIQUE
     description : TEXT
-    level : INT
 }
 
-entity "Users" as users {
-    +id : INT
-    username : VARCHAR(20)
-    password : VARCHAR(100)
-    mail : VARCHAR(100)
-    foto_profilo : VARCHAR(255)
+entity "users" as users {
+    *id : SERIAL PK
+    --
+    mail : VARCHAR(255) UNIQUE
+    username : VARCHAR(100) UNIQUE
+    password_hash : VARCHAR(255)
     birthday : DATE
     bio : TEXT
-    status : VARCHAR(20)
-    registration_status : VARCHAR(20)
-    created_at : TIMESTAMP
+    profile_pic : VARCHAR(255)
+    lvl_id : INT FK -> user_levels.id
 }
 
-entity "Follows" as follows {
-    +follower_id : INT
-    +followed_id : INT
+entity "user_follow" as user_follow {
+    *follower_id : INT FK -> users.id
+    *followed_id : INT FK -> users.id
 }
 
-entity "Media" as media {
-    +id : INT
-    type : VARCHAR(20)
+entity "permissions" as permissions {
+    *id : SERIAL PK
+    --
+    name : VARCHAR(100)
+    description : TEXT
+}
+
+entity "role_permissions" as role_permissions {
+    *lvl_id : INT FK -> user_levels.id
+    *permission_id : INT FK -> permissions.id
+}
+
+entity "media" as media {
+    *id : SERIAL PK
+    --
+    type : VARCHAR(20) -- song, video, document
+    user_id : INT FK -> users.id
     title : VARCHAR(255)
     year : INT
     description : TEXT
     link : VARCHAR(255)
-    created_at : TIMESTAMP
-}
-
-entity "Songs" as songs {
-    +id : INT
     duration : INT
     recording_date : DATE
     location : VARCHAR(100)
     additional_info : TEXT
+    stored_at : VARCHAR(255)
+    created_at : TIMESTAMP
     is_author : BOOLEAN
     is_performer : BOOLEAN
 }
 
-entity "Documents" as documents {
-    +id : INT
+entity "genres" as genres {
+    *id : SERIAL PK
+    --
+    name : VARCHAR(100) UNIQUE
+}
+
+entity "media_genres" as media_genres {
+    *media_id : INT FK -> media.id
+    *genre_id : INT FK -> genres.id
+}
+
+entity "authors" as authors {
+    *id : SERIAL PK
+    --
+    name : VARCHAR(150) UNIQUE
+    user_id : INT FK -> users.id
+}
+
+entity "media_authors" as media_authors {
+    *media_id : INT FK -> media.id
+    *author_id : INT FK -> authors.id
+}
+
+entity "instruments" as instruments {
+    *id : SERIAL PK
+    --
+    name : VARCHAR(100) UNIQUE
+}
+
+entity "performers" as performers {
+    *id : SERIAL PK
+    --
+    name : VARCHAR(150) UNIQUE
+    user_id : INT FK -> users.id UNIQUE
+}
+
+entity "media_performances" as media_performances {
+    *id : SERIAL PK
+    --
+    media_id : INT FK -> media.id
+    performer_id : INT FK -> performers.id
+    additional_info : TEXT
+}
+
+entity "performance_instruments" as performance_instruments {
+    *performance_id : INT FK -> media_performances.id
+    *instrument_id : INT FK -> instruments.id
+}
+
+entity "documents" as documents {
+    *media_id : INT PK FK -> media.id
+    --
     format : VARCHAR(20)
     pages : INT
     caption : TEXT
 }
 
-entity "Videos" as videos {
-    +id : INT
-    duration : INT
-    location : VARCHAR(100)
-    additional_info : TEXT
-    director : VARCHAR(100)
+entity "user_media_library" as user_media_library {
+    *user_id : INT FK -> users.id
+    *media_id : INT FK -> media.id
+    added_at : TIMESTAMP
 }
 
-entity "Genres" as genres {
-    +id : INT
-    name : VARCHAR(50)
+entity "media_references" as media_references {
+    *active_id : INT FK -> media.id
+    *passive_id : INT FK -> media.id
 }
 
-entity "Song_Genres" as song_genres {
-    +song_id : INT
-    +genre_id : INT
-}
-
-entity "Authors" as authors {
-    +id : INT
-    name : VARCHAR(100)
-}
-
-entity "Song_Authors" as song_authors {
-    +song_id : INT
-    +author_id : INT
-}
-
-entity "Instruments" as instruments {
-    +id : INT
-    name : VARCHAR(100)
-}
-
-entity "Performers" as performers {
-    +id : INT
-    name : VARCHAR(100)
-}
-
-entity "Song_Performances" as song_performances {
-    +song_id : INT
-    +performer_id : INT
-    +instrument_id : INT
-}
-
-entity "Files" as files {
-    +id : INT
-    +media_id : INT
-    file_id : VARCHAR(255)
-}
-
-entity "Notes" as notes {
-    +id : INT
-    song_id : INT
-    x_coord : NUMERIC(6,2)
-    y_coord : NUMERIC(6,2)
-    start_time : NUMERIC(6,2)
-    end_time : NUMERIC(6,2)
+entity "notes" as notes {
+    *id : SERIAL PK
+    --
+    media_id : INT FK -> media.id
+    note_type : VARCHAR(20)
+    start_time : NUMERIC
+    end_time : NUMERIC
+    x_coord : NUMERIC
+    y_coord : NUMERIC
     solos : TEXT
     rhythm : VARCHAR(50)
-    link : VARCHAR(255)
     comment : TEXT
 }
 
-entity "Note_Performers_Instruments" as note_performers_instruments {
-    +note_id : INT
-    +performer_id : INT
-    +instrument_id : INT
+entity "note_performers_instruments" as note_performers_instruments {
+    *note_id : INT FK -> notes.id
+    *performer_id : INT FK -> performers.id
+    *instrument_id : INT FK -> instruments.id
 }
 
-entity "Comments" as comments {
-    +id : INT
-    +user_id : INT
-    +media_id : INT
-    +note_id : INT
-    +parent_comment_id : INT
+entity "comments" as comments {
+    *id : SERIAL PK
+    --
+    user_id : INT FK -> users.id
+    media_id : INT FK -> media.id
+    note_id : INT FK -> notes.id
+    parent_comment_id : INT FK -> comments.id
     text : TEXT
     like_count : INT
     dislike_count : INT
 }
 
-entity "Concerts" as concerts {
-    +id : INT
-    video_id : INT
+entity "concerts" as concerts {
+    *id : SERIAL PK
+    --
+    video_id : INT FK -> media.id
     title : VARCHAR(255)
     description : TEXT
     created_at : TIMESTAMP
 }
 
-entity "Concert_Segments" as concert_segments {
-    +id : INT
-    concert_id : INT
-    song_id : INT
-    start_time : NUMERIC(6,2)
-    end_time : NUMERIC(6,2)
-    performers : TEXT
-    instruments : TEXT
+entity "concert_segments" as concert_segments {
+    *id : SERIAL PK
+    --
+    concert_id : INT FK -> concerts.id
+    media_id : INT FK -> media.id
+    start_time : NUMERIC
+    end_time : NUMERIC
     comment : TEXT
 }
 
-' Relationships
-roles -- users : "has"
-users -- follows : "follows"
-users -- comments : "writes"
-users -- notes : "creates"
-media -- songs : "contains"
-media -- documents : "contains"
-media -- videos : "contains"
-songs -- song_genres : "has"
-songs -- song_authors : "has"
-songs -- song_performances : "performed by"
-songs -- notes : "contains"
-songs -- files : "has"
-videos -- concerts : "records"
-concerts -- concert_segments : "has"
-concert_segments -- song_performances : "features"
-concert_segments -- notes : "contains"
+entity "concert_segment_performers" as concert_segment_performers {
+    *segment_id : INT FK -> concert_segments.id
+    *performer_id : INT FK -> performers.id
+}
 
-song_genres -- genres : "belongs to"
-song_authors -- authors : "written by"
-song_performances -- performers : "performed by"
-song_performances -- instruments : "played with"
-note_performers_instruments -- performers : "associated with"
-note_performers_instruments -- instruments : "associated with"
+entity "concert_segment_instruments" as concert_segment_instruments {
+    *segment_id : INT FK -> concert_segments.id
+    *instrument_id : INT FK -> instruments.id
+}
 
 @enduml

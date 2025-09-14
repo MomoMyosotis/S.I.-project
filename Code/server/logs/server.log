@@ -195,3 +195,38 @@
 2025-09-07 18:53:10 - 127.0.0.1 - unknown - ERROR - Object of type Song is not JSON serializable
 2025-09-07 18:56:22 - 127.0.0.1 - unknown - ERROR - Object of type Song is not JSON serializable
 2025-09-07 18:59:19 - 127.0.0.1 - unknown - ERROR - Object of type Song is not JSON serializable
+2025-09-11 15:33:27 - 127.0.0.1 - unknown - ERROR - [WinError 10054] Connessione in corso interrotta forzatamente dall'host remoto
+2025-09-13 04:30:30 - UNKNOWN - None - USER - Exception: register_user() got an unexpected keyword argument 'user'
+2025-09-13 04:30:30 - UNKNOWN - None - USER - Exception: register_user() got an unexpected keyword argument 'user'
+2025-09-13 04:30:30 - UNKNOWN - None - USER - Exception: login_user() got an unexpected keyword argument 'user'
+2025-09-13 04:30:30 - UNKNOWN - None - USER - Exception: login_user() got an unexpected keyword argument 'user'
+2025-09-13 04:30:30 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'user'
+2025-09-13 04:30:30 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'user'
+2025-09-13 04:30:30 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'user'
+2025-09-13 04:30:30 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'user'
+2025-09-13 04:31:42 - UNKNOWN - None - UNKNOWN - Exception: register_user() takes 1 positional argument but 4 were given
+2025-09-13 04:31:42 - UNKNOWN - None - UNKNOWN - Exception: register_user() takes 1 positional argument but 4 were given
+2025-09-13 04:31:42 - UNKNOWN - None - UNKNOWN - Exception: create_song_services() missing 1 required positional argument: 'data'
+2025-09-13 04:31:42 - UNKNOWN - None - UNKNOWN - Exception: create_song_services() missing 1 required positional argument: 'data'
+2025-09-13 04:31:42 - UNKNOWN - None - UNKNOWN - Exception: create_song_services() missing 1 required positional argument: 'data'
+2025-09-13 04:31:42 - UNKNOWN - None - UNKNOWN - Exception: create_song_services() missing 1 required positional argument: 'data'
+2025-09-13 04:37:48 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'user'
+2025-09-13 04:37:48 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'user'
+2025-09-13 04:37:48 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'user'
+2025-09-13 04:37:48 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'user'
+2025-09-13 04:39:48 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'media'
+2025-09-13 04:39:48 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'media'
+2025-09-13 04:39:48 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'media'
+2025-09-13 04:39:48 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'media'
+2025-09-13 04:40:58 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'entity_type'
+2025-09-13 04:40:58 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'entity_type'
+2025-09-13 04:40:58 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'entity_type'
+2025-09-13 04:40:58 - UNKNOWN - None - MEDIA - Exception: create_song_services() got an unexpected keyword argument 'entity_type'
+2025-09-13 04:41:32 - UNKNOWN - None - MEDIA - Exception: create_song_services() got multiple values for argument 'user_obj'
+2025-09-13 04:41:32 - UNKNOWN - None - MEDIA - Exception: create_song_services() got multiple values for argument 'user_obj'
+2025-09-13 04:41:32 - UNKNOWN - None - MEDIA - Exception: create_song_services() got multiple values for argument 'user_obj'
+2025-09-13 04:41:32 - UNKNOWN - None - MEDIA - Exception: create_song_services() got multiple values for argument 'user_obj'
+2025-09-13 04:42:47 - UNKNOWN - None - MEDIA - Exception: create_song_services() got multiple values for argument 'user_obj'
+2025-09-13 04:42:47 - UNKNOWN - None - MEDIA - Exception: create_song_services() got multiple values for argument 'user_obj'
+2025-09-13 04:42:47 - UNKNOWN - None - MEDIA - Exception: create_song_services() got multiple values for argument 'user_obj'
+2025-09-13 04:42:47 - UNKNOWN - None - MEDIA - Exception: create_song_services() got multiple values for argument 'user_obj'

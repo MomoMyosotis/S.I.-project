@@ -13,20 +13,25 @@ def debug(msg: str):
 # =====================
 # GENERIC CRUD
 # =====================
+import psycopg2.extras
+
 def fetch_one(query: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
     conn = connection.connect()
     try:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(query, params)
-            row = cur.fetchone()
+            row = cur.fetchone()   # leggi PRIMA di commit
             if row:
                 debug(f"fetch_one success: {row}")
-                return dict(zip([desc[0] for desc in cur.description], row))
+                return dict(row)
+            return None
     except Exception as e:
         print(f"[DB ERROR fetch_one] {e}")
+        return None
     finally:
-        connection.close(None, conn)
-    return None
+        if conn:
+            conn.commit()
+            connection.close(None, conn)
 
 def fetch_all(query: str, params: tuple = ()) -> List[Dict[str, Any]]:
     conn = connection.connect()
@@ -360,7 +365,6 @@ def fetch_media_db(media_id: int) -> Optional[Dict[str, Any]]:
     media_dict["performers"] = performers
     return media_dict
 
-
 def update_media_db(media_id: int, updates: Dict[str, Any], table: str = "media") -> bool:
     if not updates: return True
     set_clause = ", ".join(f"{k}=%s" for k in updates.keys())
@@ -390,32 +394,177 @@ def delete_media_db(media_id: Optional[int]) -> Dict[str, Any]:
         return {"status": "ERROR", "reason": "Deletion failed"}
 
 # =====================
-# INTERVENTIONS CRUD
+# NOTES CRUD
 # =====================
-def create_intervention_db(table: str, fields: tuple, values: tuple) -> Optional[int]:
-    placeholders = ','.join(['%s'] * len(values))
-    cols = ','.join(fields)
-    query = f"INSERT INTO {table} ({cols}) VALUES ({placeholders}) RETURNING id"
-    row = fetch_one(query, values)
-    return row.get("id") if row else None
+def create_note_db(author: int, media_id: int, note_type: str, **kwargs) -> Optional[int]:
+    conn = connection.connect()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Controllo utente
+            user_row = fetch_one("SELECT id FROM users WHERE id=%s", (author,))
+            if not user_row:
+                print(f"[create_note_db] User id={author} does not exist!")
+                return None
 
-def fetch_interventions_db(table: str, where_field: str, where_value: Any, order_by: str = "id ASC") -> List[Dict[str, Any]]:
-    return fetch_all(f"SELECT * FROM {table} WHERE {where_field}=%s ORDER BY {order_by}", (where_value,))
+            # Controllo media
+            media_row = fetch_one("SELECT id FROM media WHERE id=%s", (media_id,))
+            if not media_row:
+                print(f"[create_note_db] Media id={media_id} does not exist!")
+                return None
 
-def update_intervention_db(table: str, intervention_id: int, field: str, content: str) -> bool:
-    return execute(f"UPDATE {table} SET {field}=%s WHERE id=%s", (content, intervention_id))
+            fields = ["author", "media_id", "note_type"]
+            values = [author, media_id, note_type]
 
-def delete_intervention_db(table: str, intervention_id: int) -> bool:
-    return execute(f"DELETE FROM {table} WHERE id=%s", (intervention_id,))
+            for k, v in kwargs.items():
+                fields.append(k)
+                values.append(v)
 
-def fetch_comments_db(media_id: int) -> List[Dict[str, Any]]:
-    query = """
-        SELECT id, user_id, media_id, content, parent_id, created_at
-        FROM comments
-        WHERE media_id = %s
-        ORDER BY created_at ASC
+            placeholders = ",".join(["%s"] * len(values))
+            query = f"INSERT INTO notes ({','.join(fields)}) VALUES ({placeholders}) RETURNING id"
+
+            cur.execute(query, tuple(values))
+            row = cur.fetchone()
+            conn.commit()
+
+            return row["id"] if row and "id" in row else None
+
+    except Exception as e:
+        if conn: conn.rollback()
+        print(f"[DB ERROR create_note_db]: {e}")
+        return None
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+def fetch_note_db(where_field: str, where_value: Any) -> List[Dict[str, Any]]:
+    return fetch_all(f"SELECT * FROM notes WHERE {where_field}=%s ORDER BY id ASC", (where_value,))
+
+ALLOWED_NOTE_FIELDS = {
+    "note_type", "start_time", "end_time", "x_coord", "y_coord",
+    "page", "solos", "rhythm", "content", "stored_at"
+}
+
+def update_note_db(note_id: int, field: str, value: Any) -> bool:
+    if field not in ALLOWED_NOTE_FIELDS:
+        print(f"[update_note_db] Invalid field: {field}")
+        return False
+    return execute(f"UPDATE notes SET {field}=%s WHERE id=%s", (value, note_id))
+
+def delete_note_db(note_id: int) -> bool:
+    return execute("DELETE FROM notes WHERE id=%s", (note_id,))
+
+# =====================
+# COMMENTS CRUD
+# =====================
+def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
+                        note_id: Optional[int] = None, parent_comment_id: Optional[int] = None) -> Optional[int]:
     """
-    return fetch_all(query, (media_id,))
+    Crea un commento e ritorna l'ID appena creato.
+    Aggiunta debug dettagliato per isolare errori.
+    """
+    # Connessione al database
+    conn = connection.connect()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Controllo se l'utente esiste
+            user_row = fetch_one("SELECT id FROM users WHERE id=%s", (user_id,))
+            if not user_row:
+                print(f"[create_comment_db] User id={user_id} does not exist!")
+                return None
+            fields = ["user_id", "text"]
+            values = [user_id, text]
+
+            # Controllo se il media esiste
+            if media_id is not None:
+                media_row = fetch_one("SELECT id FROM media WHERE id=%s", (media_id,))
+                if not media_row:
+                    print(f"[create_comment_db] Media id={media_id} does not exist!")
+                    return None
+                fields.append("media_id")
+                values.append(media_id)
+
+            # Controllo se la nota esiste
+            if note_id is not None:
+                note_row = fetch_one("SELECT id FROM notes WHERE id=%s", (note_id,))
+                if not note_row:
+                    print(f"[create_comment_db] Note id={note_id} does not exist!")
+                    return None
+                fields.append("note_id")
+                values.append(note_id)
+
+            # Controllo se il commento parent esiste
+            if parent_comment_id is not None:
+                parent_row = fetch_one("SELECT id FROM comments WHERE id=%s", (parent_comment_id,))
+                if not parent_row:
+                    print(f"[create_comment_db] Parent comment id={parent_comment_id} does not exist!")
+                    return None
+                fields.append("parent_comment_id")
+                values.append(parent_comment_id)
+
+            # Preparazione della query per l'inserimento
+            placeholders = ",".join(["%s"] * len(values))
+            query = f"INSERT INTO comments ({','.join(fields)}) VALUES ({placeholders}) RETURNING id"
+
+            try:
+                # Esecuzione della query
+                cur.execute(query, tuple(values))
+            except Exception as e:
+                print(f"[create_comment_db] Execute FAILED: {e}")
+                raise
+
+            row = cur.fetchone()
+            try:
+                # Commit della transazione
+                conn.commit()
+            except Exception as e:
+                print(f"[create_comment_db] Commit FAILED: {e}")
+                raise
+
+            if row and "id" in row:
+                return row["id"]
+            else:
+                print(f"[create_comment_db] No ID returned after insert")
+                return None
+
+    except Exception as e:
+        if conn: conn.rollback()
+        print(f"[DB ERROR create_comment_db]: {e}")
+        return None
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+def fetch_comment_db(where_field: str, where_value: Any) -> List[Dict[str, Any]]:
+    comments = fetch_all(f"SELECT * FROM comments WHERE {where_field}=%s ORDER BY id ASC", (where_value,))
+    return comments
+
+def fetch_comments_by_media_db(media_id: int) -> List[Dict[str, Any]]:
+    comments = fetch_all("SELECT * FROM comments WHERE media_id=%s ORDER BY id ASC", (media_id,))
+    return comments
+
+def fetch_comments_by_note_db(note_id: int) -> List[Dict[str, Any]]:
+    comments = fetch_all("SELECT * FROM comments WHERE note_id=%s ORDER BY id ASC", (note_id,))
+    return comments
+
+def fetch_comment_replies_db(parent_comment_id: int) -> List[Dict[str, Any]]:
+    replies = fetch_all("SELECT * FROM comments WHERE parent_comment_id=%s ORDER BY id ASC", (parent_comment_id,))
+    return replies
+
+def update_comment_db(comment_id: int, field: str, value: Any) -> bool:
+    try:
+        result = execute(f"UPDATE comments SET {field}=%s WHERE id=%s", (value, comment_id))
+        return result
+    except Exception as e:
+        print(f"[update_comment_db] Error while updating comment_id={comment_id}: {e}")
+        return False
+
+def delete_comment_db(comment_id: int) -> bool:
+    try:
+        result = execute("DELETE FROM comments WHERE id=%s", (comment_id,))
+        return result
+    except Exception as e:
+        print(f"[delete_comment_db] Error while deleting comment_id={comment_id}: {e}")
+        return False
 
 # =====================
 # DICTIONARY CRUD
@@ -527,7 +676,6 @@ def advanced_video_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
 # =====================
 # FOLLOWERS
 # =====================
-
 def get_user_id_by_username(username: str) -> Optional[int]:
     """Restituisce l'id di un utente dato lo username."""
     print(f"[DEBUG] get_user_id_by_username called with: {username}")

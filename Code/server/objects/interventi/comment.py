@@ -1,17 +1,21 @@
-# obj comment
+# first line
 
-from datetime import datetime
 from typing import Optional, Dict, Any, List
 from objects.users.root import Root
+from logs.logger import log_event
 from db.db_crud import (
-                        fetch_relations,
-                        create_intervention_db,
-                        fetch_interventions_db,
-                        update_intervention_db,
-                        fetch_media_db,
-                        delete_intervention_db
+    create_comment_db,
+    fetch_comments_by_media_db,
+    fetch_comment_replies_db,
+    fetch_comments_by_note_db,
+    fetch_comment_db,
+    update_comment_db,
+    fetch_media_db,
+    delete_comment_db
 )
-
+# ========================
+# Comment class con debug
+# ========================
 class Comment:
     def __init__(self,
                 id: Optional[int] = None,
@@ -19,112 +23,146 @@ class Comment:
                 media_id: Optional[int] = None,
                 note_id: Optional[int] = None,
                 parent_comment_id: Optional[int] = None,
-                text: str = "",
-                like_count: int = 0,
-                dislike_count: int = 0):
-        """
-        Inizializza un oggetto Comment con i campi provenienti dalla tabella SQL.
-        """
+                text: str = ""
+                ):
         self.id = id
         self.user_id = user_id
         self.media_id = media_id
         self.note_id = note_id
         self.parent_comment_id = parent_comment_id
         self.text = text
-        self.like_count = like_count
-        self.dislike_count = dislike_count
+        print(f"[DEBUG __init__] Created Comment object: {self.to_dict()}")
 
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Serializza l'oggetto Comment in un dizionario (utile per API/JSON).
-        """
         return {
             "id": self.id,
             "user_id": self.user_id,
             "media_id": self.media_id,
             "note_id": self.note_id,
             "parent_comment_id": self.parent_comment_id,
-            "text": self.text,
-            "like_count": self.like_count,
-            "dislike_count": self.dislike_count
+            "text": self.text
         }
 
+    # -----------------------
+    # CRUD
+    # -----------------------
     @classmethod
-    def add_comment(user_id: int, media_id: int, content: str, parent_id: Optional[int] = None) -> Optional[int]:
-        """
-        Aggiunge un commento e imposta automaticamente i flag:
-            - is_author = True se l'utente è autore della canzone
-            - is_performer = True se l'utente è tra gli interpreti
-            """
-        # Controllo autore
-        authors = fetch_relations("song_authors", "song_id", media_id)
-        is_author = any(a["author_id"] == user_id for a in authors)
+    def add_comment(cls, user_id: int, text: str,
+                    media_id: Optional[int] = None,
+                    note_id: Optional[int] = None,
+                    parent_comment_id: Optional[int] = None) -> Optional["Comment"]:
+        print(f"[DEBUG add_comment] START - user_id={user_id}, text={text}, media_id={media_id}, note_id={note_id}, parent_comment_id={parent_comment_id}")
+        new_id = create_comment_db(
+            user_id=user_id,
+            text=text,
+            media_id=media_id,
+            note_id=note_id,
+            parent_comment_id=parent_comment_id
+        )
+        print(f"[DEBUG add_comment] new_id returned from DB: {new_id}")
 
-        # Controllo performer
-        performers = fetch_relations("song_performances", "song_id", media_id)
-        is_performer = any(p["performer_id"] == user_id for p in performers)
+        if not new_id:
+            print(f"[DEBUG add_comment] Comment creation failed")
+            return None
 
-        now = datetime.now()
-        fields = ('user_id', 'media_id', 'parent_id', 'content', 'is_author', 'is_performer', 'created_at')
-        values = (user_id, media_id, parent_id, content, is_author, is_performer, now)
+        # ricarica i dati dal DB
+        row = fetch_comment_db("id", new_id)
+        print(f"[DEBUG add_comment] fetch_comment_db returned: {row}")
 
-        comment_id = create_intervention_db("comments", fields, values)
-        return comment_id
+        if row:
+            data = row[0]
+            comment_obj = cls(
+                id=data["id"],
+                user_id=data["user_id"],
+                media_id=data.get("media_id"),
+                note_id=data.get("note_id"),
+                parent_comment_id=data.get("parent_comment_id"),
+                text=data["text"]
+            )
+            print(f"[DEBUG add_comment] Created Comment object from DB: {comment_obj.to_dict()}")
+            return comment_obj
+
+        print(f"[DEBUG add_comment] No data found after insert")
+        return None
 
     @classmethod
-    def fetch_comments(media_id: int) -> List[Dict[str, Any]]:
-        # Recupera tutti i commenti su un media, aggiungendo flag autore/interprete
-        comments = fetch_interventions_db("comments", "media_id", media_id, order_by="created_at ASC")
-
-        # fetch relazioni per questo media
-        authors = {a["author_id"] for a in fetch_relations("song_authors", "song_id", media_id)}
-        performers = {p["performer_id"] for p in fetch_relations("song_performances", "song_id", media_id)}
-
-        for c in comments:
-            c["is_author"] = c["user_id"] in authors
-            c["is_performer"] = c["user_id"] in performers
-
-        return comments
+    def fetch_by_media(cls, media_id: int) -> List[Dict[str, Any]]:
+        print(f"[DEBUG fetch_by_media] media_id={media_id}")
+        result = fetch_comments_by_media_db(media_id)
+        print(f"[DEBUG fetch_by_media] returned {len(result)} comments")
+        return result
 
     @classmethod
-    def update_comment(user_id: int, comment_id: int, new_content: str) -> bool:
-        comment = fetch_interventions_db("comments", "id", comment_id)
+    def fetch_by_note(cls, note_id: int) -> List[Dict[str, Any]]:
+        print(f"[DEBUG fetch_by_note] note_id={note_id}")
+        result = fetch_comments_by_note_db(note_id)
+        print(f"[DEBUG fetch_by_note] returned {len(result)} comments")
+        return result
+
+    @classmethod
+    def fetch_replies(cls, parent_comment_id: int) -> List[Dict[str, Any]]:
+        print(f"[DEBUG fetch_replies] parent_comment_id={parent_comment_id}")
+        result = fetch_comment_replies_db(parent_comment_id)
+        print(f"[DEBUG fetch_replies] returned {len(result)} replies")
+        return result
+
+    @classmethod
+    def fetch_by_id(cls, comment_id: int) -> Optional["Comment"]:
+        print(f"[DEBUG fetch_by_id] comment_id={comment_id}")
+        result = fetch_comment_db("id", comment_id)
+        print(f"[DEBUG fetch_by_id] fetch_comment_db returned: {result}")
+        if not result:
+            return None
+        return cls.from_dict(result[0])
+
+    @classmethod
+    def update_comment(cls, user_id: int, comment_id: int, new_text: str) -> bool:
+        print(f"[DEBUG update_comment] user_id={user_id}, comment_id={comment_id}, new_text={new_text}")
+        comment = fetch_comment_db("id", comment_id)
+        print(f"[DEBUG update_comment] fetched comment: {comment}")
         if not comment:
             return False
         owner_id = comment[0]["user_id"]
         if not Root.can_manage_content(user_id, owner_id):
             raise PermissionError("Non hai i permessi per modificare questo commento")
-        return update_intervention_db("comments", comment_id, "content", new_content)
+        result = update_comment_db(comment_id, "text", new_text)
+        print(f"[DEBUG update_comment] update_comment_db result: {result}")
+        return result
 
     @classmethod
-    def delete_comment(user_id: int, comment_id: int) -> bool:
-        comment = fetch_interventions_db("comments", "id", comment_id)
+    def delete_comment(cls, user_id: int, comment_id: int) -> bool:
+        print(f"[DEBUG delete_comment] user_id={user_id}, comment_id={comment_id}")
+        comment = fetch_comment_db("id", comment_id)
+        print(f"[DEBUG delete_comment] fetched comment: {comment}")
         if not comment:
             return False
         owner_id = comment[0]["user_id"]
-        media = fetch_media_db(comment[0]["media_id"], "songs", ["user_id"])
-        if not media:
-            return False
-        media_owner_id = media["user_id"]
+
+        media = None
+        if comment[0].get("media_id"):
+            media = fetch_media_db(comment[0]["media_id"])
+            print(f"[DEBUG delete_comment] fetched media: {media}")
+        media_owner_id = media["user_id"] if media else None
+
         if not Root.can_manage_content(user_id, owner_id) and user_id != media_owner_id:
             raise PermissionError("Non hai i permessi per cancellare questo commento")
-        return delete_intervention_db("comments", comment_id)
+        result = delete_comment_db(comment_id)
+        print(f"[DEBUG delete_comment] delete_comment_db result: {result}")
+        return result
 
+    # -----------------------
+    # COSTRUTTORE DA DIZIONARIO
+    # -----------------------
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Comment":
-        """
-        Crea un'istanza di Comment da un dizionario.
-        """
+        print(f"[DEBUG from_dict] data={data}")
         return cls(
             id=data.get("id"),
             user_id=data.get("user_id"),
             media_id=data.get("media_id"),
             note_id=data.get("note_id"),
             parent_comment_id=data.get("parent_comment_id"),
-            text=data.get("text"),
-            like_count=data.get("like_count", 0),
-            dislike_count=data.get("dislike_count", 0)
+            text=data.get("text")
         )
-
 
 # last line

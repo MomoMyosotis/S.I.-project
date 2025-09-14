@@ -1,5 +1,8 @@
 # first line
 
+# =================
+#   GESTISCE I FILE
+# =================
 import os, uuid, shutil
 STORAGE = "server/storage"
 

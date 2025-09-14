@@ -85,7 +85,11 @@ def get_song_services(user_obj, song_id: int):
 def create_song_services(user_obj: dict, data: dict):
     print(f"[DEBUG][create_song_services] user_obj={user_obj}, data={data}")
 
-    # Prepara performer
+    data["type"] = "song"
+    if user_obj:
+        data["user_id"] = user_obj.get("id")
+    if data.get("stored_at") is None:
+        data["stored_at"] = "server/storage/songs"
     if "performers" in data:
         data["performers"] = prepare_performers(data["performers"])
 
@@ -119,11 +123,15 @@ def delete_song_services(user_obj, song_id: int):
 # =========================
 # DOCUMENT SERVICES
 # =========================
+def create_document_services(user_obj, data: dict):
+    data["type"] = "document"
+    if data.get("stored_at") is None:
+        data["stored_at"] = "server/storage/documents"
+
+    return create_object(Document, user_obj, data)
+
 def get_document_services(user_obj, doc_id: int):
     return get_object(Document, doc_id)
-
-def create_document_services(user_obj, data: dict):
-    return create_object(Document, user_obj, data)
 
 def update_document_services(user_obj, doc_id: int, updates: dict):
     doc_obj = get_object(Document, doc_id)
@@ -140,11 +148,14 @@ def delete_document_services(user_obj, doc_id: int):
 # =========================
 # VIDEO SERVICES
 # =========================
+def create_video_services(user_obj, data: dict):
+    data["type"] = "video"
+    if data.get("stored_at") is None:
+        data["stored_at"] = "server/storage/videos"
+    return create_object(Video, user_obj, data)
+
 def get_video_services(user_obj, video_id: int):
     return get_object(Video, video_id)
-
-def create_video_services(user_obj, data: dict):
-    return create_object(Video, user_obj, data)
 
 def update_video_services(user_obj, video_id: int, updates: dict):
     video = get_object(Video, video_id)
