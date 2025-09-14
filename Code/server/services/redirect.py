@@ -1,8 +1,14 @@
 # first line
 
-import json
+import json, base64, os
 from typing import Optional, Any, Tuple
 from services import user_services, media_services, interventions_services
+from utils.storage_manager import (save_file,
+                                    update_file,
+                                    fetch_file,
+                                    download_file,
+                                    delete_file
+                                    )
 
 # =====================
 # ENCODER JSON
@@ -11,6 +17,31 @@ def default_encoder(obj):
     if hasattr(obj, "to_dict"):
         return obj.to_dict()
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
+# =====================
+# FILE MANAGER WRAPPERS
+# =====================
+def dispatch_save_file(user_obj, file_type, file_name, content: bytes):
+    save_file(file_type, file_name, content)
+    return f"{file_name} saved successfully"
+
+def dispatch_fetch_file(user_obj, file_type, file_name):
+    content = fetch_file(file_type, file_name)
+    if content is None:
+        return None
+    return base64.b64encode(content).decode('utf-8')
+
+def dispatch_update_file(user_obj, file_type, file_name, content: bytes):
+    update_file(file_type, file_name, content)
+    return f"{file_name} updated successfully"
+
+def dispatch_download_file(user_obj, file_type, file_name, target_path: str):
+    download_file(file_type, file_name, target_path)
+    return f"{file_name} downloaded to {target_path}"
+
+def dispatch_delete_file(user_obj, file_type, file_name):
+    delete_file(file_type, file_name)
+    return f"{file_name} deleted successfully"
 
 # =====================
 # DISPATCH COMMANDS
@@ -56,6 +87,12 @@ COMMAND_MAP = {
     "add_entry": interventions_services.add_entry,
     "remove_entry": interventions_services.remove_entry,
     "get_entries": interventions_services.get_entries,
+    # FILE MANAGER
+    "save_file" : dispatch_save_file,
+    "fetch_file" : dispatch_fetch_file,
+    "update_file" : dispatch_update_file,
+    "download_file" : dispatch_download_file,
+    "delete_file" : dispatch_delete_file,
 }
 
 def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple[str, Optional[Any], Optional[str], str]:
