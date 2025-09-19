@@ -5,6 +5,186 @@
   <title>Libreria utente</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="{{ url_for('static', filename='libraries_style.css') }}">
+  <style>
+    /* HEADER ANIMATO */
+    @property --a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+    @keyframes rotating { 0% { --a:0deg; } 100% { --a:360deg; } }
+
+    header {
+      position: sticky;
+      top: 0;
+      width: 100%;
+      max-width: 480px;
+      margin: 10px auto;
+      padding: 20px 0;
+      text-align: center;
+      font-size: 1.8em;
+      font-weight: 700;
+      color: #fff;
+      border-radius: 20px;
+      background: repeating-conic-gradient(from var(--a), #ff2770 0%, #ff2770 5%, transparent 5%, transparent 40%, #ff2770 50%);
+      animation: rotating 4s linear infinite;
+      filter: drop-shadow(0 15px 50px #000);
+      text-shadow: 0 0 10px #ff2770;
+      box-shadow: 0 2px 5px rgba(255,39,112,0.5);
+      letter-spacing: 0.05em;
+      z-index: 1;
+      user-select: none;
+    }
+
+    /* CONTROLLI FILTRO */
+    .library-controls {
+      display: flex;
+      gap: 12px;
+      padding: 15px 20px;
+      background-color: #2d2d39;
+      border-radius: 15px;
+      margin: 10px auto;
+      max-width: 480px;
+      box-shadow: inset 0 0 10px #ff2770cc;
+      align-items: center;
+    }
+    .library-controls select {
+      padding: 10px;
+      border-radius: 12px;
+      border: none;
+      background-color: #3a374a;
+      color: #eee;
+      font-size: 1em;
+      cursor: pointer;
+      outline: none;
+      transition: box-shadow 0.3s ease;
+    }
+    .library-controls select:focus {
+      box-shadow: 0 0 10px #ff2770;
+    }
+
+    /* LISTA LIBRERIA */
+    .library {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      padding: 0 20px 100px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .library-item {
+      display: flex;
+      background-color: #2d2d39;
+      border-radius: 15px;
+      box-shadow: 0 0 15px #ff2770aa;
+      overflow: hidden;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .library-item:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 25px #ff2770ee;
+    }
+    .library-item img {
+      width: 120px;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 15px 0 0 15px;
+      flex-shrink: 0;
+    }
+
+    .info {
+      padding: 15px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      color: #eee;
+      flex: 1;
+    }
+    .info h3 { margin: 0 0 8px; font-weight: 700; font-size: 1.3em; }
+    .info h3 a { color: #ff2770; text-decoration: none; }
+    .info h3 a:hover { color: #45f3ff; text-shadow: 0 0 8px #45f3ff; }
+    .info p { margin: 0; font-size: 0.95em; color: #bbb; }
+
+    /* BOTTONI AZIONI */
+    .actions {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 15px 0 0;
+    }
+    .actions button {
+      padding: 8px 12px;
+      background-color: #ff2770;
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 0 15px #ff2770;
+      transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .actions button:hover {
+      background-color: #45f3ff;
+      color: #ff2770;
+      box-shadow: 0 0 25px #45f3ff;
+    }
+
+    /* LOADING */
+    .loading {
+      text-align: center;
+      padding: 15px;
+      font-size: 1.1em;
+      color: #ff2770;
+      text-shadow: 0 0 10px #ff2770;
+    }
+
+    /* SKELETON SHIMMER */
+    .skeleton {
+      background: linear-gradient(90deg, #2d2d39 25%, #3a3a4a 50%, #2d2d39 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 8px;
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    /* BOTTOM NAV GLOW */
+    .bottom-nav-box {
+      position: fixed;
+      bottom: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      justify-content: space-around;
+      background: rgba(45,45,57,0.85);
+      backdrop-filter: blur(10px);
+      padding: 10px 30px;
+      border-radius: 25px;
+      box-shadow: 0 4px 20px rgba(255,39,112,0.4);
+      border: 1px solid rgba(255,39,112,0.3);
+      z-index: 100;
+      gap: 30px;
+      animation: glow 2.5s ease-in-out infinite alternate;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-decoration: none;
+      color: #eee;
+      font-size: 12px;
+      transition: all 0.3s ease;
+    }
+    .nav-item i { font-size: 20px; margin-bottom: 4px; }
+    .nav-item:hover i, .nav-item:hover span {
+      color: #45f3ff;
+      text-shadow: 0 0 10px #45f3ff, 0 0 20px #45f3ffaa;
+    }
+    @keyframes glow {
+      0% { box-shadow: 0 4px 20px rgba(255,39,112,0.4), 0 0 10px rgba(255,39,112,0.2); }
+      50% { box-shadow: 0 4px 25px rgba(255,39,112,0.6), 0 0 15px rgba(255,39,112,0.3); }
+      100% { box-shadow: 0 4px 20px rgba(255,39,112,0.4), 0 0 10px rgba(255,39,112,0.2); }
+    }
+  </style>
 </head>
 <body>
 
@@ -27,109 +207,89 @@
 </div>
 
 <div class="library" id="library-container"></div>
-
 <div class="loading" id="loading">Caricamento contenuti...</div>
 
-<script>
-  // Mock dati libreria
-  const libraryItems = [
-    {
-      id: 1,
-      type: 'audio',
-      title: 'Brano 1',
-      author: 'Autore A',
-      thumbnail: 'https://via.placeholder.com/100x100?text=Brano+1',
-      link: '#audio1',
-      tags: ['pop', 'energetico']
-    },
-    {
-      id: 2,
-      type: 'video',
-      title: 'Concerto Live',
-      author: 'Band XYZ',
-      thumbnail: 'https://via.placeholder.com/100x100?text=Video',
-      link: '#video1',
-      tags: ['live', 'rock']
-    },
-    {
-      id: 3,
-      type: 'document',
-      title: 'Spartito Jazz',
-      author: 'Musicista Q',
-      thumbnail: 'https://via.placeholder.com/100x100?text=Doc',
-      link: '#doc1',
-      tags: ['jazz', 'spartito']
-    },
-    {
-      id: 4,
-      type: 'link',
-      title: 'Evento Streaming',
-      author: 'Organizzatore Y',
-      thumbnail: 'https://via.placeholder.com/100x100?text=Link',
-      link: 'https://concerto.example.com',
-      tags: ['streaming']
-    }
-    // Puoi aggiungere altri item qui...
-  ];
+<div class="bottom-nav-box">
+  <a href="{{ url_for('home.homepage', form_type='profile') }}" class="nav-item">
+    <i class="fas fa-user"></i><span>Profile</span>
+  </a>
+  <a href="{{ url_for('home.homepage', form_type='feed') }}" class="nav-item">
+    <i class="fas fa-rss"></i><span>Feed</span>
+  </a>
+  <a href="{{ url_for('home.homepage', form_type='libraries') }}" class="nav-item">
+    <i class="fas fa-book"></i><span>Libraries</span>
+  </a>
+</div>
 
+<script>
   const container = document.getElementById('library-container');
   const loading = document.getElementById('loading');
 
-  function renderLibrary(items) {
+  function showSkeleton(count = 4) {
     container.innerHTML = '';
-    items.forEach(item => {
+    for (let i = 0; i < count; i++) {
       const div = document.createElement('div');
       div.className = 'library-item';
       div.innerHTML = `
-        <img src="${item.thumbnail}" alt="thumb" />
-        <div class="info">
-          <h3><a href="${item.link}" target="_blank">${item.title}</a></h3>
-          <p>Autore: ${item.author}</p>
-          <p>Tag: ${item.tags.join(', ')}</p>
+        <div class="skeleton" style="width:120px;height:120px;border-radius:15px 0 0 15px;"></div>
+        <div style="flex:1; padding:15px 20px;">
+          <div class="skeleton" style="width:60%; height:20px; margin-bottom:8px;"></div>
+          <div class="skeleton" style="width:40%; height:16px;"></div>
         </div>
-        <div class="actions">
-          <button onclick="alert('Apri: ${item.title}')">Apri</button>
-          <button onclick="alert('Download placeholder per: ${item.title}')">Scarica</button>
-          <button onclick="removeItem(${item.id})">Rimuovi</button>
+        <div style="display:flex; flex-direction:column; gap:8px; padding:0 15px 0 0;">
+          <div class="skeleton" style="width:70px; height:28px;"></div>
+          <div class="skeleton" style="width:70px; height:28px;"></div>
+          <div class="skeleton" style="width:70px; height:28px;"></div>
         </div>
       `;
       container.appendChild(div);
-    });
-  }
-
-  function applyFilters() {
-    const type = document.getElementById('type-filter').value;
-    const sortBy = document.getElementById('sort-filter').value;
-
-    let filtered = libraryItems.slice();
-
-    if (type !== 'all') {
-      filtered = filtered.filter(item => item.type === type);
-    }
-
-    filtered.sort((a, b) => {
-      const valA = (a[sortBy] || '').toString().toLowerCase();
-      const valB = (b[sortBy] || '').toString().toLowerCase();
-      return valA.localeCompare(valB);
-    });
-
-    renderLibrary(filtered);
-  }
-
-  function removeItem(id) {
-    const index = libraryItems.findIndex(item => item.id === id);
-    if (index !== -1) {
-      libraryItems.splice(index, 1);
-      applyFilters();
     }
   }
 
+  async function loadLibrary() {
+    showSkeleton(); 
+    loading.style.display = 'block';
+
+    try {
+      const res = await fetch(`/home/libraries/data?type=${document.getElementById('type-filter').value}&sort=${document.getElementById('sort-filter').value}`);
+      const items = await res.json();
+
+      container.innerHTML = '';
+      items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'library-item';
+        div.innerHTML = `
+          <img src="${item.thumbnail || 'https://via.placeholder.com/120'}" alt="thumb" />
+          <div class="info">
+            <h3><a href="${item.link || '#'}" target="_blank">${item.title || 'Senza titolo'}</a></h3>
+            <p>Autore: ${item.author || 'Sconosciuto'}</p>
+            <p>Tag: ${item.tags ? item.tags.join(', ') : ''}</p>
+          </div>
+          <div class="actions">
+            <button onclick="alert('Apri: ${item.title}')">Apri</button>
+            <button onclick="alert('Download: ${item.title}')">Scarica</button>
+            <button onclick="removeItem(${item.id})">Rimuovi</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+
+      loading.style.display = 'none';
+    } catch(err) {
+      console.error(err);
+      loading.textContent = "Errore nel caricamento dei contenuti";
+    }
+  }
+
+  function applyFilters() { loadLibrary(); }
   document.getElementById('type-filter').addEventListener('change', applyFilters);
   document.getElementById('sort-filter').addEventListener('change', applyFilters);
 
-  // Inizializza
-  applyFilters();
-  loading.style.display = 'none';
+  function removeItem(id) {
+    alert('Rimuovi ID: ' + id);
+  }
+
+  loadLibrary();
 </script>
 
 </body>

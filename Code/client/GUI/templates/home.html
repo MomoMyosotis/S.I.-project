@@ -1,32 +1,51 @@
+<!-- home.html -->
 <!DOCTYPE html>
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <title>homepage</title>
+  <title>{{ title or "App" }}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Stile base -->
   <link rel="stylesheet" href="{{ url_for('static', filename='homepage_style.css') }}">
+
+  <!-- Stile specifico per sezione -->
+  {% if form_type == "profile" %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='profile_style.css') }}">
+  {% elif form_type == "feed" %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='feed_style.css') }}">
+  {% elif form_type == "libraries" %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='libraries_style.css') }}">
+  {% endif %}
 </head>
 <body>
 
-<div class="home-container">
-  {% if form_type == 'libraries' %}
-    {% include 'libraries.html' %}
-  {% elif form_type == 'profile' %}
-    {% include 'profile.html' %}
-  {% elif form_type == 'feed' %}
-    {% include 'feed.html' %}
-  {% endif %}
-</div>
 
+  <!-- Logout -->
+  <form action="{{ url_for('auth.logout') }}" method="POST">
+    <button type="submit" class="logout-btn">Logout</button>
+  </form>
 
-<div class="bottom-nav-box">
-  <a href="{{ url_for('home.homepage', form_type='profile') }}" class="nav-item">
-    <i class="fas fa-user"></i><span>Profile</span>
-  </a>
-  <a href="{{ url_for('home.homepage', form_type='feed') }}" class="nav-item">
-    <i class="fas fa-rss"></i><span>Feed</span>
-  </a>
-  <a href="{{ url_for('home.homepage', form_type='libraries') }}" class="nav-item">
-    <i class="fas fa-book"></i><span>Libraries</span>
-  </a>
-</div>
+  <!-- Contenuto dinamico -->
+  <div class="home-container">
+    {% include content_template %}
+  </div>
+
+  <!-- Barra di navigazione in basso -->
+  <div class="bottom-nav-box">
+    <a href="{{ url_for('home.homepage', form_type='profile') }}" 
+       class="nav-item {% if form_type == 'profile' %}active{% endif %}">
+      <i class="fas fa-user"></i><span>Profile</span>
+    </a>
+    <a href="{{ url_for('home.homepage', form_type='feed') }}" 
+       class="nav-item {% if form_type == 'feed' %}active{% endif %}">
+      <i class="fas fa-rss"></i><span>Feed</span>
+    </a>
+    <a href="{{ url_for('home.homepage', form_type='libraries') }}" 
+       class="nav-item {% if form_type == 'libraries' %}active{% endif %}">
+      <i class="fas fa-book"></i><span>Libraries</span>
+    </a>
+  </div>
+
+</body>
+</html>

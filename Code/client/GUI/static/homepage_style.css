@@ -1,19 +1,32 @@
+/* Body e sfondo */
 body {
-  display: flex;
-  justify-content: center;
-  align-items: center;
   min-height: 100vh;
   background-color: #232028;
   background-image: url('/static/images/logo.jpg');
   background-repeat: no-repeat;
   background-position: center 20%;
   background-size: 50%;
+  background-attachment: fixed; /* sfondo resta fermo */
   margin: 0;
   padding: 0;
   font-family: "Poppins", sans-serif;
 }
 
 
+/* Home container */
+.home-container {
+  padding: 20px;
+  width: 100%;
+  min-height: 100vh; 
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;
+  font-family: "Poppins", sans-serif;
+}
+
+/* Bottom navigation */
 .bottom-nav-box {
   position: fixed;
   bottom: 20px;
@@ -27,7 +40,6 @@ body {
   padding: 15px 20px;
   gap: 20px;
   z-index: 999;
-  font-family: 'Poppins', sans-serif;
   box-shadow: 0 0 20px #00000088;
 }
 
@@ -63,11 +75,7 @@ body {
 }
 
 /* Hover effect */
-.bottom-nav-box:hover .nav-item {
-  opacity: 0.2;
-  transform: scale(0.8);
-}
-
+.bottom-nav-box:hover .nav-item { opacity: 0.2; transform: scale(0.8); }
 .bottom-nav-box .nav-item:hover {
   flex: 2;
   opacity: 1;
@@ -76,10 +84,33 @@ body {
   box-shadow: 0 0 10px #ff2770, 0 0 40px #ff2770;
   z-index: 1000;
 }
-
-/* per illuminare le scritte di bluff */
-.nav-item:hover span{
+.nav-item:hover span {
   color: #45f3ff;
   text-shadow: 0 0 10px #45f3ff, 0 0 40px #45f3ff;
 }
 
+/* Pulsante logout flottante */
+.logout-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  background: #25252b;
+  border: 2px solid #ff2770;
+  border-radius: 20px;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: "Poppins", sans-serif;
+  box-shadow: 0 0 10px #ff2770, inset 0 0 5px #ff2770;
+  transition: 0.3s ease, transform 0.2s ease;
+  z-index: 1000;
+}
+
+.logout-btn:hover {
+  background: #00000055;
+  transform: scale(1.1);
+  box-shadow: 0 0 15px #ff2770, 0 0 40px #ff2770 inset;
+  color: #45f3ff;
+  text-shadow: 0 0 10px #45f3ff, 0 0 30px #45f3ff;
+}

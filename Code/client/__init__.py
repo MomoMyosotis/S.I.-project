@@ -3,7 +3,7 @@
 import os
 from flask import Flask
 from client.services.config import Config
-from client.routes import register_blueprints  # importa la funzione di registrazione route
+from client.routes import register_blueprints
 
 def create_app():
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'GUI'))

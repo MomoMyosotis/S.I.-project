@@ -85,7 +85,7 @@
     }
 
     function editProfile() {
-      window.location.href = "{{ url_for('home.profile') }}";
+      window.location.href = "{{ url_for('home.homepage', form_type='profile') }}";
     }
 
     function confirmBlockUser() {
