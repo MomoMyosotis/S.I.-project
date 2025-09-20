@@ -1,7 +1,6 @@
 # first line
 
-import os
-import shutil
+import os, shutil, platform
 from typing import Optional
 
 # ==========================
@@ -62,7 +61,22 @@ def download_file(file_type: str, file_name: str, target_path: str) -> str:
     src = get_path(file_type, file_name)
     if not os.path.isfile(src):
         return "File does not exist"
-    shutil.copy(src, target_path)
+
+    system_name = platform.system()
+
+    try:
+        if system_name == "Windows":
+            # Usa comando nativo di Windows
+            os.system(f'copy "{src}" "{target_path}"')
+        elif system_name == "Linux":
+            # Usa comando nativo di Linux
+            os.system(f'cp "{src}" "{target_path}"')
+        else:
+            # Fallback cross-platform
+            shutil.copy(src, target_path)
+    except Exception as e:
+        return f"Error copying file: {e}"
+
     return f"File copied to {target_path}"
 
 # ==========================
@@ -74,5 +88,6 @@ def delete_file(file_type: str, file_name: str) -> str:
         return "File does not exist"
     os.remove(path)
     return f"File removed from {path}"
+
 
 # last line

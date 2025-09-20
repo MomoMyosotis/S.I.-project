@@ -1,6 +1,6 @@
 import time, json, traceback, random
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from services.redirect import dispatch_command
+from server.services.redirect import dispatch_command
 
 MAX_USERS = 10
 THREADS_PER_USER = 20
@@ -136,8 +136,8 @@ if __name__ == "__main__":
     tokens = []
     for i in range(MAX_USERS):
         email, uname = unique_user(f"user{i}")
-        run_command(("register_user", [email, uname, "pass1234", "2000-01-01"]))
-        r_login = run_command(("login_user", [uname, "pass1234"]))
+        run_command(("register", [email, uname, "pass1234", "2000-01-01"]))
+        r_login = run_command(("login", [uname, "pass1234"]))
         if r_login["token"]:
             tokens.append(r_login["token"])
             users.append(r_login["user_obj"])

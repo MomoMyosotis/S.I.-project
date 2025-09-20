@@ -1,8 +1,8 @@
 # first line
 
 from typing import Optional, Dict, Any, List
-from objects.users.root import Root
-from db.db_crud import (
+from server.objects.users.root import Root
+from server.db.db_crud import (
     create_note_db,
     fetch_note_db,
     update_note_db,

@@ -1,6 +1,6 @@
 # first line
 
-from db import connect
+from server.db import connect
 from tabulate import tabulate
 
 def close(cur=None, cnt=None):
@@ -15,13 +15,13 @@ def close(cur=None, cnt=None):
         except Exception as e:
             print(f"[WARN] closing connection failed: {e}")
 
-
 # print table contents
 def tprint(cur, tname):
     try:
         cur.execute(f"SELECT * FROM {tname};")
         rows = cur.fetchall()
         if rows:
+            # headers = [desc[0] for desc in cur.description] -> se vuoi i nomi colonne
             print(tabulate(rows, headers=[], tablefmt="psql"))
             return True
         else:
@@ -34,12 +34,8 @@ def tprint(cur, tname):
 # check if the db has required tables and data
 def check_db(cur, required_tables):
     try:
-        # ottieni l’elenco delle tabelle
-        cur.execute("""
-            SELECT table_name
-            FROM information_schema.tables
-            WHERE table_schema = 'public';
-        """)
+        # elenco delle tabelle in SQLite
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = {row[0] for row in cur.fetchall()}
 
         # controlla che tutte le tabelle richieste ci siano
@@ -68,7 +64,11 @@ def flow():
         return False
 
     cur = cnt.cursor()
-    required_tables = ["users", "songs", "documents"]
+    required_tables = ["users",
+                        "media",
+                        "documents",
+                        "comments",
+                        "notes"]
 
     result = check_db(cur, required_tables)
 

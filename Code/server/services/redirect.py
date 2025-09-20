@@ -1,9 +1,9 @@
 # first line
 
-import json, base64, os
+import json, base64
 from typing import Optional, Any, Tuple
-from services import user_services, media_services, interventions_services
-from utils.storage_manager import (save_file,
+from server.services import user_services, media_services, interventions_services
+from server.utils.storage_manager import (save_file,
                                     update_file,
                                     fetch_file,
                                     download_file,
@@ -48,8 +48,8 @@ def dispatch_delete_file(user_obj, file_type, file_name):
 # =====================
 COMMAND_MAP = {
     # USER
-    "login_user": user_services.login_user,
-    "register_user": user_services.register_user,
+    "login": user_services.login_user,
+    "register": user_services.register_user,
     "recover": user_services.recover,
     "assistance": user_services.assistance,
     "get_profile": user_services.get_profile,
@@ -71,6 +71,7 @@ COMMAND_MAP = {
     "get_video": media_services.get_video_services,
     "update_video": media_services.update_video_services,
     "delete_video": media_services.delete_video_services,
+    "get_feed": media_services.get_feed_services,
     # INTERVENTIONS
     "create_comment" : interventions_services.create_comment,
     "fetch_comment" : interventions_services.get_comments,
@@ -96,38 +97,37 @@ COMMAND_MAP = {
 }
 
 def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple[str, Optional[Any], Optional[str], str]:
-
     print(f"[DEBUG][dispatch_command] START - command={command}, args={args}, user_obj={user_obj}")
+    command = command.lower()
 
-    # Verifica se l'utente è loggato, tranne per i comandi speciali (login, register, recover, assistance)
-    if user_obj is None and command not in ["login_user", "register_user", "recover", "assistance"]:
-        print(f"[DEBUG][dispatch_command] ERROR - User is not logged in, access denied for command {command}")
-        return json.dumps({"error_msg": "User is not logged in. Please log in to proceed."}), None, None, "ERROR"
+    if user_obj is None and command not in ["login", "register", "recover", "assistance"]:
+        return json.dumps({"error_msg": "User is not logged in. Please log in to proceed.", "status": "error"}), None, None, "ERROR"
 
     func = COMMAND_MAP.get(command)
     if not func:
-        print(f"[DEBUG][dispatch_command] ERROR - Unknown command {command}")
-        return json.dumps({"error_msg": f"Unknown command {command}"}), None, None, "ERROR"
+        return json.dumps({"error_msg": f"Unknown command {command}", "status": "error"}), None, None, "ERROR"
 
     try:
-        # LOGIN/REGISTER rimangono speciali
-        if command in ["login_user", "register_user"]:
-            result = func(args)
+        if command in ["login", "register", "recover", "assistance"]:
+            result = func(*args)
         else:
             result = func(user_obj, *args)
 
         new_token = None
-        if command in ["login_user", "register_user"] and isinstance(result, dict):
+        if command in ["login", "register"] and isinstance(result, dict):
             if "token" in result:
                 new_token = result["token"]
                 user_obj = result.get("user_obj")
 
         serialized = json.dumps(result, default=default_encoder)
-        return serialized, user_obj, new_token, "OK"
+
+        status = result.get("status", "OK") if isinstance(result, dict) else "OK"
+
+        return serialized, user_obj, new_token, status
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return json.dumps({"error_msg": str(e)}), None, None, "ERROR"
+        return json.dumps({"error_msg": str(e), "status": "error"}), None, None, "ERROR"
 
 # last line

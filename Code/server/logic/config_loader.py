@@ -2,7 +2,7 @@
 
 import json, os
 
-FILE = 'services/cd.json'
+FILE = 'server/services/cd.json'
 
 # carica e valida cd.json
 def load_config(file_path=FILE):

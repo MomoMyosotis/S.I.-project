@@ -1,9 +1,10 @@
 import base64
-from services.redirect import dispatch_command
-import os
+from server.services.redirect import dispatch_command
+import os, platform
 
 # Dummy user per il test
 dummy_user = {"id": 1, "username": "tester"}
+tmp_dir = "storage"
 
 # Lista di file da testare: (tipo, nome, contenuto bytes)
 test_files = [
@@ -49,11 +50,25 @@ def test_storage_dispatcher(user_obj):
         assert fetched_bytes == new_content, f"Updated content mismatch for {fname}"
 
     # Download file (copia in folder temporanea)
-    tmp_dir = "tmp_download"
     os.makedirs(tmp_dir, exist_ok=True)
+
+    # Rileva sistema operativo
+    system_name = platform.system()  # "Windows", "Linux", "Darwin" (MacOS)
+
     for ftype, fname, _ in test_files:
         target_path = os.path.join(tmp_dir, fname)
-        result, _, _, status = dispatch_command("download_file", [ftype, fname, target_path], user_obj)
+
+        if system_name == "Windows":
+            # comando/gestione per Windows
+            result, _, _, status = dispatch_command("download_file", [ftype, fname, target_path], user_obj)
+
+        elif system_name == "Linux":
+            # comando/gestione per Linux (se diverso, lo cambi qui)
+            result, _, _, status = dispatch_command("download_file", [ftype, fname, target_path], user_obj)
+
+        else:
+            raise OSError(f"Sistema operativo non supportato: {system_name}")
+
         print(result, status)
         assert os.path.isfile(target_path), f"Download failed for {fname}"
 

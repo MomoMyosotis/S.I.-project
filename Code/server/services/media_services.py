@@ -1,11 +1,12 @@
 # first line
 
+import random
 from typing import Type, Optional, Dict, Any, List
-from objects.media.song import Song
-from objects.media.document import Document
-from objects.media.video import Video
-from objects.media.media import Media
-from utils.media_utils import fetch_dict_entry, create_dict_entry
+from server.objects.media.song import Song
+from server.objects.media.document import Document
+from server.objects.media.video import Video
+from server.objects.media.media import Media
+from server.utils.media_utils import fetch_dict_entry, create_dict_entry
 
 # =========================
 # GENERIC CREATION (optional, CLI/debug)
@@ -194,5 +195,44 @@ def prepare_performers(performers: list) -> list:
         else:
             raise ValueError(f"Tipo performer non valido: {p['type']}")
     return result
+
+def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset: int = 0, limit: int = 10):
+    """
+    Recupera lista di media (Song, Video, Document) con filtri e paginazione.
+    """
+    # TODO: sostituire con query reali al DB
+    print("[DEBUG] feed request recived")
+
+    all_media = []
+    all_media.extend(Song.fetch_all())
+    all_media.extend(Video.fetch_all())
+    all_media.extend(Document.fetch_all())
+    random.shuffle(all_media)
+
+    def match(m):
+        if not search:
+            return True
+        val = search.lower()
+        d = m.to_dict()
+        if filter_by == "all":
+            return any(val in str(v).lower() for v in d.values())
+        return val in str(d.get(filter_by, "")).lower()
+
+    filtered = [m for m in all_media if match(m)]
+    page = filtered[offset:offset + limit]
+
+    results = []
+    for m in page:
+        d = m.to_dict()
+        results.append({
+            "id": d.get("id"),
+            "title": d.get("title"),
+            "username": d.get("user_id"),
+            "thumbnail": d.get("thumbnail", "https://via.placeholder.com/100"),
+            "tags": d.get("genres") or d.get("keywords") or [],
+            "type": d.get("type"),
+        })
+
+    return {"status": "OK", "results": results}
 
 # last line

@@ -1,7 +1,9 @@
 # first line
 
 from typing import Dict, Any, List, Optional
-from db.db_crud import (
+from server.objects.users.root import Root
+from server.objects.media.media import Media
+from server.db.db_crud import (
     create_relation,
     delete_relation,
     fetch_relations,
@@ -11,8 +13,6 @@ from db.db_crud import (
     db_get_following,
     db_get_followers,
 )
-from objects.users.root import Root
-from objects.media.media import Media
 
 # =====================
 # FOLLOWERS / FOLLOWED

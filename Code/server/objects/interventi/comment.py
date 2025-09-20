@@ -1,9 +1,9 @@
 # first line
 
 from typing import Optional, Dict, Any, List
-from objects.users.root import Root
-from logs.logger import log_event
-from db.db_crud import (
+from server.objects.users.root import Root
+from server.logs.logger import log_event
+from server.db.db_crud import (
     create_comment_db,
     fetch_comments_by_media_db,
     fetch_comment_replies_db,

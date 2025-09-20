@@ -3,7 +3,6 @@
 import queue, threading
 
 # soon with its own GUI!
-
 approval_queue = queue.Queue()
 accepted_list = ['y', 'ok', 'k', 'accept', 'yes']
 denied_list   = ['n', 'no', 'deny']
@@ -33,24 +32,33 @@ def manual_cmd(state, mode_ref):
     while True:
         try:
             cmd = input("\n>> ").strip().lower()
+            if cmd in ['stop', 'exit', 'quit', 'c']:
+                if state: stop_server(state)
+                break
+            elif cmd in menu_list:
+                _print_menu()
+                return
+            elif cmd in accepted_list + denied_list:
+                _process_approval(cmd)
+                return
+            elif cmd == 'switch':
+                mode_ref[0] = 'manual' if mode_ref[0] == 'auto' else 'auto'
+                print(f"Mode switched to: [{mode_ref[0]}]", flush=True)
+                return
+            elif cmd in ['mode', 'status']:
+                print(f"Currently on [{mode_ref[0]}] mode.\n", flush=True)
+                return
+            else:
+                print("Invalid input. Type 'menu' to see options.\n", flush=True)
+                return
         except EOFError:
-            stop_server(state)
+            print("EOF detected, stopping console thread.", flush=True)
+            if state: stop_server(state)
             break
-
-        if cmd in ['stop', 'exit', 'quit', 'c']:
-            stop_server(state)
+        except Exception as e:
+            print(f"Unexpected error: {e}", flush=True)
+            if state: stop_server(state)
             break
-        elif cmd in menu_list:
-            _print_menu()
-        elif cmd in accepted_list + denied_list:
-            _process_approval(cmd)
-        elif cmd == 'switch':
-            mode_ref[0] = 'manual' if mode_ref[0] == 'auto' else 'auto'
-            print(f"Mode switched to: [{mode_ref[0]}]", flush=True)
-        elif cmd in ['mode', 'status']:
-            print(f"Currently on [{mode_ref[0]}] mode.\n", flush=True)
-        else:
-            print("Invalid input. Type 'menu' to see options.\n", flush=True)
 
 def _process_approval(cmd):
     try:
@@ -75,14 +83,17 @@ def _print_menu():
 
 def stop_server(state):
     print("Server closing...\n", flush=True)
-    if state["socket"]:
+    if not state:
+        print("State not initialized, nothing to close.", flush=True)
+        return
+    if state.get("socket"):
         try: state["socket"].close()
         except: pass
-    for conn in state["connections"]:
+    for conn in state.get("connections", []):
         try: conn.close()
         except: pass
     state["socket"] = None
-    state["connections"].clear()
+    state["connections"] = []
     print("All connections closed.\n", flush=True)
 
 # last line

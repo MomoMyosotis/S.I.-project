@@ -3,6 +3,7 @@
 from typing import Dict, Any, List, Optional
 from . import connection
 import hashlib, time
+import psycopg2.extras
 
 # =====================
 # DEBUG
@@ -13,7 +14,6 @@ def debug(msg: str):
 # =====================
 # GENERIC CRUD
 # =====================
-import psycopg2.extras
 
 def fetch_one(query: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
     conn = connection.connect()

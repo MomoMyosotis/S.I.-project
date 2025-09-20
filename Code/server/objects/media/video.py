@@ -2,7 +2,7 @@
 
 from typing import Optional, Dict, Any
 from .media import Media
-from db.db_crud import fetch_relations
+from server.db.db_crud import fetch_relations
 
 class Video(Media):
     def __init__(self, **kwargs):

@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import json
-from db.db_crud import create_media_db, fetch_media_db, update_media_db, delete_media_db
+from server.db.db_crud import create_media_db, fetch_media_db, update_media_db, delete_media_db
 
 class Media(ABC):
     def __init__(

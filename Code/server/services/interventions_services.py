@@ -2,12 +2,12 @@
 from decimal import Decimal
 from datetime import date
 from typing import List, Optional, Dict, Any
-from objects.interventi.comment import Comment
-from objects.interventi.notes import Note
-from objects.users.root import Root
-from objects.media.media import Media
-from logs.logger import log_event
-from utils.media_utils import (create_dict_entry,
+from server.objects.interventi.comment import Comment
+from server.objects.interventi.notes import Note
+from server.objects.users.root import Root
+from server.objects.media.media import Media
+from server.logs.logger import log_event
+from server.utils.media_utils import (create_dict_entry,
                                 fetch_all_dict_entries,
                                 fetch_relations,
                                 delete_dict_entry

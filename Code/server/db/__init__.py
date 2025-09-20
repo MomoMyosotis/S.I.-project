@@ -7,7 +7,7 @@ def connect():
     # Connessione al server di PostgreSQL
 
         # Open the credentials file and load the JSON data
-    with open("db/credentials.json", "r") as nooty:
+    with open("server/db/credentials.json", "r") as nooty:
         pruty = json.load(nooty)
     try:
         # ** -> scompone il dict in parametri

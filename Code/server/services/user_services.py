@@ -3,10 +3,9 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import secrets
-from objects.users.root import UserLevel
-from objects.users.root import Root
-from db.db_crud import verify_password
-from utils import user_utils as utils
+from server.objects.users.root import Root, UserLevel
+from server.db.db_crud import verify_password
+from server.utils import user_utils as utils
 
 # =====================
 # COSTRUTTORE DI OGGETTI ROOT
@@ -40,41 +39,54 @@ def is_logged(user_obj: Optional[Any]) -> bool:
     user_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
     return user_id is not None
 
-def login_user(args: List[str], config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def login_user(login_field: str, password: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
-        login_field, password = args[0], args[1]
+        # recupera l'utente
         if "@" in login_field:
             user_data = Root.get_user(mail=login_field)
         else:
             user_data = Root.get_user(username=login_field)
+
         if not user_data:
-            return {"status": "error", "user_obj": None, "error_msg": "404"}
+            print(f"[DEBUG][login_user] Login fallito: utente '{login_field}' non trovato")
+            return {"status": "error", "user_obj": None, "error_msg": "User not found"}
 
         user_obj = _build_user_obj(user_data)
-        user_dict = user_obj.to_dict_public()  # converti in dict per JSON
+        user_dict = user_obj.to_dict_public()
 
         # verifica password
         if not verify_password(password, user_obj.password_hash):
+            print(f"[DEBUG][login_user] Password errata per utente '{login_field}'")
             return {"status": "wrong_password", "user_obj": None, "error_msg": "WRONG_PASSWORD"}
 
+        # controllo blacklist
         if config and user_obj.mail in config.get("BLACKLIST", []):
+            print(f"[DEBUG][login_user] Utente '{login_field}' in blacklist")
             return {"status": "blacklisted", "user_obj": None, "error_msg": "BLACKLISTED"}
 
+        # login OK
         token = secrets.token_hex(16)
         return {
             "status": "accepted",
-            "user_obj": user_dict,   # restituisci il dict, non l'oggetto
+            "user_obj": user_dict,
             "token": token,
             "error_msg": None
         }
+
     except Exception as e:
+        print(f"[DEBUG][login_user] Errore generico: {e}")
         return {"status": "error", "user_obj": None, "error_msg": str(e)}
 
-def register_user(args: List[Any]) -> Dict[str, Any]:
+def register_user(mail: str, username: str, password: str, birthday_str: str) -> Dict[str, Any]:
     try:
-        mail, username, password, birthday = args[0], args[1], args[2], args[3]
-        if not mail or not username or not password or not birthday:
+        if not mail or not username or not password or not birthday_str:
             return {"status": "ERROR", "error_msg": "Missing required fields"}
+
+        # parsing della data
+        try:
+            birthday = datetime.fromisoformat(birthday_str).date()
+        except ValueError:
+            return {"status": "ERROR", "error_msg": "Invalid birthday format, expected YYYY-MM-DD"}
 
         # controllo unicità
         if Root.get_user(username=username):
@@ -92,7 +104,6 @@ def register_user(args: List[Any]) -> Dict[str, Any]:
         user_data = Root.get_user(user_id=user_id)
         user_obj = _build_user_obj(user_data)
 
-        # genera token
         token = secrets.token_hex(16)
 
         return {
@@ -101,6 +112,7 @@ def register_user(args: List[Any]) -> Dict[str, Any]:
             "user_obj": user_obj.to_dict_public(),
             "token": token
         }
+
     except Exception as e:
         return {"status": "ERROR", "error_msg": str(e)}
 
@@ -167,8 +179,10 @@ def recover(email: str) -> Dict[str, Any]:
     # placeholder
     return {"status": "ok", "error_msg": None}
 
-def assistance(args: List[str]) -> Dict[str, Any]:
-    # placeholder
+def assistance(username: str, message: str) -> Dict[str, Any]:
+    # esempio placeholder
+    print(f"[DEBUG] Assistance request from {username}: {message}")
     return {"status": "ok", "error_msg": None}
+
 
 # last line
