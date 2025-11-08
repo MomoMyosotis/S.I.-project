@@ -1,0 +1,19 @@
+<html>
+    <head>
+        <script>
+            fetch("http://localhost:5000/home/test2")
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById("user").textContent=`${data.name} ${data.surname}`;
+            })
+        </script>
+    </head>
+    <body>
+    ciao
+    {{s}}
+</br>
+{{p}} {{p}}
+<div id="user" class="testo_sottolineato">
+</div>
+</body>
+</html>

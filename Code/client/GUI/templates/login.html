@@ -4,7 +4,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='login_style.css') }}">
 
     <form id="loginForm" class="loginBx" method="post" action="{{ url_for('.login') }}">
-      {{ form.hidden_tag() }}  <!-- 👈 CSRF token e campi nascosti -->
+      {{ form.hidden_tag() }}  <!-- CSRF token e campi nascosti -->
 
       <h2>
         <i class="fa-solid fa-right-to-bracket"></i>

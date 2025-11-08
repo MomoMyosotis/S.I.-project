@@ -65,6 +65,28 @@ def execute(query: str, params: tuple = ()) -> bool:
     finally:
         connection.close(None, conn)
 
+def fetch_all_media_db(media_type=None, search=None, filter_by=None, offset=0, limit=10):
+    query = "SELECT * FROM media"
+    params = []
+    conditions = []
+
+    if media_type:
+        conditions.append("type = %s")
+        params.append(media_type)
+
+    if search:
+        # qui puoi anche rendere dinamico il filtro: titolo, descrizione, autore ecc.
+        conditions.append("title ILIKE %s")
+        params.append(f"%{search}%")
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
+    params.extend([limit, offset])
+
+    return fetch_all(query, tuple(params))
+
 # =====================
 # PASSWORD
 # =====================

@@ -147,6 +147,45 @@ class Media(ABC):
         print(f"[DEBUG][Media.fetch] Built object={obj}")
         return obj
 
+    @classmethod
+    def fetch_all(cls, search: Optional[str] = None, filter_by: Optional[str] = None,
+                offset: int = 0, limit: int = 10) -> List["Media"]:
+        """
+        Recupera tutti i media dal database appartenenti a questa sottoclasse
+        (Song, Video, Document), con eventuale filtro di ricerca o tipo.
+        """
+        print(f"[DEBUG][Media.fetch_all] Called cls={cls.__name__}, search={search}, filter_by={filter_by}")
+
+        try:
+            from server.db.db_crud import fetch_all_media_db
+        except ImportError as e:
+            print (f"[ERROR][Media.Fetch_All] cannot import fetch_all from db_crud: {e}")
+            return[]
+
+        media_type = None
+        try:
+            media_type = cls().media_type()
+        except Exception as e:
+            media_type = getattr(cls, "media_type", None)
+            print (f"[DEBUG][Media.Fetch_all] media_type = {media_type}")
+
+        rows = fetch_all_media_db(media_type=media_type, search=search, filter_by=filter_by, offset=offset, limit=limit
+    )
+        print(f"[DEBUG][Media.Fetch_all] DB returned {len(rows) if rows else 0} rows")
+
+        result = []
+        if not rows:
+            return result
+
+        for r in rows:
+            try:
+                obj = cls.from_dict(r)
+                result.append(obj)
+            except Exception as e:
+                print(f"[ERROR][Media.fetch_all] failed to build obj from rows: {e}")
+        print(f"[DEBUG][Media.fetch_all] Returning {len(result)} obj")
+        return result
+
     # =====================
     # RELAZIONI M:N
     # =====================

@@ -5,182 +5,7 @@
   <title>Feed</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="{{ url_for('static', filename='feed_style.css') }}">
-  <style>
 
-
-    /* HEADER ANIMATO */
-    @property --a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-    @keyframes rotating { 0% { --a:0deg; } 100% { --a:360deg; } }
-
-    header {
-      position: sticky;
-      top: 0;
-      width: 100%;
-      max-width: 480px;
-      margin: 10px auto;
-      padding: 20px 0;
-      text-align: center;
-      font-size: 1.8em;
-      font-weight: 700;
-      color: #fff;
-      border-radius: 20px;
-      background: repeating-conic-gradient(from var(--a), #ff2770 0%, #ff2770 5%, transparent 5%, transparent 40%, #ff2770 50%);
-      animation: rotating 4s linear infinite;
-      filter: drop-shadow(0 15px 50px #000);
-      text-shadow: 0 0 10px #ff2770;
-      box-shadow: 0 2px 5px rgba(255,39,112,0.5);
-      letter-spacing: 0.05em;
-      z-index: 1;
-      user-select: none;
-    }
-
-    /* SEARCH BAR */
-    .search-bar {
-      display: flex;
-      gap: 12px;
-      padding: 15px 20px;
-      background-color: #2d2d39;
-      border-radius: 15px;
-      margin: 10px auto;
-      max-width: 480px;
-      box-shadow: inset 0 0 10px #ff2770cc;
-      align-items: center;
-    }
-    .search-bar input, .search-bar select, .search-bar button {
-      font-size: 1em;
-      border: none;
-      border-radius: 12px;
-      outline: none;
-      transition: box-shadow 0.3s ease, background-color 0.3s ease;
-    }
-    .search-bar input[type="text"] {
-      flex: 1;
-      padding: 10px 15px;
-      background-color: #3a374a;
-      color: #eee;
-    }
-    .search-bar input[type="text"]:focus { box-shadow: 0 0 10px #ff2770; }
-    .search-bar select {
-      padding: 10px;
-      background-color: #3a374a;
-      color: #eee;
-      cursor: pointer;
-    }
-    .search-bar select:focus { box-shadow: 0 0 10px #ff2770; }
-    .search-bar button {
-      padding: 10px 20px;
-      background-color: #ff2770;
-      color: #fff;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 0 15px #ff2770;
-    }
-    .search-bar button:hover {
-      background-color: #e01f65;
-      box-shadow: 0 0 25px #ff2770;
-    }
-
-    /* FEED */
-    .feed {
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-      padding: 0 20px 100px;
-      max-width: 480px;
-      margin: 0 auto;
-    }
-    .media-item {
-      display: flex;
-      background-color: #2d2d39;
-      border-radius: 15px;
-      box-shadow: 0 0 15px #ff2770aa;
-      overflow: hidden;
-      cursor: pointer;
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    .media-item:hover {
-      transform: scale(1.05);
-      box-shadow: 0 0 25px #ff2770ee;
-    }
-    .media-item img {
-      width: 120px;
-      height: 120px;
-      object-fit: cover;
-      border-radius: 15px 0 0 15px;
-      flex-shrink: 0;
-    }
-    .media-info {
-      padding: 15px 20px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      color: #eee;
-      flex: 1;
-    }
-    .media-info h3 { margin: 0 0 8px; font-weight: 700; font-size: 1.3em; }
-    .media-info h3 a { color: #ff2770; text-decoration: none; }
-    .media-info h3 a:hover { color: #45f3ff; text-shadow: 0 0 8px #45f3ff; }
-    .media-info p { margin: 0; font-size: 0.95em; color: #bbb; }
-
-    .loading {
-      text-align: center;
-      padding: 15px;
-      font-size: 1.1em;
-      color: #ff2770;
-      text-shadow: 0 0 10px #ff2770;
-    }
-
-    /* SKELETON SHIMMER */
-    .skeleton {
-      background: linear-gradient(90deg, #2d2d39 25%, #3a3a4a 50%, #2d2d39 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.5s infinite;
-      border-radius: 8px;
-    }
-    @keyframes shimmer {
-      0% { background-position: -200% 0; }
-      100% { background-position: 200% 0; }
-    }
-
-    /* BOTTOM NAV CENTRATO */
-    .bottom-nav-box {
-      position: fixed;
-      bottom: 15px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      justify-content: space-around;
-      background: rgba(45,45,57,0.85);
-      backdrop-filter: blur(10px);
-      padding: 10px 30px;
-      border-radius: 25px;
-      box-shadow: 0 4px 20px rgba(255,39,112,0.4);
-      border: 1px solid rgba(255,39,112,0.3);
-      z-index: 100;
-      gap: 30px;
-      animation: glow 2.5s ease-in-out infinite alternate;
-    }
-    .nav-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-decoration: none;
-      color: #eee;
-      font-size: 12px;
-      transition: all 0.3s ease;
-    }
-    .nav-item i { font-size: 20px; margin-bottom: 4px; }
-    /* Hover bianco/azzurro */
-    .nav-item:hover i, .nav-item:hover span {
-      color: #45f3ff;
-      text-shadow: 0 0 10px #45f3ff, 0 0 20px #45f3ffaa;
-    }
-    @keyframes glow {
-      0% { box-shadow: 0 4px 20px rgba(255,39,112,0.4), 0 0 10px rgba(255,39,112,0.2); }
-      50% { box-shadow: 0 4px 25px rgba(255,39,112,0.6), 0 0 15px rgba(255,39,112,0.3); }
-      100% { box-shadow: 0 4px 20px rgba(255,39,112,0.4), 0 0 10px rgba(255,39,112,0.2); }
-    }
-  </style>
 </head>
 <body>
 
@@ -213,82 +38,76 @@
   </a>
 </div>
 
-<script>
-  const allMedia = Array.from({ length: 100 }, (_, i) => ({
-    id: i,
-    title: `Brano ${i + 1}`,
-    username: `user${(i % 5) + 1}`,
-    thumbnail: `https://via.placeholder.com/120x120?text=IMG+${i + 1}`,
-    link: `#file${i + 1}`,
-    tags: ['pop', 'rock', 'jazz'][i % 3]
-  }));
 
+<script>
   let currentIndex = 0;
   const batchSize = 10;
   let currentFilter = 'all';
   let currentSearch = '';
+  let isLoading = false;
 
   const feedEl = document.getElementById('feed');
   const loadingEl = document.getElementById('loading');
 
-  function showSkeleton(count=5){
-    feedEl.innerHTML="";
-    for(let i=0;i<count;i++){
-      const div=document.createElement('div');
-      div.className='media-item';
-      div.innerHTML=`
-        <div class="skeleton" style="width:120px;height:120px;"></div>
-        <div style="flex:1; padding:15px 0;">
-          <div class="skeleton" style="width:60%; height:20px; margin-bottom:8px;"></div>
-          <div class="skeleton" style="width:40%; height:16px;"></div>
-        </div>
-      `;
-      feedEl.appendChild(div);
+  async function loadMore() {
+    if (isLoading) return;
+    isLoading = true;
+    loadingEl.textContent = "Caricamento...";
+    
+    try {
+      const res = await fetch(`/feed/data?offset=${currentIndex}&limit=${batchSize}&filter=${currentFilter}&search=${encodeURIComponent(currentSearch)}`);
+      const data = await res.json();
+
+      if (res.ok) {
+        if (currentIndex === 0) feedEl.innerHTML = '';
+        if (data.length === 0) {
+          loadingEl.textContent = "Fine dei risultati";
+          return;
+        }
+
+        data.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'media-item';
+          div.innerHTML = `
+            <img src="${item.thumbnail || 'https://via.placeholder.com/120x120'}" alt="img">
+            <div class="media-info">
+              <h3><a href="${item.link || '#'}" target="_blank">${item.title}</a></h3>
+              <p>Autore: ${item.username || 'Sconosciuto'}</p>
+              <p>Tag: ${item.tags?.join(', ') || '-'}</p>
+            </div>
+          `;
+          feedEl.appendChild(div);
+        });
+
+        currentIndex += data.length;
+        loadingEl.textContent = "";
+      } else {
+        loadingEl.textContent = "Errore nel caricamento";
+      }
+    } catch (err) {
+      console.error(err);
+      loadingEl.textContent = "Errore di rete";
+    } finally {
+      isLoading = false;
     }
   }
 
-  function loadMore(){
-    showSkeleton(batchSize);
-    const filtered=allMedia.filter(item=>{
-      if(!currentSearch) return true;
-      const value=currentSearch.toLowerCase();
-      if(currentFilter==='all') return Object.values(item).some(v=>String(v).toLowerCase().includes(value));
-      return String(item[currentFilter]).toLowerCase().includes(value);
-    });
-    const nextItems=filtered.slice(currentIndex,currentIndex+batchSize);
-    if(currentIndex===0) feedEl.innerHTML='';
-    nextItems.forEach(item=>{
-      const div=document.createElement('div');
-      div.className='media-item';
-      div.innerHTML=`
-        <img src="${item.thumbnail}" alt="img">
-        <div class="media-info">
-          <h3><a href="${item.link}" target="_blank">${item.title}</a></h3>
-          <p>Autore: ${item.username}</p>
-        </div>
-      `;
-      feedEl.appendChild(div);
-    });
-    currentIndex+=nextItems.length;
-    loadingEl.textContent = currentIndex>=filtered.length?"Fine dei risultati":"";
+  function handleScroll() {
+    if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
+      loadMore();
+    }
   }
 
-  function handleScroll(){
-    if(window.innerHeight+window.scrollY>=document.body.offsetHeight-100) loadMore();
-  }
-
-  function applySearch(){
-    currentIndex=0;
-    feedEl.innerHTML='';
-    currentSearch=document.getElementById('search').value;
-    currentFilter=document.getElementById('filter').value;
-
-    loadingEl.textContent="Caricamento...";
+  function applySearch() {
+    currentIndex = 0;
+    feedEl.innerHTML = '';
+    currentSearch = document.getElementById('search').value;
+    currentFilter = document.getElementById('filter').value;
     loadMore();
   }
 
-  loadMore();
-  window.addEventListener('scroll',handleScroll);
+  window.addEventListener('scroll', handleScroll);
+  window.addEventListener('DOMContentLoaded', () => loadMore());
 </script>
 
 </body>

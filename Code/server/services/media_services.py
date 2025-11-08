@@ -198,15 +198,15 @@ def prepare_performers(performers: list) -> list:
 
 def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset: int = 0, limit: int = 10):
     """
-    Recupera lista di media (Song, Video, Document) con filtri e paginazione.
+    Recupera list2a di media (Song, Video, Document) con filtri e paginazione.
     """
     # TODO: sostituire con query reali al DB
     print("[DEBUG] feed request recived")
 
     all_media = []
-    all_media.extend(Song.fetch_all())
-    all_media.extend(Video.fetch_all())
-    all_media.extend(Document.fetch_all())
+    all_media.extend(Song.fetch_all(search=search))
+    all_media.extend(Video.fetch_all(search=search))
+    all_media.extend(Document.fetch_all(search=search))
     random.shuffle(all_media)
 
     def match(m):

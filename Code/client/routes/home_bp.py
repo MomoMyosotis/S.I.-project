@@ -7,6 +7,40 @@ from client.services.feed_service import FeedService
 # from client.services.profile_service import ProfileService
 
 home_bp = Blueprint("home", __name__, url_prefix="/home")
+"""#_______________________________________-
+class User:
+    def __init__(self, name: str, surname: str):
+        self.name = name
+        self.surname = surname
+
+    def to_dict(self):
+        return {
+            "name" : self.name,
+            "surname" : self.surname
+        }
+
+@home_bp.route("/test2", methods=["GET"])
+def test2():
+    # creare un obj User -> chiamarlo come dizionario(to_dict) e caricarlo come stringa(jsonify)
+    form_type_prova = request.args.get("form_type", "test")
+    user = User("Marco", "Polo")
+    return jsonify(user.to_dict())
+
+#____________________________________
+# quando vado su test viene chiamato il methods get della
+@home_bp.route("/test", methods=["GET"])
+def test():
+    form_type_prova = request.args.get("form_type", "test")
+    s = "pippo"
+    p = "pluto"
+    return render_template(
+        "test.html",
+        form_type_prova=form_type_prova,
+        s=s,
+        p=p,
+        title="Prova - " + form_type_prova.capitalize()
+    )"""
+
 
 # =====================
 # HOME (landing page)
