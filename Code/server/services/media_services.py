@@ -197,42 +197,36 @@ def prepare_performers(performers: list) -> list:
     return result
 
 def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset: int = 0, limit: int = 10):
-    """
-    Recupera list2a di media (Song, Video, Document) con filtri e paginazione.
-    """
-    # TODO: sostituire con query reali al DB
-    print("[DEBUG] feed request recived")
+    print(f"[DEBUG] feed request received offset={offset}, limit={limit}, search='{search}', filter_by='{filter_by}'")
 
-    all_media = []
-    all_media.extend(Song.fetch_all(search=search))
-    all_media.extend(Video.fetch_all(search=search))
-    all_media.extend(Document.fetch_all(search=search))
-    random.shuffle(all_media)
+    # Funzione helper per fetchare e filtrare direttamente nel DB
+    def fetch_media(cls):
+        return cls.fetch_all(search=search, filter_by=filter_by, offset=offset, limit=limit)
 
-    def match(m):
-        if not search:
-            return True
-        val = search.lower()
-        d = m.to_dict()
-        if filter_by == "all":
-            return any(val in str(v).lower() for v in d.values())
-        return val in str(d.get(filter_by, "")).lower()
+    # Prendi media separatamente dal DB
+    songs = fetch_media(Song)
+    videos = fetch_media(Video)
+    documents = fetch_media(Document)
 
-    filtered = [m for m in all_media if match(m)]
-    page = filtered[offset:offset + limit]
+    # Combina risultati
+    all_media = songs + videos + documents
+
+    from server.db.db_crud import get_user_username_by_id as duck
 
     results = []
-    for m in page:
+    for m in all_media:
         d = m.to_dict()
+        user_id = d.get("user_id")
+        username = duck(user_id)
         results.append({
             "id": d.get("id"),
             "title": d.get("title"),
-            "username": d.get("user_id"),
+            "username": username or "Unknown",
             "thumbnail": d.get("thumbnail", "https://via.placeholder.com/100"),
             "tags": d.get("genres") or d.get("keywords") or [],
             "type": d.get("type"),
         })
 
-    return {"status": "OK", "results": results}
+    return {"status": "OK", "results": results, "count": len(results)}
 
 # last line

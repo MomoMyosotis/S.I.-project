@@ -2,24 +2,17 @@
 
 import time
 from tabulate import tabulate
-from db.pita.pita_make import connect_to_db as connect
-from db.pita.pita_tablefill import (
-    user_levels_tablefill as ul,
-    permissions_tablefill as pm,
-    role_permissions_tablefill as rp,
-    user_tablefill as ut,
-    # instruments_tablefill as it,
-    # performers_tablefill as pt,
-    # genres_tablefill as gt,
-    # authors_tablefill as at,
-    songs_tablefill as st,
-    documents_tablefill as dt,
-    videos_tablefill as vt,
-    # song_performances_tablefill as spt
+from server.db.pita.pita_make import connect_to_db as connect
+from server.db.pita.pita_tablefill import (
+    fill_user_levels as ul,
+    fill_permissions as pm,
+    fill_role_permissions as rp,
+    fill_users as ut,
+    fill_media as mt,
 )
 
 # =========================
-# Funzione per stampare le prime 10 righe di una tabella (debug)
+# print prime 10 righe di una tabella (debug)
 # =========================
 def tprint(cur, tname, limit=10):
     try:
@@ -34,7 +27,7 @@ def tprint(cur, tname, limit=10):
         print(f"Error fetching data from table {tname}: {str(e)}")
 
 # =========================
-# Popolamento ordinato
+# Popolamento
 # =========================
 def populate(cnt, cur):
     tables = [
@@ -42,15 +35,9 @@ def populate(cnt, cur):
         ("Permissions", pm, "permissions"),
         ("Role-Permissions", rp, "role_permissions"),
         ("Users", ut, "users"),
-#         ("Instruments", it, "instruments"),
-#         ("Performers", pt, "performers"),
-#         ("Genres", gt, "genres"),
-#         ("Authors", at, "authors"),
-        ("Media (Songs)", st, "songs"),
-        ("Media (Documents)", dt, "documents"),
-        ("Media (Videos)", vt, "videos"),
-#         ("Song Performances", spt, "song_performances")
+        ("Media", mt, "media")
     ]
+
 
     print("Starting database population...\n")
 

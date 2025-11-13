@@ -14,7 +14,6 @@ def debug(msg: str):
 # =====================
 # GENERIC CRUD
 # =====================
-
 def fetch_one(query: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
     conn = connection.connect()
     try:
@@ -64,28 +63,6 @@ def execute(query: str, params: tuple = ()) -> bool:
         return False
     finally:
         connection.close(None, conn)
-
-def fetch_all_media_db(media_type=None, search=None, filter_by=None, offset=0, limit=10):
-    query = "SELECT * FROM media"
-    params = []
-    conditions = []
-
-    if media_type:
-        conditions.append("type = %s")
-        params.append(media_type)
-
-    if search:
-        # qui puoi anche rendere dinamico il filtro: titolo, descrizione, autore ecc.
-        conditions.append("title ILIKE %s")
-        params.append(f"%{search}%")
-
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
-    query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
-    params.extend([limit, offset])
-
-    return fetch_all(query, tuple(params))
 
 # =====================
 # PASSWORD
@@ -173,247 +150,207 @@ def delete_user_db(user_id: int, child_table: Optional[str] = None) -> bool:
 # =====================
 # MEDIA CRUD
 # =====================
-def create_media_db(data: Dict[str, Any]) -> Optional[int]:
-    """
-    Inserisce un record nella tabella media e nelle tabelle collegate
-    (documents, concerts, media_authors, media_performances, media_genres, references).
-    """
-    conn = connection.connect()
+def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    conn = None
     try:
+        conn = connection.connect()
         with conn.cursor() as cur:
 
-            # 1. INSERT nella tabella media
-            media_query = """
-                INSERT INTO media
-                    (type, title, description, duration, location, link,
-                    additional_info, is_author, is_performer, year, user_id)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            # --- BASE MEDIA ---
+            cur.execute("""
+                INSERT INTO media (
+                    type, user_id, title, year, description, link, duration,
+                    recording_date, location, additional_info, stored_at,
+                    is_author, is_performer
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id;
-            """
-
-            media_values = (
+            """, (
                 data.get("type"),
+                data.get("user_id"),
                 data.get("title"),
+                data.get("year"),
                 data.get("description"),
-                data.get("duration"),
-                data.get("stored_at"),
                 data.get("link"),
+                data.get("duration"),
+                data.get("recording_date"),
+                data.get("location"),
                 data.get("additional_info"),
+                data.get("stored_at"),
                 data.get("is_author", False),
                 data.get("is_performer", False),
-                data.get("year"),
-                data.get("user_id"),
-            )
-
-            cur.execute(media_query, media_values)
+            ))
             media_id = cur.fetchone()[0]
-            debug(f"Inserted into media id={media_id}")
+            debug(f"[DB][CREATE] media_id={media_id}")
 
-            # 2. DOCUMENTS
+            # --- AUTHORS ---
+            for author_id in data.get("authors", []):
+                cur.execute("""
+                    INSERT INTO media_authors (media_id, author_id)
+                    VALUES (%s,%s)
+                    ON CONFLICT DO NOTHING;
+                """, (media_id, author_id))
+                debug(f"[DB][AUTHOR] linked {author_id}")
+
+            # --- PERFORMERS ---
+            for performer_id in data.get("performers", []):
+                cur.execute("""
+                    INSERT INTO media_performances (media_id, performer_id)
+                    VALUES (%s,%s)
+                    ON CONFLICT DO NOTHING;
+                """, (media_id, performer_id))
+                debug(f"[DB][PERF] linked {performer_id}")
+
+            # --- GENRES ---
+            for genre_id in data.get("genres", []):
+                cur.execute("""
+                    INSERT INTO media_genres (media_id, genre_id)
+                    VALUES (%s,%s)
+                    ON CONFLICT DO NOTHING;
+                """, (media_id, genre_id))
+                debug(f"[DB][GENRE] linked {genre_id}")
+
+            # --- REFERENCES ---
+            for ref_id in data.get("references", []):
+                cur.execute("""
+                    INSERT INTO media_references (active_id, passive_id)
+                    VALUES (%s,%s)
+                    ON CONFLICT DO NOTHING;
+                """, (media_id, ref_id))
+                debug(f"[DB][REF] linked {ref_id}")
+
+            # --- DOCUMENTI (solo se type=document) ---
             if data.get("type") == "document":
-                doc_query = """
+                cur.execute("""
                     INSERT INTO documents (media_id, format, pages, caption)
-                    VALUES (%s, %s, %s, %s);
-                """
-                doc_values = (
+                    VALUES (%s,%s,%s,%s)
+                    ON CONFLICT DO NOTHING;
+                """, (
                     media_id,
                     data.get("format"),
                     data.get("pages"),
                     data.get("caption"),
-                )
-                cur.execute(doc_query, doc_values)
-                debug(f"Inserted document for media_id={media_id}")
-
-            # 3. CONCERTI
-            if data.get("type") == "concert_video":
-                # Inserisci nella tabella concerts
-                concert_query = """
-                    INSERT INTO concerts (video_id, title, description)
-                    VALUES (%s, %s, %s)
-                    RETURNING id;
-                """
-                cur.execute(concert_query, (media_id, data.get("title"), data.get("description")))
-                concert_id = cur.fetchone()[0]
-                debug(f"Inserted concert id={concert_id} for media_id={media_id}")
-
-                # Inserisci i segmenti del concerto
-                for seg in data.get("tracklist", []):
-                    seg_query = """
-                        INSERT INTO concert_segments (concert_id, media_id, start_time, end_time, comment)
-                        VALUES (%s,%s,%s,%s,%s)
-                        RETURNING id;
-                    """
-                    cur.execute(seg_query, (
-                        concert_id,
-                        seg.get("media_id"),
-                        seg.get("start_time"),
-                        seg.get("end_time"),
-                        seg.get("comment")
-                    ))
-                    segment_id = cur.fetchone()[0]
-
-                    # performers del segmento
-                    for performer_id in seg.get("performers", []):
-                        cur.execute(
-                            "INSERT INTO concert_segment_performers (segment_id, performer_id) VALUES (%s,%s);",
-                            (segment_id, performer_id)
-                        )
-                    # instruments del segmento
-                    for instrument_id in seg.get("instruments", []):
-                        cur.execute(
-                            "INSERT INTO concert_segment_instruments (segment_id, instrument_id) VALUES (%s,%s);",
-                            (segment_id, instrument_id)
-                        )
-                    debug(f"Inserted segment id={segment_id} for concert_id={concert_id}")
-
-            # 4. Inserimento relazioni: authors
-            authors_list = []
-            for author in data.get("authors", []):
-                if isinstance(author, dict):
-                    if author.get("type") == "user":
-                        # collegamento ad un utente esistente
-                        user_id = author["id"]
-                        # cerca se già esiste un author legato a quell’utente
-                        cur.execute("SELECT id FROM authors WHERE user_id=%s", (user_id,))
-                        row = cur.fetchone()
-                        if row:
-                            author_id = row[0]
-                        else:
-                            # crea un record "anonimo" collegato a user_id
-                            cur.execute("INSERT INTO authors (name, user_id) VALUES (%s,%s) RETURNING id",
-                                        (f"user_{user_id}", user_id))
-                            author_id = cur.fetchone()[0]
-                    elif author.get("type") == "external":
-                        # autore esterno con solo nome
-                        cur.execute("SELECT id FROM authors WHERE name=%s", (author["name"],))
-                        row = cur.fetchone()
-                        if row:
-                            author_id = row[0]
-                        else:
-                            cur.execute("INSERT INTO authors (name) VALUES (%s) RETURNING id", (author["name"],))
-                            author_id = cur.fetchone()[0]
-                    else:
-                        raise ValueError("Tipo autore non valido")
-                else:
-                    # se è già un id numerico
-                    author_id = author
-
-                authors_list.append(author_id)
-                cur.execute("INSERT INTO media_authors (media_id, author_id) VALUES (%s,%s);", (media_id, author_id))
-                debug(f"Added author_id={author_id} to media_id={media_id}")
-
-            # 5. Inserimento relazioni: performers
-            for performer in data.get("performers", []):
-                if performer.get("type") == "user":
-                    user_id = performer["id"]
-                    # cerca performer associato a user_id
-                    cur.execute("SELECT id FROM performers WHERE user_id=%s", (user_id,))
-                    row = cur.fetchone()
-                    if row:
-                        performer_id = row[0]
-                    else:
-                        # crea performer per l’utente
-                        cur.execute(
-                            "INSERT INTO performers (name, user_id) VALUES (%s,%s) RETURNING id",
-                            (f"user_{user_id}", user_id)
-                        )
-                        performer_id = cur.fetchone()[0]
-
-                elif performer.get("type") == "external":
-                    name = performer.get("name")
-                    # cerca se esiste già un performer esterno con lo stesso nome
-                    cur.execute("SELECT id FROM performers WHERE name=%s", (name,))
-                    row = cur.fetchone()
-                    if row:
-                        performer_id = row[0]  # già esistente
-                    else:
-                        # crea performer esterno
-                        cur.execute(
-                            "INSERT INTO performers (name) VALUES (%s) RETURNING id",
-                            (name,)
-                        )
-                        performer_id = cur.fetchone()[0]
-
-                # inserisci relazione con la media
-                cur.execute(
-                    "INSERT INTO media_performances (media_id, performer_id) VALUES (%s,%s);",
-                    (media_id, performer_id),
-                )
-
-            # 6. Inserimento relazioni: genres
-            for genre_id in data.get("genres", []):
-                cur.execute(
-                    "INSERT INTO media_genres (media_id, genre_id) VALUES (%s,%s);",
-                    (media_id, genre_id),
-                )
-                debug(f"Added genre_id={genre_id} to media_id={media_id}")
-
-            # 7. Inserimento relazioni: references
-            for ref_id in data.get("references", []):
-                cur.execute(
-                    "INSERT INTO media_references (active_id, passive_id) VALUES (%s,%s);",
-                    (media_id, ref_id),
-                )
-                debug(f"Linked media_id={media_id} to reference_id={ref_id}")
+                ))
+                debug(f"[DB][DOC] document for media_id={media_id}")
 
             conn.commit()
             return {"id": media_id}
 
     except Exception as e:
         conn.rollback()
-        debug(f"ERROR in create_media_db: {e}")
+        debug(f"[ERROR][create_media_db] {e}")
         return None
-
     finally:
         conn.close()
 
 def fetch_media_db(media_id: int) -> Optional[Dict[str, Any]]:
-    query = """
-    SELECT m.*, mp.performer_id, mp.additional_info
-    FROM media m
-    LEFT JOIN media_performances mp ON mp.media_id = m.id
-    WHERE m.id=%s
-    """
-    row = fetch_one(query, (media_id,))
-    if not row:
-        return None
-
-    # Trasforma performer_id in lista di performer
-    performers = []
-    if row.get("performer_id"):
-        performers.append({"id": row["performer_id"], "type": "user"})
-
-    media_dict = dict(row)
-    media_dict["performers"] = performers
-    return media_dict
-
-def update_media_db(media_id: int, updates: Dict[str, Any], table: str = "media") -> bool:
-    if not updates: return True
-    set_clause = ", ".join(f"{k}=%s" for k in updates.keys())
-    params = tuple(updates.values()) + (media_id,)
-    return execute(f"UPDATE {table} SET {set_clause} WHERE id=%s", params)
-
-def delete_media_db(media_id: Optional[int]) -> Dict[str, Any]:
-    if media_id is None:
-        return {"status": "ERROR", "reason": "Invalid media_id"}
-
-    # Controlla se il media esiste
-    row = fetch_one("SELECT id FROM media WHERE id=%s", (media_id,))
-    if not row:
-        return {"status": "NOT_FOUND", "reason": f"Media id={media_id} does not exist"}
-
-    success = True
+    conn = None
     try:
-        for table in ["comments", "notes", "media_genres", "media_authors", "media_performances"]:
-            success &= execute(f"DELETE FROM {table} WHERE media_id=%s", (media_id,))
-        success &= execute("DELETE FROM media WHERE id=%s", (media_id,))
-    except Exception as e:
-        return {"status": "ERROR", "reason": str(e)}
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM media WHERE id=%s;", (media_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
 
-    if success:
-        return {"status": "OK", "media_id": media_id}
-    else:
-        return {"status": "ERROR", "reason": "Deletion failed"}
+            columns = [desc[0] for desc in cur.description]
+            media = dict(zip(columns, row))
+
+            # relazioni
+            cur.execute("SELECT author_id FROM media_authors WHERE media_id=%s;", (media_id,))
+            media["authors"] = [r[0] for r in cur.fetchall()]
+
+            cur.execute("SELECT performer_id FROM media_performances WHERE media_id=%s;", (media_id,))
+            media["performers"] = [r[0] for r in cur.fetchall()]
+
+            cur.execute("SELECT genre_id FROM media_genres WHERE media_id=%s;", (media_id,))
+            media["genres"] = [r[0] for r in cur.fetchall()]
+
+            cur.execute("SELECT passive_id FROM media_references WHERE active_id=%s;", (media_id,))
+            media["references"] = [r[0] for r in cur.fetchall()]
+
+            return media
+    except Exception as e:
+        debug(f"[ERROR][fetch_media_db] {e}")
+        return None
+    finally:
+        conn.close()
+
+def fetch_all_media_db(
+    media_type: Optional[str] = None,
+    search: Optional[str] = None,
+    filter_by: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 10,
+) -> List[Dict[str, Any]]:
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            query = "SELECT * FROM media WHERE TRUE"
+            params = []
+
+            if media_type:
+                query += " AND type=%s"
+                params.append(media_type)
+
+            if search:
+                query += " AND (title ILIKE %s OR description ILIKE %s)"
+                params.extend([f"%{search}%", f"%{search}%"])
+
+            if filter_by and filter_by != "all":
+                query += " AND type=%s"
+                params.append(filter_by)
+
+            query += " ORDER BY created_at DESC OFFSET %s LIMIT %s;"
+            params.extend([offset, limit])
+
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
+            if not rows:
+                return []
+
+            columns = [desc[0] for desc in cur.description]
+            result = [dict(zip(columns, row)) for row in rows]
+            return result
+
+    except Exception as e:
+        debug(f"[ERROR][fetch_all_media_db] {e}")
+        return []
+    finally:
+        conn.close()
+
+def update_media_db(media_id: int, updates: Dict[str, Any]) -> bool:
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            set_clause = ", ".join(f"{k}=%s" for k in updates.keys())
+            params = list(updates.values()) + [media_id]
+            cur.execute(f"UPDATE media SET {set_clause} WHERE id=%s;", params)
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        debug(f"[ERROR][update_media_db] {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_media_db(media_id: int) -> bool:
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM media WHERE id=%s;", (media_id,))
+        conn.commit()
+        debug(f"[DB][DELETE] media_id={media_id}")
+        return True
+    except Exception as e:
+        conn.rollback()
+        debug(f"[ERROR][delete_media_db] {e}")
+        return False
+    finally:
+        conn.close()
 
 # =====================
 # NOTES CRUD
@@ -698,6 +635,13 @@ def advanced_video_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
 # =====================
 # FOLLOWERS
 # =====================
+def get_user_username_by_id(id_):
+    row = fetch_one("SELECT username FROM users WHERE id=%s", (id_,))
+    if row:
+        return row.get("username")
+    return None
+
+
 def get_user_id_by_username(username: str) -> Optional[int]:
     """Restituisce l'id di un utente dato lo username."""
     print(f"[DEBUG] get_user_id_by_username called with: {username}")

@@ -1,10 +1,5 @@
 # first line
 
-"""
-Script per creare il database 'boop' e popolare le tabelle eseguendo
-il file SQL `d.sql` presente in server\db\d.sql.
-"""
-
 import json
 import psycopg2
 from psycopg2 import sql
