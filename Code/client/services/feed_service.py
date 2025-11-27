@@ -9,8 +9,8 @@ class FeedService:
         return http_client.send_request("GET_FEED", args, require_auth=True)
 
     @staticmethod
-    def add_post(content):
-        return http_client.send_request("ADD_POST", [content], require_auth=True)
+    def report_post(content):
+        return http_client.send_request("REPORT_POST", [content], require_auth=True)
 
     @staticmethod
     def delete_post(post_id):

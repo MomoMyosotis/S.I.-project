@@ -23,7 +23,7 @@ def feed_data():
     if response.get("status") == "OK":
         inner = response.get("response", {})
         results = inner.get("results") if isinstance(inner, dict) else inner
-        print(f"[DEBUG] Raw feed response: {response}")
+        # print(f"[DEBUG] Raw feed response: {response}")
         return jsonify(results or [])
     else:
         err = response.get("error_msg", "Unknown error")

@@ -9,7 +9,7 @@ from server.utils.storage_manager import (save_file,
                                     download_file,
                                     delete_file
                                     )
-
+from server.objects.users.root import Root
 # =====================
 # ENCODER JSON
 # =====================
@@ -72,6 +72,7 @@ COMMAND_MAP = {
     "update_video": media_services.update_video_services,
     "delete_video": media_services.delete_video_services,
     "get_feed": media_services.get_feed_services,
+    "get_user_publications": media_services.get_user_publications_services,
     # INTERVENTIONS
     "create_comment" : interventions_services.create_comment,
     "fetch_comment" : interventions_services.get_comments,
@@ -100,6 +101,17 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
     print(f"[DEBUG][dispatch_command] START - command={command}, args={args}, user_obj={user_obj}")
     command = command.lower()
 
+    if isinstance(user_obj, dict):
+        uid = user_obj.get("id")
+        uname = user_obj.get("username")
+        full = None
+        if uid:
+            full = Root.get_user(user_id=uid)
+        elif uname:
+            full = Root.get_user(username=uname)
+        if full:
+            user_obj = user_services._build_user_obj(full)
+
     if user_obj is None and command not in ["login", "register", "recover", "assistance"]:
         return json.dumps({"error_msg": "User is not logged in. Please log in to proceed.", "status": "error"}), None, None, "ERROR"
 
@@ -117,7 +129,18 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
         if command in ["login", "register"] and isinstance(result, dict):
             if "token" in result:
                 new_token = result["token"]
-                user_obj = result.get("user_obj")
+                # result['user_obj'] is the public dict returned to client; 
+                # rebuild the server-side Root from DB full row so we don't lose internal fields (lvl, etc.)
+                public = result.get("user_obj")
+                if isinstance(public, dict):
+                    uid = public.get("id")
+                    uname = public.get("username")
+                    full = None
+                    if uid:
+                        full = Root.get_user(user_id=uid)
+                    elif uname:
+                        full = Root.get_user(username=uname)
+                    user_obj = user_services._build_user_obj(full) if full else public
 
         serialized = json.dumps(result, default=default_encoder)
 
@@ -129,5 +152,6 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
         import traceback
         traceback.print_exc()
         return json.dumps({"error_msg": str(e), "status": "error"}), None, None, "ERROR"
+
 
 # last line

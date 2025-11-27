@@ -3,116 +3,312 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Profilo Utente - {{ username }}</title>
+  <title>Profilo Utente</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='profile_style.css') }}" />
 </head>
 <body>
-<main class="profile-container" role="main" aria-label="Profilo utente di {{ username }}">
+
+<main class="profile-container" role="main" aria-label="Profilo utente">
+
   <!-- Intestazione profilo -->
   <section class="profile-header" aria-label="Informazioni utente">
     <img
-      src="{{ url_for('static', filename=user_profile_picture) }}"
-      alt="Foto profilo di {{ username }}"
+      id="profile-picture"
+      src=""
+      alt="Foto profilo"
       class="profile-picture"
       width="180"
       height="180"
     />
     <div class="profile-info">
-      <h1 tabindex="0">{{ username }}</h1>
-      <p class="bio" tabindex="0">{{ bio }}</p>
-    </div>
-  </section>
+      <h1 id="username" tabindex="0">@loading...</h1>
 
-  <!-- Statistiche profilo -->
-  <section class="profile-stats" aria-label="Statistiche utente" role="region">
-    <div><strong>Pubblicazioni:</strong> {{ publications_count or 0 }}</div>
-    <div><strong>Followers:</strong> {{ followers_count or 0 }}</div>
-    <div><strong>Following:</strong> {{ following_count or 0 }}</div>
+      <!-- moved stats into the header to save vertical space -->
+      <div class="header-stats" role="region" aria-label="Statistiche utente">
+        <div class="stat">
+          <span class="label">Pubblicazioni</span>
+          <span id="publications-count" class="value stat-counter">0</span>
+        </div>
+        <div class="stat">
+          <span class="label">Followers</span>
+          <span id="followers-count" class="value stat-counter">0</span>
+        </div>
+        <div class="stat">
+          <span class="label">Following</span>
+          <span id="following-count" class="value stat-counter">0</span>
+        </div>
+      </div>
+
+    </div>
   </section>
 
   <!-- Sezione Bio -->
   <section class="profile-full-bio" aria-label="Biografia utente" role="region">
-    <h2 tabindex="0">about me</h2>
-    <p id="bio-text" class="bio-collapsed">
-      {{ full_bio or "Nessuna biografia disponibile." }}
-    </p>
-    {% if full_bio %}
-      <button id="toggle-bio-btn" class="toggle-bio-btn">Mostra di più</button>
-    {% endif %}
+    <h2 tabindex="0">Biography</h2>
+    <p id="full-bio" class="bio-collapsed">Nessuna biografia disponibile.</p>
+
+    <button id="toggle-bio-btn" class="toggle-bio-btn" style="display:none">
+      Mostra di più
+    </button>
   </section>
 
   <!-- Azioni profilo -->
-  <section class="profile-actions" aria-label="Azioni profilo" role="region">
-    {% if user_id == logged_in_user_id %}
-      <button class="edit-btn" onclick="editProfile()" aria-label="Modifica il tuo profilo">Modifica Profilo</button>
-    {% else %}
-      <button class="block-btn" onclick="confirmBlockUser()" aria-label="Blocca questo utente">Blocca Utente</button>
-      <button class="get-id-btn" onclick="showUserId()" aria-label="Mostra ID utente">Ottieni ID</button>
-    {% endif %}
+  <section id="profile-actions" class="profile-actions" aria-label="Azioni profilo" role="region">
   </section>
 
-  <!-- Pubblicazioni recenti -->
-  <section class="profile-recent-publications" aria-label="Pubblicazioni recenti" role="region">
-    <h2 tabindex="0">Pubblicazioni Recenti</h2>
-    {% if recent_publications and recent_publications|length > 0 %}
-      <ul>
-        {% for pub in recent_publications[:3] %}
-          <li class="publication-item" tabindex="0">
-            <strong>{{ pub.title }}</strong>
-            <p>{{ pub.description }}</p>
-            <small>{{ pub.date_published }}</small>
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p tabindex="0">Nessuna pubblicazione recente.</p>
-    {% endif %}
+  <!-- Elenco Pubblicazioni -->
+  <section class="profile-recent" aria-label="Pubblicazioni recenti" role="region">
+    <h2 tabindex="0">Pubblicazioni</h2>
+
+    <!-- skeleton shown while loading -->
+    <div id="publications-skeleton" class="pub-skeleton" aria-hidden="true" style="display:none">
+      <div class="s-item"></div>
+      <div class="s-item"></div>
+      <div class="s-item"></div>
+      <div class="s-item"></div>
+    </div>
+
+    <!-- container with fixed height and scroll (collapsible) -->
+    <div id="pubs-container" class="pubs-container collapsed" aria-live="polite">
+      <ul id="recent-publications" class="pub-grid"></ul>
+    </div>
+
+    <p id="no-publications" tabindex="0" style="display:none">Nessuna pubblicazione recente.</p>
+
+    <!-- controls: expand + load more -->
+    <div class="load-more-wrap">
+      <button id="toggle-pubs-btn" class="toggle-pubs-btn" style="display:inline-block">Mostra altro</button>
+      <button id="load-more-btn" class="load-more-btn" style="display:none">Carica altre pubblicazioni</button>
+    </div>
   </section>
+
 </main>
 
+<script type="module">
 
-  <div id="notification" role="alert" aria-live="assertive"></div>
+  const params = new URLSearchParams(window.location.search);
+  const viewedUsername = params.get("username");
 
-  <script>
-    const notification = document.getElementById('notification');
+  // pagination & state
+  let currentOffset = 0;
+  const pageLimit = 5;
+  let totalPublications = null;
+  let loading = false;
 
-    function showNotification(message) {
-      notification.textContent = message;
-      notification.style.display = 'block';
-      setTimeout(() => {
-        notification.style.display = 'none';
-      }, 3000);
+  async function loadProfile() {
+    try {
+      showSkeleton(true);
+      const url = viewedUsername
+        ? `/profile/data?username=${encodeURIComponent(viewedUsername)}`
+        : `/profile/data`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Response non OK");
+
+      const data = await res.json();
+      updateUI(data.user);
+      updateActions(data.self);
+      attachBioToggle();
+
+      // initial publications chunk from profile endpoint
+      const initial = data.recent_publications || [];
+      updatePublications(initial, true);
+      currentOffset = initial.length;
+      totalPublications = data.user?.publications_count ?? null;
+      renderLoadMoreButton();
+      animateCounters();
+    } catch (err) {
+      console.error("[DEBUG][loadProfile] Errore:", err);
+      document.getElementById("username").textContent = "@error";
+    } finally {
+      showSkeleton(false);
     }
+  }
 
-    function editProfile() {
-      window.location.href = "{{ url_for('home.homepage', form_type='profile') }}";
+  function showSkeleton(show = true) {
+    const el = document.getElementById("publications-skeleton");
+    if (el) el.style.display = show ? "grid" : "none";
+  }
+
+  function renderLoadMoreButton() {
+    const btn = document.getElementById("load-more-btn");
+    if (!btn) return;
+    // show when we don't know total OR offset < total
+    if (totalPublications === null || currentOffset < totalPublications) {
+      btn.style.display = "inline-block";
+      btn.onclick = loadMorePublications;
+    } else {
+      btn.style.display = "none";
     }
+  }
 
-    function confirmBlockUser() {
-      if (confirm("Sei sicuro di voler bloccare questo utente?")) {
-        showNotification("Utente bloccato con successo!");
+  async function loadMorePublications() {
+    if (loading) return;
+    loading = true;
+    showSkeleton(true);
+    try {
+      const usernameParam = viewedUsername ? `&username=${encodeURIComponent(viewedUsername)}` : "";
+      const res = await fetch(`/profile/publications?offset=${currentOffset}&limit=${pageLimit}${usernameParam}`);
+      if (!res.ok) throw new Error("fetch pubblicazioni fallito");
+      const data = await res.json();
+      const pubs = data.publications || [];
+      const count = data.count;
+      if (typeof count === "number") totalPublications = count;
+      updatePublications(pubs, false);
+      currentOffset += pubs.length;
+      const pubsEl = document.getElementById("publications-count");
+      if (pubsEl && totalPublications !== null) pubsEl.textContent = totalPublications;
+      renderLoadMoreButton();
+    } catch (err) {
+      console.error("[DEBUG][loadMorePublications] Errore:", err);
+    } finally {
+      loading = false;
+      showSkeleton(false);
+    }
+  }
+
+  function updatePublications(list, replace = false) {
+    const ul = document.getElementById("recent-publications");
+    const emptyMsg = document.getElementById("no-publications");
+    if (!ul) return;
+    if (replace) ul.innerHTML = "";
+
+    if ((ul.children.length + list.length) === 0) {
+      if (emptyMsg) emptyMsg.style.display = "block";
+      return;
+    }
+    if (emptyMsg) emptyMsg.style.display = "none";
+
+    list.forEach(pub => {
+      const li = document.createElement("li");
+      li.className = "publication-card";
+      li.innerHTML = `
+        <div class="card-thumb"><img src="/static/images/song.png" alt="thumb"></div>
+        <div class="card-body">
+          <strong class="card-title">${escapeHtml(pub.title)}</strong>
+          <p class="card-desc">${escapeHtml(pub.description)}</p>
+          <div class="card-meta">${escapeHtml(pub.date_published)}</div>
+        </div>
+      `;
+      ul.appendChild(li);
+    });
+  }
+
+  function escapeHtml(str = "") {
+    return String(str || "").replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  // populate header, stats and bio
+  function updateUI(user = {}) {
+    const nameEl = document.getElementById("username");
+    const picEl = document.getElementById("profile-picture");
+    const fullBioEl = document.getElementById("full-bio");
+    const pubsEl = document.getElementById("publications-count");
+    const followersEl = document.getElementById("followers-count");
+    const followingEl = document.getElementById("following-count");
+
+    if (nameEl) nameEl.textContent = "@" + (user.username || "unknown");
+    // use "no pp.jpg" from static/images when no profile picture is available
+    if (picEl) {
+      const defaultPic = "/static/images/no pp.jpg";
+      picEl.src = user.profile_picture_url || user.profile_pic || encodeURI(defaultPic);
+    }
+    if (fullBioEl) {
+      fullBioEl.textContent = user.full_bio ?? user.bio ?? "Nessuna biografia disponibile.";
+      // collapsed by default
+      fullBioEl.classList.add("bio-collapsed");
+    }
+    if (pubsEl) {
+      pubsEl.textContent = user.publications_count ?? 0;
+      pubsEl.classList.add("stat-counter");
+      pubsEl.dataset.target = user.publications_count ?? 0;
+    }
+    if (followersEl) {
+      followersEl.textContent = user.followers_count ?? user.followers ?? 0;
+      followersEl.classList.add("stat-counter");
+      followersEl.dataset.target = followersEl.textContent;
+    }
+    if (followingEl) {
+      followingEl.textContent = user.following_count ?? user.followed ?? 0;
+      followingEl.classList.add("stat-counter");
+      followingEl.dataset.target = followingEl.textContent;
+    }
+  }
+
+  // render action buttons depending on ownership
+  function updateActions(selfData = {is_self:false}) {
+    const container = document.getElementById("profile-actions");
+    if (!container) return;
+    container.innerHTML = "";
+    if (selfData.is_self) {
+      container.innerHTML = `<button class="edit-btn" onclick="editProfile()">Modifica Profilo</button>`;
+    } else {
+      container.innerHTML = `<button class="follow-btn" onclick="toggleFollow()">Segui</button>`;
+    }
+  }
+
+  function attachBioToggle() {
+    const btn = document.getElementById("toggle-bio-btn");
+    const full = document.getElementById("full-bio");
+    if (!btn || !full) return;
+    btn.style.display = full.textContent.length > 120 ? "inline-block" : "none";
+    btn.textContent = "Mostra di più";
+    btn.onclick = () => {
+      if (full.classList.contains("bio-collapsed")) {
+        full.classList.remove("bio-collapsed");
+        btn.textContent = "Mostra di meno";
+      } else {
+        full.classList.add("bio-collapsed");
+        btn.textContent = "Mostra di più";
       }
-    }
+    };
+  }
 
-    function showUserId() {
-      showNotification("ID utente: {{ user_id }}");
-    }
+  function editProfile() {
+    window.location.href = "/home/?form_type=edit_profile";
+  }
 
-    // Toggle Bio
-    const bioText = document.getElementById("bio-text");
-    const toggleBioBtn = document.getElementById("toggle-bio-btn");
+  function toggleFollow() {
+    console.log("toggleFollow not implemented");
+  }
 
-    if (toggleBioBtn) {
-      toggleBioBtn.addEventListener("click", () => {
-        if (bioText.classList.contains("bio-collapsed")) {
-          bioText.classList.remove("bio-collapsed");
-          toggleBioBtn.textContent = "Mostra meno";
-        } else {
-          bioText.classList.add("bio-collapsed");
-          toggleBioBtn.textContent = "Mostra di più";
-        }
-      });
-    }
-  </script>
+  // simple counter animation for stats
+  function animateCounters() {
+    document.querySelectorAll(".stat-counter").forEach(el => {
+      const target = parseInt(el.dataset.target || el.textContent || "0", 10);
+      el.textContent = "0";
+      let cur = 0;
+      const step = Math.max(1, Math.round(target / 25));
+      const t = setInterval(() => {
+        cur += step;
+        if (cur >= target) {
+          el.textContent = target;
+          clearInterval(t);
+        } else el.textContent = cur;
+      }, 16);
+    });
+  }
+
+  // toggle publications container size (keeps profile visible)
+  function togglePubsContainer() {
+    const container = document.getElementById("pubs-container");
+    const btn = document.getElementById("toggle-pubs-btn");
+    if (!container || !btn) return;
+    const expanded = container.classList.toggle("expanded");
+    container.classList.toggle("collapsed", !expanded);
+    btn.textContent = expanded ? "Mostra meno" : "Mostra altro";
+    renderLoadMoreButton();
+    if (!expanded) container.scrollTop = 0;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    const toggleBtn = document.getElementById("toggle-pubs-btn");
+    if (toggleBtn) toggleBtn.addEventListener("click", togglePubsContainer);
+  });
+
+  loadProfile();
+
+</script>
+
 </body>
 </html>

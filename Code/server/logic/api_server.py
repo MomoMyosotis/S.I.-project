@@ -1,17 +1,16 @@
 # first line
 
 from flask import Flask, request, jsonify
-import json
-import threading
+import json, threading
 from server.services.redirect import dispatch_command
-from server.logic.admin_console import manual_cmd, macr
+from server.logic.admin_console import start_admin_server, macr
 
 app = Flask(__name__)
 sessions = {}      # token -> user_obj (condiviso)
 mode_ref = ["auto"]  # modalità mutabile
 
-# Admin console thread (manual mode)
-threading.Thread(target=manual_cmd, args=(None, mode_ref), daemon=True).start()
+# Admin TCP console (non-blocking). No stop callback here, only approvals/mode.
+start_admin_server(mode_ref, host='127.0.0.1', port=60000)
 
 @app.route("/api", methods=["POST"])
 def api_entry():

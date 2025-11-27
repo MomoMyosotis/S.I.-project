@@ -15,7 +15,7 @@ def login():
     form = Login()
     if form.validate_on_submit():
         response = AuthService.login(form.username.data, form.password.data)
-        print("[DEBUG][login] Response:", repr(response))
+        # print("[DEBUG][login] Response:", repr(response))
 
         if isinstance(response, dict):
             status = response.get("status", "").lower()
@@ -31,7 +31,7 @@ def login():
 
                 session["login_status"] = "ACCEPTED"
                 flash("Login successful!", "success")
-                print("[DEBUG][login] http_client id:", id(http_client), "token:", http_client.token)
+                # print("[DEBUG][login] http_client id:", id(http_client), "token:", http_client.token)
                 return redirect(url_for("home.homepage"))
 
             elif status == "pending":

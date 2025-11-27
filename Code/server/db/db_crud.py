@@ -1,5 +1,4 @@
-# first line
-
+# ...existing code...
 from typing import Dict, Any, List, Optional
 from . import connection
 import hashlib, time
@@ -29,24 +28,23 @@ def fetch_one(query: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
         return None
     finally:
         if conn:
-            conn.commit()
             connection.close(None, conn)
 
 def fetch_all(query: str, params: tuple = ()) -> List[Dict[str, Any]]:
     conn = connection.connect()
     try:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(query, params)
             rows = cur.fetchall()
-            cols = [desc[0] for desc in cur.description]
             debug(f"fetch_all returned {len(rows)} rows")
-            print("[DEBUG] db_get_following result:", rows)
-            return [dict(zip(cols, r)) for r in rows]
+            # RealDictCursor yields dict-like rows already
+            return [dict(r) for r in rows]
     except Exception as e:
         print(f"[DB ERROR fetch_all] {e}")
         return []
     finally:
-        connection.close(None, conn)
+        if conn:
+            connection.close(None, conn)
 
 def execute(query: str, params: tuple = ()) -> bool:
     conn = connection.connect()
@@ -55,14 +53,17 @@ def execute(query: str, params: tuple = ()) -> bool:
             cur.execute(query, params)
             conn.commit()
             debug(f"execute success: {query} {params}")
-            time.sleep(0.5)
+            # small pause for DB consistency if necessary (kept for compatibility)
+            time.sleep(0.1)
             return True
     except Exception as e:
         print(f"[DB ERROR execute] {e}")
-        conn.rollback()
+        if conn:
+            conn.rollback()
         return False
     finally:
-        connection.close(None, conn)
+        if conn:
+            connection.close(None, conn)
 
 # =====================
 # PASSWORD
@@ -85,9 +86,10 @@ def create_user_db(main_fields: tuple, child_table: str = None, child_fields: tu
                 INSERT INTO users (mail, username, password_hash, birthday, bio, profile_pic)
                 VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
             """, main_fields)
-            user_id = cur.fetchone()[0]
+            user_id_row = cur.fetchone()
+            user_id = user_id_row[0] if user_id_row else None
 
-            if child_table and child_fields:
+            if child_table and child_fields and user_id:
                 placeholders = ",".join(['%s'] * (len(child_fields) + 1))
                 columns = ','.join(['id'] + list(child_fields))
                 cur.execute(f"INSERT INTO {child_table} ({columns}) VALUES ({placeholders})", (user_id, *child_fields))
@@ -98,11 +100,12 @@ def create_user_db(main_fields: tuple, child_table: str = None, child_fields: tu
         debug(f"[DB ERROR create_user_db]: {e}")
         return None
     finally:
-        if conn: connection.close(None, conn)
+        if conn:
+            connection.close(None, conn)
 
 def fetch_user_db(user_id: Optional[int] = None, child_table: str = None,
                     child_fields: List[str] = None, filters: Optional[Dict[str, Any]] = None
-                    ) -> List[Dict[str, Any]]:
+                    ) -> Optional[Any]:
     base_query = "SELECT u.*"
     joins = ""
     conditions = []
@@ -127,12 +130,24 @@ def fetch_user_db(user_id: Optional[int] = None, child_table: str = None,
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
 
-    return fetch_one(query, tuple(params)) if user_id else fetch_all(query, tuple(params))
+    # return single dict for id lookup, list for general fetch
+    if user_id:
+        return fetch_one(query, tuple(params))
+    return fetch_all(query, tuple(params))
 
 def fetch_user_roles_db(user_id: int) -> List[str]:
-    query = "SELECT role FROM user_roles WHERE user_id = %s"
-    rows = fetch_all(query, (user_id,))
-    return [row['role'] for row in rows]
+    """
+    Return a list of role codes for the user. The DB uses user_levels/lvl_id on users table.
+    This will return the single level code assigned to the user (as list for compatibility).
+    """
+    query = """
+        SELECT ul.code
+        FROM users u
+        JOIN user_levels ul ON u.lvl_id = ul.id
+        WHERE u.id = %s
+    """
+    row = fetch_one(query, (user_id,))
+    return [row['code']] if row and 'code' in row else []
 
 def update_user_db(user_id: int, updates: Dict[str, Any], table: str = "users") -> bool:
     if not updates: return True
@@ -179,8 +194,13 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 data.get("is_author", False),
                 data.get("is_performer", False),
             ))
-            media_id = cur.fetchone()[0]
+            media_id_row = cur.fetchone()
+            media_id = media_id_row[0] if media_id_row else None
             debug(f"[DB][CREATE] media_id={media_id}")
+
+            if not media_id:
+                conn.commit()
+                return None
 
             # --- AUTHORS ---
             for author_id in data.get("authors", []):
@@ -236,24 +256,25 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             return {"id": media_id}
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         debug(f"[ERROR][create_media_db] {e}")
         return None
     finally:
-        conn.close()
+        if conn:
+            connection.close(None, conn)
 
 def fetch_media_db(media_id: int) -> Optional[Dict[str, Any]]:
     conn = None
     try:
         conn = connection.connect()
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM media WHERE id=%s;", (media_id,))
             row = cur.fetchone()
             if not row:
                 return None
 
-            columns = [desc[0] for desc in cur.description]
-            media = dict(zip(columns, row))
+            media = dict(row)
 
             # relazioni
             cur.execute("SELECT author_id FROM media_authors WHERE media_id=%s;", (media_id,))
@@ -273,7 +294,8 @@ def fetch_media_db(media_id: int) -> Optional[Dict[str, Any]]:
         debug(f"[ERROR][fetch_media_db] {e}")
         return None
     finally:
-        conn.close()
+        if conn:
+            connection.close(None, conn)
 
 def fetch_all_media_db(
     media_type: Optional[str] = None,
@@ -285,7 +307,7 @@ def fetch_all_media_db(
     conn = None
     try:
         conn = connection.connect()
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             query = "SELECT * FROM media WHERE TRUE"
             params = []
 
@@ -309,15 +331,15 @@ def fetch_all_media_db(
             if not rows:
                 return []
 
-            columns = [desc[0] for desc in cur.description]
-            result = [dict(zip(columns, row)) for row in rows]
+            result = [dict(r) for r in rows]
             return result
 
     except Exception as e:
         debug(f"[ERROR][fetch_all_media_db] {e}")
         return []
     finally:
-        conn.close()
+        if conn:
+            connection.close(None, conn)
 
 def update_media_db(media_id: int, updates: Dict[str, Any]) -> bool:
     conn = None
@@ -330,11 +352,13 @@ def update_media_db(media_id: int, updates: Dict[str, Any]) -> bool:
         conn.commit()
         return True
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         debug(f"[ERROR][update_media_db] {e}")
         return False
     finally:
-        conn.close()
+        if conn:
+            connection.close(None, conn)
 
 def delete_media_db(media_id: int) -> bool:
     conn = None
@@ -346,11 +370,13 @@ def delete_media_db(media_id: int) -> bool:
         debug(f"[DB][DELETE] media_id={media_id}")
         return True
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         debug(f"[ERROR][delete_media_db] {e}")
         return False
     finally:
-        conn.close()
+        if conn:
+            connection.close(None, conn)
 
 # =====================
 # NOTES CRUD
@@ -421,7 +447,6 @@ def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
     Crea un commento e ritorna l'ID appena creato.
     Aggiunta debug dettagliato per isolare errori.
     """
-    # Connessione al database
     conn = connection.connect()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -460,24 +485,12 @@ def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
                 fields.append("parent_comment_id")
                 values.append(parent_comment_id)
 
-            # Preparazione della query per l'inserimento
             placeholders = ",".join(["%s"] * len(values))
             query = f"INSERT INTO comments ({','.join(fields)}) VALUES ({placeholders}) RETURNING id"
 
-            try:
-                # Esecuzione della query
-                cur.execute(query, tuple(values))
-            except Exception as e:
-                print(f"[create_comment_db] Execute FAILED: {e}")
-                raise
-
+            cur.execute(query, tuple(values))
             row = cur.fetchone()
-            try:
-                # Commit della transazione
-                conn.commit()
-            except Exception as e:
-                print(f"[create_comment_db] Commit FAILED: {e}")
-                raise
+            conn.commit()
 
             if row and "id" in row:
                 return row["id"]
@@ -530,12 +543,16 @@ def delete_comment_db(comment_id: int) -> bool:
 # =====================
 def create_dict_entry(table: str, name: str) -> Optional[int]:
     existing = fetch_one(f"SELECT id FROM {table} WHERE name = %s", (name,))
-    if existing: return None
+    if existing: return existing.get("id")
     row = fetch_one(f"INSERT INTO {table} (name) VALUES (%s) RETURNING id", (name,))
     return row.get("id") if row else None
 
 def fetch_dict_entry_by_name(table: str, name: str) -> Optional[Dict[str, Any]]:
     return fetch_one(f"SELECT * FROM {table} WHERE name=%s", (name,))
+
+# compatibility alias used in other modules
+def fetch_dict_entry(table: str, name: str) -> Optional[Dict[str, Any]]:
+    return fetch_dict_entry_by_name(table, name)
 
 def fetch_all_dict_entries(table: str) -> List[Dict[str, Any]]:
     return fetch_all(f"SELECT * FROM {table} ORDER BY name")
@@ -598,7 +615,7 @@ def advanced_document_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]
     base_query = """
         SELECT m.id, m.title, m.year, m.description, m.link, d.format, d.pages, d.caption, d.media_id
         FROM documents d
-        JOIN media m ON d.id = m.id
+        JOIN media m ON d.media_id = m.id
         WHERE m.type = 'document'
     """
     params, conditions = [], []
@@ -641,7 +658,6 @@ def get_user_username_by_id(id_):
         return row.get("username")
     return None
 
-
 def get_user_id_by_username(username: str) -> Optional[int]:
     """Restituisce l'id di un utente dato lo username."""
     print(f"[DEBUG] get_user_id_by_username called with: {username}")
@@ -653,7 +669,7 @@ def get_user_id_by_username(username: str) -> Optional[int]:
 
 def db_add_follow(follower_id: int, followee_id: int) -> bool:
     return execute(
-        "INSERT INTO user_follow (follower_id, followed_id) VALUES (%s, %s)",
+        "INSERT INTO user_follow (follower_id, followed_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
         (follower_id, followee_id)
     )
 

@@ -25,34 +25,43 @@ def build_object(cls: Type[Media], data: Optional[Dict[str, Any]]):
     if not data:
         print("[DEBUG][build_object] data is None/empty -> returning None")
         return None
+    # If an object is passed already, return it
+    if isinstance(data, Media):
+        print(f"[DEBUG][build_object] data is already a Media instance -> returning it")
+        return data
     obj = cls.from_dict(data)
     print(f"[DEBUG][build_object] Built object={obj}")
     return obj
 
 def get_object(cls: Type[Media], object_id: int):
     print(f"[DEBUG][get_object] cls={cls.__name__}, object_id={object_id}")
-    if cls is Song:
-        obj = Song.fetch_full_song(object_id)
-    elif cls is Video:
-        obj = Video.fetch_full_video(object_id)
-    elif cls is Document:
-        obj = Document.fetch_full_document(object_id)
+    # Prefer a class-level "fetch_full_<type>" hook if present
+    hook_name = f"fetch_full_{cls.__name__.lower()}"
+    hook = getattr(cls, hook_name, None)
+    if callable(hook):
+        obj = hook(object_id)
     else:
+        # fallback to generic fetch
         obj = cls.fetch(object_id)
     print(f"[DEBUG][get_object] Retrieved object={obj}")
     return obj
 
-def create_object(cls: Type[Media], user_obj: Dict[str, Any], data: Dict[str, Any]):
+def create_object(cls: Type[Media], user_obj: Optional[Any], data: Dict[str, Any]):
     print(f"[DEBUG][create_object] cls={cls.__name__}, user_obj={user_obj}, data={data}")
-    obj = cls.from_dict(data)
-    print(f"[DEBUG][create_object] Object built from dict: {obj}")
+    # build object instance from dict (or accept object)
+    obj = build_object(cls, data) if not isinstance(data, Media) else data
     if not obj:
         print("[DEBUG][create_object] Object is None -> returning None")
         return None
-
-    # Associa il media all’utente che lo ha creato
-    if user_obj and "id" in user_obj:
-        obj.user_id = user_obj["id"]
+    # Accept user_obj as either dict or Root object; extract id safely
+    uid = None
+    if user_obj:
+        if isinstance(user_obj, dict):
+            uid = user_obj.get("id")
+        else:
+            uid = getattr(user_obj, "id", None)
+    if uid:
+        obj.user_id = uid
         print(f"[DEBUG][create_object] Set obj.user_id={obj.user_id}")
 
     print(f"[DEBUG][create_object] Saving object {obj}")
@@ -83,23 +92,28 @@ def get_song_services(user_obj, song_id: int):
     print(f"[DEBUG][get_song_services] song_id={song_id}")
     return get_object(Song, song_id)
 
-def create_song_services(user_obj: dict, data: dict):
+def create_song_services(user_obj, data: dict):
     print(f"[DEBUG][create_song_services] user_obj={user_obj}, data={data}")
 
     data["type"] = "song"
     if user_obj:
-        data["user_id"] = user_obj.get("id")
+        uid = user_obj.get("id") if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+        if uid:
+            data["user_id"] = uid
     if data.get("stored_at") is None:
         data["stored_at"] = "server/storage/songs"
     if "performers" in data:
+        # normalize performers to list of ids (db expects ids)
         data["performers"] = prepare_performers(data["performers"])
 
     # Costruisci oggetto (non salva ancora relazioni M:N)
     song = Song.from_dict(data)
 
-    # Associa l'utente creatore
-    if user_obj and "id" in user_obj:
-        song.user_id = user_obj["id"]
+    # Associa l'utente creatore (redundant if set above but safe)
+    if user_obj:
+        uid = user_obj.get("id") if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+        if uid:
+            song.user_id = uid
 
     # Salva nel DB
     song.save()
@@ -177,24 +191,26 @@ def delete_video_services(user_obj, video_id: int):
 def prepare_performers(performers: list) -> list:
     """
     Controlla e crea performer esterni e assicura che gli utenti siano performer.
-    Restituisce la lista di performer pronta da associare al media.
+    Restituisce la lista di performer IDs pronta da associare al media.
     """
-    result = []
+    result_ids = []
     for p in performers:
         if p["type"] == "user":
-            # L'utente esiste già, mantieni solo id
-            result.append({"type": "user", "id": p["id"]})
+            # user performer is expected to provide an id
+            result_ids.append(int(p["id"]))
         elif p["type"] == "external":
-            # Controlla se esiste nel dict performers
+            # Controlla se esiste nel dict performers (returns dict row or None)
             existing = fetch_dict_entry("performers", p["name"])
             if existing:
                 pid = existing["id"]
             else:
                 pid = create_dict_entry("performers", p["name"])
-            result.append({"type": "external", "id": pid, "name": p["name"]})
+            if pid is None:
+                raise ValueError(f"Unable to create/fetch external performer '{p['name']}'")
+            result_ids.append(pid)
         else:
             raise ValueError(f"Tipo performer non valido: {p['type']}")
-    return result
+    return result_ids
 
 def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset: int = 0, limit: int = 10):
     print(f"[DEBUG] feed request received offset={offset}, limit={limit}, search='{search}', filter_by='{filter_by}'")
@@ -228,5 +244,49 @@ def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset
         })
 
     return {"status": "OK", "results": results, "count": len(results)}
+
+# =========================
+# USER PUBLICATIONS SERVICES
+# =========================
+from server.db.db_crud import get_user_username_by_id as duck, fetch_all, fetch_one, get_user_id_by_username
+
+def get_user_publications_services(user_obj, username: str, offset: int = 0, limit: int = 10):
+    """
+    Returns the list of media published by the specified username.
+    Response shape: {"status":"OK", "results":[{...media...}], "count": total_count}
+    """
+    try:
+        # Resolve username -> user_id
+        uid = get_user_id_by_username(username)
+        if uid is None:
+            return {"status": "OK", "results": [], "count": 0}
+
+        # fetch rows from media table for that user (ordered by created_at desc)
+        query = "SELECT * FROM media WHERE user_id = %s ORDER BY created_at DESC OFFSET %s LIMIT %s;"
+        rows = fetch_all(query, (uid, offset, limit))
+
+        # total count (without pagination)
+        cnt_row = fetch_one("SELECT COUNT(*) as cnt FROM media WHERE user_id = %s", (uid,))
+        total_count = int(cnt_row["cnt"]) if cnt_row and "cnt" in cnt_row else len(rows)
+
+        # Normalize rows into dicts with serializable fields using Media.from_dict -> to_dict
+        results = []
+        for r in rows:
+            try:
+                media_obj = Media.from_dict(dict(r))
+                results.append(media_obj.to_dict())
+            except Exception:
+                # fallback: include raw row but ensure created_at is isoformat if present
+                raw = dict(r)
+                ca = raw.get("created_at")
+                if hasattr(ca, "isoformat"):
+                    raw["created_at"] = ca.isoformat()
+                results.append(raw)
+
+        return {"status": "OK", "results": results, "count": total_count}
+
+    except Exception as e:
+        print(f"[ERROR][get_user_publications_services] {e}")
+        return {"status": "error", "error_msg": str(e)}
 
 # last line

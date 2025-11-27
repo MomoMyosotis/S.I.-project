@@ -5,10 +5,10 @@
   <title>Feed</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="{{ url_for('static', filename='feed_style.css') }}">
-
 </head>
-<body>
 
+
+<body>
 <header>Feed</header>
 
 <div class="search-bar">
@@ -48,6 +48,18 @@
 
   const feedEl = document.getElementById('feed');
   const loadingEl = document.getElementById('loading');
+  function getMediaIcon(type) {
+    switch (type) {
+      case 'song':
+        return '/static/images/song.png';
+      case 'document':
+        return '/static/images/document.png';
+      case 'video':
+        return '/static/images/video.png';
+      default:
+        return '/static/images/unknown.jpg';
+    }
+  }
 
   async function loadMore() {
     if (isLoading) return;
@@ -68,16 +80,47 @@
         data.forEach(item => {
           const div = document.createElement('div');
           div.className = 'media-item';
-          div.innerHTML = `
-            <img src="${item.thumbnail || 'https://via.placeholder.com/120x120'}" alt="img">
-            <div class="media-info">
-              <h3><a href="${item.link || '#'}" target="_blank">${item.title}</a></h3>
-              <p>Autore: ${item.username || 'Sconosciuto'}</p>
-              <p>Tag: ${item.tags?.join(', ') || '-'}</p>
-            </div>
-          `;
+
+          const img = document.createElement('img');
+          img.className = 'media-icon';
+          img.src = getMediaIcon(item.type);
+          img.alt = item.type || '';
+
+          const info = document.createElement('div');
+          info.className = 'media-info';
+
+          const h3 = document.createElement('h3');
+          const a = document.createElement('a');
+          a.href = item.link || '#';
+          a.target = '_blank';
+          a.textContent = item.title || 'Untitled';
+          h3.appendChild(a);
+
+          const byP = document.createElement('p');
+          const username = item.username;
+          if (username) {
+            const profileLink = document.createElement('a');
+            profileLink.href = `/home/?form_type=profile&username=${encodeURIComponent(username)}`;
+            profileLink.textContent = username;
+            byP.appendChild(document.createTextNode('By: '));
+            byP.appendChild(profileLink);
+          } else {
+            byP.textContent = 'By: Sconosciuto';
+          }
+
+          const tagsP = document.createElement('p');
+          tagsP.textContent = 'Tag: ' + (Array.isArray(item.tags) ? item.tags.join(', ') : '-');
+
+          info.appendChild(h3);
+          info.appendChild(byP);
+          info.appendChild(tagsP);
+
+          div.appendChild(img);
+          div.appendChild(info);
+
           feedEl.appendChild(div);
         });
+
 
         currentIndex += data.length;
         loadingEl.textContent = "";

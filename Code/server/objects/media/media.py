@@ -43,7 +43,7 @@ class Media(ABC):
         is_performer: Optional[bool] = None,
         **kwargs
     ):
-        print(f"[DEBUG][Media.__init__] Called with title={title}, type={type}, year={year}, user_id={user_id}, kwargs={kwargs}")
+        #print(f"[DEBUG][Media.__init__] Called with title={title}, type={type}, year={year}, user_id={user_id}, kwargs={kwargs}")
 
         # Alias tra id e media_id
         self.id = media_id or kwargs.get("id")
@@ -70,7 +70,7 @@ class Media(ABC):
 
         # Gestione extra attr
         for k, v in kwargs.items():
-            print(f"[DEBUG][Media.__init__] Extra attr: {k}={v}")
+            #print(f"[DEBUG][Media.__init__] Extra attr: {k}={v}")
             setattr(self, k, v)
 
         # Gestione tracklist
@@ -78,7 +78,7 @@ class Media(ABC):
         if tracklist is not None:
             self.additional_info = json.dumps(tracklist)
 
-        print(f"[DEBUG][Media.__init__] Finished -> {self}")
+        #print(f"[DEBUG][Media.__init__] Finished -> {self}")
 
     @abstractmethod
     def media_type(self) -> str:
@@ -162,12 +162,21 @@ class Media(ABC):
             print (f"[ERROR][Media.Fetch_All] cannot import fetch_all from db_crud: {e}")
             return[]
 
+        # Try to resolve the media type in a resilient way:
         media_type = None
         try:
-            media_type = cls().media_type()
+            # Prefer calling as a classmethod if available
+            media_type = cls.media_type()
+        except TypeError:
+            # If media_type is instance method, try instantiation (fall back)
+            try:
+                media_type = cls().media_type()
+            except Exception as e:
+                print(f"[DEBUG][Media.fetch_all] could not determine media_type: {e}")
+                media_type = None
         except Exception as e:
-            media_type = getattr(cls, "media_type", None)
-            print (f"[DEBUG][Media.Fetch_all] media_type = {media_type}")
+            print(f"[DEBUG][Media.fetch_all] unexpected error resolving media_type: {e}")
+            media_type = None
 
         rows = fetch_all_media_db(media_type=media_type, search=search, filter_by=filter_by, offset=offset, limit=limit
     )
@@ -195,6 +204,7 @@ class Media(ABC):
 
     def to_dict(self) -> Dict[str, Any]:
         d = {
+            "id": self.media_id,
             "media_id": self.media_id,
             "type": self.type,
             "title": self.title,
@@ -214,20 +224,11 @@ class Media(ABC):
             "is_author": self.is_author,
             "is_performer": self.is_performer
         }
-
-        # Deserializza tracklist se presente
-        if self.additional_info:
-            try:
-                d["tracklist"] = json.loads(self.additional_info)
-            except Exception:
-                d["tracklist"] = None
-
-        print(f"[DEBUG][Media.to_dict] {self} -> {d}")
         return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
-        print(f"[DEBUG][Media.from_dict] cls={cls.__name__}, data={data}")
+        #print(f"[DEBUG][Media.from_dict] cls={cls.__name__}, data={data}")
         if 'id' in data:
             data['media_id'] = data.pop('id')
         if data['type'] == 'song':
@@ -241,7 +242,7 @@ class Media(ABC):
             obj = Document(**data)
         else:
             raise ValueError (f"invalid media type: {data['type']}")
-        print(f"[DEBUG][Media.from_dict] Built object={obj}")
+        #print(f"[DEBUG][Media.from_dict] Built object={obj}")
         return obj
 
     def __repr__(self) -> str:

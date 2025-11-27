@@ -122,12 +122,17 @@ def register_user(mail: str, username: str, password: str, birthday_str: str) ->
 def get_profile(user_obj: Root, target_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
-    target_name = target_name or user_obj.username
+
+    # safe extraction while you migrate to full Root everywhere
+    username = user_obj["username"] if isinstance(user_obj, dict) else getattr(user_obj, "username", None)
+    target_name = target_name or username
+
     target_data = Root.get_user_by_username(target_name)
     if not target_data:
         return None
     target_obj = _build_user_obj(target_data)
     return target_obj.to_dict_public() if target_obj else None
+
 
 def edit_profile(user_obj: Root, username: str, bio: str, profile_pic: str) -> str:
     if not is_logged(user_obj):

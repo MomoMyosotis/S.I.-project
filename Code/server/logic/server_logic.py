@@ -1,10 +1,8 @@
 # first line
-import json
-import secrets
-import threading
+import json, secrets, threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from server.services.redirect import dispatch_command
-from server.logic.admin_console import manual_cmd, macr
+from server.logic.admin_console import macr, start_admin_server, register_stop_callback
 
 # Sessioni e modalità server
 sessions = {}
@@ -78,10 +76,19 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 def start_server(host: str, port: int):
     """Avvia l'HTTP server e il thread admin console."""
-    # Thread per comandi admin (manual mode)
-    threading.Thread(target=manual_cmd, args=(None, mode_ref), daemon=True).start()
+    # Start admin TCP console (non-blocking). Use localhost only.
+    admin_server = start_admin_server(mode_ref, host='127.0.0.1', port=60000)
 
     server = HTTPServer((host, port), RequestHandler)
+    # Register a stop callback so admin can stop this HTTPServer cleanly.
+    def _stop_httpserver():
+        try:
+            print("Admin requested server stop. Shutting down HTTP server...")
+            server.shutdown()
+            server.server_close()
+        except Exception as e:
+            print(f"Error stopping server: {e}")
+    register_stop_callback(_stop_httpserver)
     print(f"Server running on {host}:{port}")
     try:
         server.serve_forever()
