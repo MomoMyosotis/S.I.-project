@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Modifica Profilo</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='profile_update_style.css') }}" />
+  <style>
+    /* minimal inline styles for the form */
+    .form-wrap { max-width:700px; margin:24px auto; padding:18px; border:1px solid #ddd; border-radius:8px; background:#ff2770; }
+    .form-row { margin-bottom:12px; display:flex; gap:12px; align-items:center; }
+    label { min-width:120px; font-weight:600; }
+    input[type="text"], textarea { flex:1; padding:8px; border:1px solid #ccc; border-radius:4px; }
+    button { padding:8px 12px; border-radius:6px; cursor:pointer; }
+    #preview { width:120px; height:120px; object-fit:cover; border-radius:6px; border:1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <main class="form-wrap" role="main" aria-label="Modifica profilo">
+    <h1>Modifica Profilo</h1>
+
+    <div id="msg" role="status" aria-live="polite" style="margin-bottom:12px;color:#080;"></div>
+
+    <div class="form-row">
+      <label for="username">Username</label>
+      <input id="username" type="text" disabled />
+    </div>
+
+    <div class="form-row">
+      <label for="bio">Biografia</label>
+      <textarea id="bio" rows="5"></textarea>
+    </div>
+
+    <div class="form-row">
+      <label>Foto profilo</label>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <img id="preview" alt="Preview" src="{{ url_for('static', filename='images/no pp.jpg') }}" />
+        <input id="file-input" type="file" accept="image/*" />
+        <div>
+          <button id="upload-btn" type="button">Carica immagine</button>
+          <span id="upload-status" style="margin-left:8px"></span>
+        </div>
+        <input id="profile_pic" type="hidden" />
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px; margin-top:12px;">
+      <button id="save-btn" type="button">Salva</button>
+      <button id="cancel-btn" type="button">Annulla</button>
+    </div>
+  </main>
+
+<script type="module">
+  const fileInput = document.getElementById('file-input');
+  const uploadBtn = document.getElementById('upload-btn');
+  const uploadStatus = document.getElementById('upload-status');
+  const preview = document.getElementById('preview');
+  const profilePicInput = document.getElementById('profile_pic');
+  const saveBtn = document.getElementById('save-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const msgEl = document.getElementById('msg');
+
+  async function fetchProfile() {
+    try {
+      const res = await fetch('/profile/data');
+      if (!res.ok) throw new Error('Impossibile caricare i dati');
+      const data = await res.json();
+      const user = data.user || {};
+      document.getElementById('username').value = user.username || '';
+      document.getElementById('bio').value = user.full_bio ?? user.bio ?? '';
+      if (user.profile_pic) {
+        profilePicInput.value = user.profile_pic;
+        preview.src = `/profile/picture/${encodeURIComponent(user.profile_pic)}`;
+      } else if (user.profile_picture_url) {
+        preview.src = user.profile_picture_url;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  uploadBtn.addEventListener('click', async () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) { uploadStatus.textContent = 'Seleziona un file prima.'; return; }
+    uploadStatus.textContent = 'Caricamento...';
+    const fd = new FormData();
+    fd.append('file', f, f.name);
+    fd.append('file_type', 'image');
+    fd.append('filename', f.name);
+
+    try {
+      const res = await fetch('/profile/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        uploadStatus.textContent = data.error || 'Errore upload';
+        return;
+      }
+      const saved = data.file || f.name;
+      profilePicInput.value = saved;
+      preview.src = `/profile/picture/${encodeURIComponent(saved)}`;
+      uploadStatus.textContent = 'Caricato';
+    } catch (err) {
+      console.error(err);
+      uploadStatus.textContent = 'Errore di rete';
+    }
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const payload = {
+      full_bio: document.getElementById('bio').value || undefined,
+      profile_pic: profilePicInput.value || undefined
+    };
+    msgEl.textContent = 'Salvataggio...';
+    try {
+      const res = await fetch('/profile/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        msgEl.style.color = '#900';
+        msgEl.textContent = data.error || 'Errore salvataggio';
+        return;
+      }
+      msgEl.style.color = '#080';
+      msgEl.textContent = 'Profilo aggiornato';
+      // go back to previous page (likely profile view)
+      setTimeout(() => { location.href = document.referrer || '/'; }, 700);
+    } catch (err) {
+      console.error(err);
+      msgEl.style.color = '#900';
+      msgEl.textContent = 'Errore di rete';
+    }
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    history.back();
+  });
+
+  // initial load
+  fetchProfile();
+</script>
+</body>
+</html>

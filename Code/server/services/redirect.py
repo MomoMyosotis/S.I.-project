@@ -1,6 +1,6 @@
 # first line
 
-import json, base64
+import json, base64, inspect
 from typing import Optional, Any, Tuple
 from server.services import user_services, media_services, interventions_services
 from server.utils.storage_manager import (save_file,
@@ -22,7 +22,18 @@ def default_encoder(obj):
 # FILE MANAGER WRAPPERS
 # =====================
 def dispatch_save_file(user_obj, file_type, file_name, content: bytes):
-    save_file(file_type, file_name, content)
+    # Accept base64 string or raw bytes. If string, decode.
+    import base64
+    if isinstance(content, str):
+        try:
+            content_bytes = base64.b64decode(content)
+        except Exception:
+            # fallback: treat as raw (may fail in storage layer)
+            content_bytes = content.encode('utf-8')
+    else:
+        content_bytes = content
+
+    save_file(file_type, file_name, content_bytes)
     return f"{file_name} saved successfully"
 
 def dispatch_fetch_file(user_obj, file_type, file_name):
@@ -32,7 +43,16 @@ def dispatch_fetch_file(user_obj, file_type, file_name):
     return base64.b64encode(content).decode('utf-8')
 
 def dispatch_update_file(user_obj, file_type, file_name, content: bytes):
-    update_file(file_type, file_name, content)
+    # Same handling as save: accept base64 string or raw bytes
+    import base64
+    if isinstance(content, str):
+        try:
+            content_bytes = base64.b64decode(content)
+        except Exception:
+            content_bytes = content.encode('utf-8')
+    else:
+        content_bytes = content
+    update_file(file_type, file_name, content_bytes)
     return f"{file_name} updated successfully"
 
 def dispatch_download_file(user_obj, file_type, file_name, target_path: str):
@@ -61,6 +81,7 @@ COMMAND_MAP = {
     # MEDIA
     "create_song": media_services.create_song_services,
     "get_song": media_services.get_song_services,
+    "get_media": media_services.get_media_services,            # <-- ADDED generic getter
     "update_song": media_services.update_song_services,
     "delete_song": media_services.delete_song_services,
     "create_document": media_services.create_document_services,
@@ -120,10 +141,19 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
         return json.dumps({"error_msg": f"Unknown command {command}", "status": "error"}), None, None, "ERROR"
 
     try:
+        # support functions that expect named params by accepting a single dict arg
         if command in ["login", "register", "recover", "assistance"]:
             result = func(*args)
         else:
-            result = func(user_obj, *args)
+            # if client passed a single dict, try to unpack it as kwargs
+            if len(args) == 1 and isinstance(args[0], dict):
+                try:
+                    result = func(user_obj, **args[0])
+                except TypeError:
+                    # fallback to positional if kwargs don't match signature
+                    result = func(user_obj, *args)
+            else:
+                result = func(user_obj, *args)
 
         new_token = None
         if command in ["login", "register"] and isinstance(result, dict):

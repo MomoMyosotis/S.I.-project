@@ -107,7 +107,8 @@
 
       const data = await res.json();
       updateUI(data.user);
-      updateActions(data.self);
+      // pass both viewer (data.self) and the target user (data.user)
+      updateActions(data.self, data.user);
       attachBioToggle();
 
       // initial publications chunk from profile endpoint
@@ -211,7 +212,12 @@
     // use "no pp.jpg" from static/images when no profile picture is available
     if (picEl) {
       const defaultPic = "/static/images/no pp.jpg";
-      picEl.src = user.profile_picture_url || user.profile_pic || encodeURI(defaultPic);
+      // if server returned a profile_pic id, use the client proxy endpoint to fetch it
+      if (user.profile_pic) {
+        picEl.src = `/profile/picture/${encodeURIComponent(user.profile_pic)}`;
+      } else {
+        picEl.src = user.profile_picture_url || encodeURI(defaultPic);
+      }
     }
     if (fullBioEl) {
       fullBioEl.textContent = user.full_bio ?? user.bio ?? "Nessuna biografia disponibile.";
@@ -236,14 +242,51 @@
   }
 
   // render action buttons depending on ownership
-  function updateActions(selfData = {is_self:false}) {
+  function updateActions(viewer = {is_self:false}, targetUser = {}) {
     const container = document.getElementById("profile-actions");
     if (!container) return;
     container.innerHTML = "";
-    if (selfData.is_self) {
-      container.innerHTML = `<button class="edit-btn" onclick="editProfile()">Modifica Profilo</button>`;
-    } else {
-      container.innerHTML = `<button class="follow-btn" onclick="toggleFollow()">Segui</button>`;
+
+    // debug: mostra i payload ricevuti nella console per verificare i campi
+    // (rimuovere in produzione)
+    console.debug("[DEBUG][updateActions] viewer:", viewer, "targetUser:", targetUser);
+
+    // normalise viewer fields (server may return different keys)
+    const viewerId = viewer?.id ?? viewer?.user_id ?? null;
+    let viewerLvl = Number(viewer?.lvl ?? viewer?.level ?? viewer?.level_id ?? -1);
+
+    // se non abbiamo il livello del viewer ma stiamo visualizzando il profilo
+    // della stessa persona, proviamo a leggere il livello dal targetUser (fallback)
+    const isSelf = viewer?.is_self === true || (viewerId && viewerId === (targetUser?.id ?? targetUser?.user_id));
+    if ((Number.isNaN(viewerLvl) || viewerLvl < 0) && isSelf) {
+      viewerLvl = Number(targetUser?.lvl ?? targetUser?.level ?? targetUser?.level_id ?? viewerLvl);
+    }
+
+    // assicurati che viewerLvl sia un numero valido
+    if (Number.isNaN(viewerLvl)) viewerLvl = -1;
+
+    const isFollowing = Boolean(viewer?.is_following ?? viewer?.following ?? viewer?.follows ?? targetUser?.is_followed ?? false);
+
+    // Edit button: if same user OR viewer lvl is 0 or 1
+    const canEdit = isSelf || viewerLvl === 0 || viewerLvl === 1;
+    if (canEdit) {
+      container.insertAdjacentHTML("beforeend",
+        `<button class="edit-btn" onclick="editProfile()">Modifica Profilo</button>`);
+    }
+
+    // Publish button: if viewer is self OR viewer lvl is 0,1,3
+    if (isSelf || [0,1,3].includes(viewerLvl)) {
+      container.insertAdjacentHTML("beforeend",
+        `<button class="edit-btn" onclick="window.location.href='/publish.html'">Pubblica</button>`);
+    }
+
+    // Follow / Unfollow only when viewing other user's profile and viewer is logged
+    if (!isSelf && viewerId) {
+      const btnText = isFollowing ? "Unfollow" : "Segui";
+      container.insertAdjacentHTML("beforeend",
+        `<button id="follow-btn" class="follow-btn">${btnText}</button>`);
+      const btn = document.getElementById("follow-btn");
+      if (btn) btn.addEventListener("click", () => toggleFollow(targetUser.username ?? targetUser?.id));
     }
   }
 
@@ -265,49 +308,37 @@
   }
 
   function editProfile() {
-    window.location.href = "/home/?form_type=edit_profile";
+    window.location.href = "/profile/edit";  }
+  window.editProfile = editProfile;
+  async function toggleFollow(targetIdentifier) {
+    try {
+      const username = viewedUsername || targetIdentifier;
+      if (!username) return;
+      const followBtn = document.getElementById("follow-btn");
+      const action = followBtn && followBtn.textContent.trim().toLowerCase() === "segui" ? "follow" : "unfollow";
+      const res = await fetch(`/profile/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username })
+      });
+      if (!res.ok) throw new Error("Request failed");
+      const j = await res.json();
+      // toggle label on success (backend should return success flag)
+      if (j && (j.status === "OK" || j.success === true)) {
+        if (followBtn) followBtn.textContent = action === "follow" ? "Unfollow" : "Segui";
+        // update followers counter if present
+        const followersEl = document.getElementById("followers-count");
+        if (followersEl) {
+          let cur = Number(followersEl.textContent || 0);
+          followersEl.textContent = action === "follow" ? cur + 1 : Math.max(0, cur - 1);
+        }
+      }
+    } catch (err) {
+      console.error("[DEBUG][toggleFollow] Errore:", err);
+    }
   }
-
-  function toggleFollow() {
-    console.log("toggleFollow not implemented");
-  }
-
-  // simple counter animation for stats
-  function animateCounters() {
-    document.querySelectorAll(".stat-counter").forEach(el => {
-      const target = parseInt(el.dataset.target || el.textContent || "0", 10);
-      el.textContent = "0";
-      let cur = 0;
-      const step = Math.max(1, Math.round(target / 25));
-      const t = setInterval(() => {
-        cur += step;
-        if (cur >= target) {
-          el.textContent = target;
-          clearInterval(t);
-        } else el.textContent = cur;
-      }, 16);
-    });
-  }
-
-  // toggle publications container size (keeps profile visible)
-  function togglePubsContainer() {
-    const container = document.getElementById("pubs-container");
-    const btn = document.getElementById("toggle-pubs-btn");
-    if (!container || !btn) return;
-    const expanded = container.classList.toggle("expanded");
-    container.classList.toggle("collapsed", !expanded);
-    btn.textContent = expanded ? "Mostra meno" : "Mostra altro";
-    renderLoadMoreButton();
-    if (!expanded) container.scrollTop = 0;
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    const toggleBtn = document.getElementById("toggle-pubs-btn");
-    if (toggleBtn) toggleBtn.addEventListener("click", togglePubsContainer);
-  });
-
+  window.toggleFollow = toggleFollow;
   loadProfile();
-
 </script>
 
 </body>

@@ -16,7 +16,10 @@ class ProfileService:
             # create User instance and serialize for client
             user_obj = User.from_server(inner if isinstance(inner, dict) else {})
             user_dict = user_obj.to_dict()
-
+            # expose a client URL for the profile picture (proxy)
+            profile_pic_id = user_dict.get("profile_pic")
+            if profile_pic_id:
+                user_dict["profile_picture_url"] = f"/profile/picture/{profile_pic_id}"
             # fetch recent publications (best-effort, ignore errors)
             # request a larger limit so we can infer a sensible publications_count
             pubs_res = http_client.send_request("GET_USER_PUBLICATIONS", [user_obj.username, 0, 100], require_auth=True)
@@ -72,9 +75,20 @@ class ProfileService:
     @staticmethod
     def update_profile(content):
         print(f"[DEBUG][ProfileService.update_profile] sending UPDATE_USER with content={content}")
-        res = http_client.send_request("UPDATE_USER", [content], require_auth=True)
-        print(f"[DEBUG][ProfileService.update_profile] response: {res}")
-        return res
+        # try a list of candidate command names until one succeeds
+        candidates = ["UPDATE_USER", "EDIT_USER", "UPDATE_PROFILE", "EDIT_PROFILE", "SET_USER", "USER_UPDATE"]
+        last_res = None
+        for cmd in candidates:
+            print(f"[DEBUG][ProfileService.update_profile] trying command: {cmd}")
+            res = http_client.send_request(cmd, [content], require_auth=True)
+            print(f"[DEBUG][ProfileService.update_profile] response for {cmd}: {res}")
+            last_res = res
+            if isinstance(res, dict) and res.get("status") in (None, "OK"):
+                print(f"[DEBUG][ProfileService.update_profile] succeeded with {cmd}")
+                return res
+
+        print("[DEBUG][ProfileService.update_profile] all candidate commands failed")
+        return last_res or {"status": "ERROR", "error_msg": "No response from server"}
 
     @staticmethod
     def add_media(content):

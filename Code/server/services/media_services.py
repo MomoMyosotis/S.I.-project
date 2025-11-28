@@ -289,4 +289,79 @@ def get_user_publications_services(user_obj, username: str, offset: int = 0, lim
         print(f"[ERROR][get_user_publications_services] {e}")
         return {"status": "error", "error_msg": str(e)}
 
-# last line
+def get_media_services(user_obj, media_id: int):
+    """
+    Generic media fetch: returns a normalized dict for any media type (song/video/document).
+    Used by the client show page (command 'get_media').
+    Enhanced: include publisher username, author names, tags, duration_display and date (year).
+    """
+    try:
+        # allow string ids too
+        mid = int(media_id)
+        media_obj = Media.fetch(mid)
+        if not media_obj:
+            return {"status": "error", "error_msg": "Media not found"}
+
+        m = media_obj.to_dict()
+
+        # publisher username
+        try:
+            username = duck(m.get("user_id"))
+            if username:
+                m["username"] = username
+        except Exception:
+            m["username"] = m.get("username")  # keep existing if present
+
+        # resolve authors -> names
+        try:
+            author_ids = m.get("authors") or []
+            if author_ids:
+                rows = fetch_all("SELECT id, name FROM authors WHERE id = ANY(%s);", (author_ids,))
+                author_names = [r["name"] for r in rows]
+            else:
+                author_names = []
+            m["author_names"] = author_names
+            # provide a single 'author' string for legacy clients
+            if not m.get("author"):
+                if author_names:
+                    m["author"] = ", ".join(author_names)
+                else:
+                    m["author"] = m.get("username") or None
+        except Exception:
+            m["author_names"] = m.get("author_names", [])
+            m["author"] = m.get("author") or m.get("username")
+
+        # resolve genre tags -> names
+        try:
+            genre_ids = m.get("genres") or []
+            if genre_ids:
+                rows = fetch_all("SELECT id, name FROM genres WHERE id = ANY(%s);", (genre_ids,))
+                tags = [r["name"] for r in rows]
+            else:
+                tags = []
+            m["tags"] = tags
+        except Exception:
+            m["tags"] = m.get("tags", [])
+
+        # duration formatting (seconds -> M:SS)
+        try:
+            dur = m.get("duration")
+            if dur is not None:
+                secs = int(dur)
+                m["duration_display"] = f"{secs//60}:{secs%60:02d}"
+                m["duration_seconds"] = secs
+            else:
+                m["duration_display"] = None
+                m["duration_seconds"] = None
+        except Exception:
+            m["duration_display"] = None
+            m["duration_seconds"] = None
+
+        # published date: expose year as 'date' (client expects date)
+        if m.get("year") is not None and not m.get("date"):
+            m["date"] = str(m.get("year"))
+
+        return {"status": "OK", "response": m}
+    except Exception as e:
+        print(f"[ERROR][get_media_services] {e}")
+        return {"status": "error", "error_msg": str(e)}

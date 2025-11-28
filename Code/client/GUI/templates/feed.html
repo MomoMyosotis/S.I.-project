@@ -25,6 +25,8 @@
 
 <div class="feed" id="feed"></div>
 <div class="loading" id="loading">Caricamento...</div>
+<!-- sentinel element for IntersectionObserver lazy loading -->
+<div id="feed-sentinel"></div>
 
 <div class="bottom-nav-box">
   <a href="{{ url_for('home.homepage', form_type='profile') }}" class="nav-item">
@@ -45,9 +47,12 @@
   let currentFilter = 'all';
   let currentSearch = '';
   let isLoading = false;
+  let endReached = false;
 
   const feedEl = document.getElementById('feed');
   const loadingEl = document.getElementById('loading');
+  const sentinel = document.getElementById('feed-sentinel');
+
   function getMediaIcon(type) {
     switch (type) {
       case 'song':
@@ -62,7 +67,7 @@
   }
 
   async function loadMore() {
-    if (isLoading) return;
+    if (isLoading || endReached) return;
     isLoading = true;
     loadingEl.textContent = "Caricamento...";
     
@@ -72,8 +77,9 @@
 
       if (res.ok) {
         if (currentIndex === 0) feedEl.innerHTML = '';
-        if (data.length === 0) {
+        if (!data || data.length === 0) {
           loadingEl.textContent = "Fine dei risultati";
+          endReached = true;
           return;
         }
 
@@ -91,7 +97,9 @@
 
           const h3 = document.createElement('h3');
           const a = document.createElement('a');
-          a.href = item.link || '#';
+          // link to the detailed show page; prefer an id field, fall back to link
+          const mediaId = item.id || item.media_id || item._id || item.link || '';
+          a.href = `/show?media_id=${encodeURIComponent(mediaId)}`;
           a.target = '_blank';
           a.textContent = item.title || 'Untitled';
           h3.appendChild(a);
@@ -135,22 +143,29 @@
     }
   }
 
-  function handleScroll() {
-    if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 100) {
-      loadMore();
+  // Use an IntersectionObserver on a sentinel element located after the feed
+  // so we load more when the sentinel becomes visible.
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        loadMore();
+      }
     }
-  }
+  }, { root: null, rootMargin: '200px', threshold: 0.1 });
 
   function applySearch() {
     currentIndex = 0;
     feedEl.innerHTML = '';
     currentSearch = document.getElementById('search').value;
     currentFilter = document.getElementById('filter').value;
+    endReached = false;
     loadMore();
   }
 
-  window.addEventListener('scroll', handleScroll);
-  window.addEventListener('DOMContentLoaded', () => loadMore());
+  window.addEventListener('DOMContentLoaded', () => {
+    observer.observe(sentinel);
+    loadMore();
+  });
 </script>
 
 </body>

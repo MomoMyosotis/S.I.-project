@@ -278,16 +278,16 @@ def fetch_media_db(media_id: int) -> Optional[Dict[str, Any]]:
 
             # relazioni
             cur.execute("SELECT author_id FROM media_authors WHERE media_id=%s;", (media_id,))
-            media["authors"] = [r[0] for r in cur.fetchall()]
+            media["authors"] = [r["author_id"] for r in cur.fetchall()]
 
             cur.execute("SELECT performer_id FROM media_performances WHERE media_id=%s;", (media_id,))
-            media["performers"] = [r[0] for r in cur.fetchall()]
+            media["performers"] = [r["performer_id"] for r in cur.fetchall()]
 
             cur.execute("SELECT genre_id FROM media_genres WHERE media_id=%s;", (media_id,))
-            media["genres"] = [r[0] for r in cur.fetchall()]
+            media["genres"] = [r["genre_id"] for r in cur.fetchall()]
 
             cur.execute("SELECT passive_id FROM media_references WHERE active_id=%s;", (media_id,))
-            media["references"] = [r[0] for r in cur.fetchall()]
+            media["references"] = [r["passive_id"] for r in cur.fetchall()]
 
             return media
     except Exception as e:
@@ -696,5 +696,3 @@ def db_get_followers(user_id: int) -> List[Dict[str, Any]]:
         WHERE uf.followed_id = %s
     """
     return fetch_all(sql, (user_id,))
-
-# last line

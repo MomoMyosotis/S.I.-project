@@ -134,16 +134,56 @@ def get_profile(user_obj: Root, target_name: Optional[str] = None) -> Optional[D
     return target_obj.to_dict_public() if target_obj else None
 
 
-def edit_profile(user_obj: Root, username: str, bio: str, profile_pic: str) -> str:
+def edit_profile(user_obj: Root, username=None, bio=None, profile_pic=None) -> str:
+    """
+    Flexible profile updater:
+    - Accepts either positional params (username, bio, profile_pic) OR a single dict payload
+      passed as the second argument (username can be a dict).
+    - Supports client key "full_bio" mapped to internal "bio".
+    - If username is omitted, the current user's username is kept.
+    """
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
-    updates = {"username": username, "bio": bio, "profile_pic": profile_pic}
-    success = Root.update_user(user_obj.id, updates)
+
+    # If caller passed a payload dict as the second arg, extract fields
+    if isinstance(username, dict):
+        payload = username
+        # prefer 'bio' then 'full_bio'
+        bio = payload.get("bio") if payload.get("bio") is not None else payload.get("full_bio", bio)
+        profile_pic = payload.get("profile_pic", profile_pic)
+        username = payload.get("username", None)
+
+    # Default username to current user if missing
+    if username is None:
+        username = user_obj["username"] if isinstance(user_obj, dict) else getattr(user_obj, "username", None)
+
+    # Build updates only with provided (non-None) fields
+    updates = {}
+    if username is not None:
+        updates["username"] = username
+    if bio is not None:
+        updates["bio"] = bio
+    if profile_pic is not None:
+        updates["profile_pic"] = profile_pic
+
+    if not updates:
+        return "ERROR: No updates provided"
+
+    # Resolve user id
+    uid = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+    success = Root.update_user(uid, updates)
     if success:
-        # Aggiorno l'oggetto in memoria
-        user_obj.username = username
-        user_obj.bio = bio
-        user_obj.profile_pic = profile_pic
+        # Update in-memory object (if Root instance)
+        if not isinstance(user_obj, dict):
+            if "username" in updates:
+                user_obj.username = updates["username"]
+            if "bio" in updates:
+                user_obj.bio = updates["bio"]
+            if "profile_pic" in updates:
+                user_obj.profile_pic = updates["profile_pic"]
+        else:
+            # if it's a dict, update keys for callers relying on it
+            user_obj.update(updates)
         return "PROFILE_UPDATED"
     return "ERROR: Failed to update profile"
 

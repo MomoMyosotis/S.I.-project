@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Pubblica Media</title>
+    <link rel="stylesheet" href="/static/publish_style.css">
+</head>
+
+<body>
+
+<main class="form-wrap" role="main" aria-label="Pubblica media">
+  <h1>Pubblica Media</h1>
+
+  <form id="publishForm" novalidate>
+
+      <!-- TYPE + HELPER -->
+      <div class="section" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="min-width:80px">Tipo:</label>
+        <select name="type" id="mediaType" aria-label="Tipo di media">
+            <option value="document">Documento</option>
+            <option value="video">Video</option>
+            <option value="song">Brano</option>
+        </select>
+
+        <div id="typeHint" style="margin-left:auto;color:var(--muted);font-size:0.95rem">
+          Compila solo i campi relativi al tipo selezionato.
+        </div>
+      </div>
+
+      <!-- =======================
+           DATI COMUNI
+      ======================== -->
+      <div class="section">
+          <h2>Dati Generali</h2>
+
+          <label>Titolo:</label>
+          <input type="text" name="title" required>
+
+          <label>Anno:</label>
+          <input type="number" name="year">
+
+          <label>Descrizione:</label>
+          <textarea name="description"></textarea>
+
+          <label>Link:</label>
+          <input type="text" name="link">
+
+          <label>Durata (secondi):</label>
+          <input type="number" name="duration">
+
+          <label>Data Registrazione:</label>
+          <input type="date" name="recording_date">
+
+          <label>Luogo:</label>
+          <input type="text" name="location">
+
+          <label>Note aggiuntive:</label>
+          <textarea name="additional_info"></textarea>
+      </div>
+
+      <!-- =======================
+           RELAZIONI
+      ======================== -->
+      <div class="section">
+          <h2>Autori / Esecutori / Generi / Riferimenti</h2>
+
+          <label>Autori (ID separati da virgola):</label>
+          <input type="text" id="authors" name="authors" placeholder="es: 12,45,78">
+
+          <label>Esecutori (ID separati da virgola):</label>
+          <input type="text" id="performers" name="performers" placeholder="es: 3,8">
+
+          <label>Generi (ID separati da virgola):</label>
+          <input type="text" id="genres" name="genres" placeholder="es: 2,4">
+
+          <label>Riferimenti (ID separati da virgola):</label>
+          <input type="text" id="references" name="references" placeholder="es: 9,11">
+      </div>
+
+      <!-- =======================
+           DATI DOCUMENTO
+      ======================== -->
+      <div id="documentFields" class="section hidden" data-type="document">
+        <h2>Info Documento</h2>
+
+        <label>Formato:</label>
+        <input type="text" name="format">
+
+        <label>Pagine:</label>
+        <input type="number" name="pages">
+
+        <label>Caption:</label>
+        <textarea name="caption"></textarea>
+    </div>
+
+    <!-- =======================
+         DATI VIDEO
+    ======================== -->
+    <div id="videoFields" class="section hidden" data-type="video">
+        <h2>Info Video</h2>
+
+        <label>Risoluzione:</label>
+        <input type="text" name="resolution">
+
+        <label>FPS:</label>
+        <input type="number" name="fps">
+    </div>
+
+    <!-- =======================
+         DATI BRANO
+    ======================== -->
+    <div id="songFields" class="section hidden" data-type="song">
+        <h2>Info Brano</h2>
+
+        <label>Strumenti (str_list separati da virgola):</label>
+        <input type="text" name="instruments">
+
+        <label>Tonalità:</label>
+        <input type="text" name="key_signature">
+
+        <label>BPM:</label>
+        <input type="number" name="bpm">
+    </div>
+
+    <button type="submit">Pubblica</button>
+
+</form>
+
+<!-- Inlined JavaScript: mantiene tutto nel singolo file come richiesto -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const mediaType = document.getElementById('mediaType');
+    const docFields = document.getElementById('documentFields');
+    const videoFields = document.getElementById('videoFields');
+    const songFields = document.getElementById('songFields');
+
+    function updateFields() {
+        const t = mediaType.value;
+        docFields.classList.toggle('hidden', t !== 'document');
+        videoFields.classList.toggle('hidden', t !== 'video');
+        songFields.classList.toggle('hidden', t !== 'song');
+    }
+
+    mediaType.addEventListener('change', updateFields);
+    updateFields();
+
+    const form = document.getElementById('publishForm');
+    form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+
+        // Costruisce un payload semplice leggendo i campi del form
+        const fd = new FormData(form);
+        const payload = {};
+        for (const [k, v] of fd.entries()) {
+            payload[k] = v;
+        }
+
+        // Trasforma campi separati da virgola in array
+        ['authors','performers','genres','references','instruments'].forEach(id => {
+            if (payload[id] && typeof payload[id] === 'string') {
+                payload[id] = payload[id].split(',').map(s => s.trim()).filter(Boolean);
+            }
+        });
+
+        // Converte alcuni campi numerici in number
+        ['year','duration','pages','fps','bpm'].forEach(id => {
+            if (payload[id] !== undefined && payload[id] !== '') {
+                const n = Number(payload[id]);
+                if (!Number.isNaN(n)) payload[id] = n;
+            }
+        });
+
+        console.log('Publish payload:', payload);
+        alert('Form intercettato — vedi console per il payload. Implementa invio al server se necessario.');
+        // Esempio di invio (decommentare e adattare l'URL se necessario)
+        /*
+        fetch('/content/publish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(r => r.json()).then(console.log).catch(console.error);
+        */
+    });
+});
+</script>
+
+</body>
+</html>

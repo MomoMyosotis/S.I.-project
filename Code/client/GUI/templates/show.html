@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Media Viewer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='show_style.css') }}">
+  <style>
+    /* minimal inline styles so it funzion in assenza di file CSS */
+    .hidden { display:none; }
+    .media-container { max-width:900px; margin:20px auto; padding:10px; }
+    #media-display { margin:20px 0; }
+    video, iframe { width:100%; height:480px; background:#000; }
+    .audio-controls { display:flex; flex-direction:column; gap:8px; }
+    .audio-btns button { margin-right:8px; }
+    .comments-area { margin-top:20px; }
+    #comments-list .comment { border-top:1px solid #ddd; padding:8px 0; }
+  </style>
+</head>
+
+<body>
+
+  <div class="media-container">
+
+    <h1 id="media-title">Caricamento...</h1>
+
+    <div class="media-info">
+      <div><strong id="media-author">Autore:</strong></div>
+      <div><strong id="media-type">Tipo:</strong></div>
+      <div><strong id="media-date">Pubblicato il:</strong></div>
+      <div><strong id="media-publisher">Publisher:</strong></div>
+    </div>
+
+    <div id="media-display">
+
+      <div id="video-box" class="media-box hidden">
+        <video id="video-player" controls playsinline>
+          <source id="video-source" src="">
+        </video>
+        <div class="timebar"><span id="video-current">0:00</span><span style="float:right" id="video-total">0:00</span></div>
+      </div>
+
+      <div id="audio-box" class="media-box hidden">
+        <div class="audio-controls">
+          <audio id="audio-player" preload="metadata">
+            <source id="audio-source" src="">
+          </audio>
+
+          <input type="range" id="audio-progress" min="0" max="100" value="0">
+          <div class="audio-time"><span id="audio-current">0:00</span><span style="float:right" id="audio-total">0:00</span></div>
+
+          <div class="audio-btns">
+            <button id="audio-back">⏮ 10s</button>
+            <button id="audio-play">▶</button>
+            <button id="audio-forward">⏭ 10s</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="document-box" class="media-box hidden">
+        <iframe id="document-viewer" src="" frameborder="0"></iframe>
+      </div>
+
+    </div>
+
+    <div class="media-details">
+      <h2>Dettagli</h2>
+      <div id="media-details-content"></div>
+    </div>
+
+    <div class="download-area">
+      <a id="download-btn" href="#" download>⬇ Scarica</a>
+    </div>
+
+    <div class="comments-area">
+      <h2>Commenti</h2>
+
+      <div id="comments-list"></div>
+
+      <div class="comment-input">
+        <textarea id="comment-text" placeholder="Scrivi un commento..." rows="3" style="width:100%"></textarea>
+        <button id="comment-send">Invia</button>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+(async function(){
+  function qs(name){ return new URLSearchParams(window.location.search).get(name); }
+  const mediaId = qs('media_id');
+  if(!mediaId){
+    document.getElementById('media-title').textContent = "Media non trovato (missing id)";
+    return;
+  }
+
+  const el = id => document.getElementById(id);
+  const videoBox = el('video-box'), audioBox = el('audio-box'), docBox = el('document-box');
+  const videoPlayer = el('video-player'), audioPlayer = el('audio-player'), docViewer = el('document-viewer');
+
+  function fmtTime(s){
+    s = Number(s) || 0;
+    const m = Math.floor(s/60);
+    const sec = Math.floor(s%60);
+    return `${m}:${sec.toString().padStart(2,'0')}`;
+  }
+
+  try {
+    const res = await fetch(`/show/data?media_id=${encodeURIComponent(mediaId)}`);
+    const payload = await res.json();
+    if(!res.ok || payload.error){
+      document.getElementById('media-title').textContent = payload.error || 'Errore nel recupero';
+      return;
+    }
+
+    const m = payload;
+    el('media-title').textContent = m.title || 'Untitled';
+    // author: prefer explicit author, then username
+    const authorStr = m.author || (Array.isArray(m.author_names) && m.author_names.length ? m.author_names.join(', ') : m.username);
+    el('media-author').textContent = 'Autore: ' + (authorStr || 'Sconosciuto');
+    // show tags instead of raw type if present
+    el('media-type').textContent = 'Tipo: ' + (Array.isArray(m.tags) && m.tags.length ? m.tags.join(', ') : (m.type || 'n/a'));
+    // published year
+    el('media-date').textContent = 'Pubblicato il: ' + (m.date || m.year || 'n/d');
+    el('media-publisher').textContent = 'Publisher: ' + (m.username || (m.user_id ? String(m.user_id) : '-'));
+
+    // details
+    const detailsEl = el('media-details-content');
+    detailsEl.innerHTML = '';
+    if(m.details && typeof m.details === 'object'){
+      for(const [k,v] of Object.entries(m.details)){
+        const p = document.createElement('p');
+        p.textContent = `${k}: ${v}`;
+        detailsEl.appendChild(p);
+      }
+    }
+
+    // download
+    const downloadBtn = el('download-btn');
+    let downloadUrl = m.file || m.link || m.url || '';
+    function isRemoteUrl(u){
+      return /^https?:\/\//i.test(u) || /^data:/i.test(u);
+    }
+    if(downloadUrl && !isRemoteUrl(downloadUrl)){
+      const fname = m.filename || downloadUrl;
+      const proxyType = (m.type || 'document').toLowerCase();
+      downloadUrl = `/show/file?file_type=${encodeURIComponent(proxyType)}&filename=${encodeURIComponent(fname)}`;
+    }
+
+    if(downloadUrl){
+      downloadBtn.href = downloadUrl;
+      if(m.filename) downloadBtn.setAttribute('download', m.filename);
+    } else {
+      downloadBtn.style.display = 'none';
+    }
+
+    // show appropriate viewer
+    const t = (m.type || '').toLowerCase();
+    if(t === 'video' || (m.filename && m.filename.match(/\.(mp4|webm|ogg)$/i))){
+      videoBox.classList.remove('hidden');
+      videoPlayer.pause();
+      el('video-source').src = downloadUrl;
+      videoPlayer.load();
+      // duration handling
+      el('video-total').textContent = m.duration_display || '0:00';
+      videoPlayer.addEventListener('timeupdate', ()=> {
+        el('video-current').textContent = fmtTime(videoPlayer.currentTime);
+      });
+      videoPlayer.addEventListener('loadedmetadata', ()=> {
+        if(videoPlayer.duration && !m.duration_display){
+          el('video-total').textContent = fmtTime(videoPlayer.duration);
+        }
+      });
+    } else if(t === 'song' || (m.filename && m.filename.match(/\.(mp3|wav|ogg|m4a)$/i))){
+      audioBox.classList.remove('hidden');
+      el('audio-source').src = downloadUrl;
+      audioPlayer.load();
+
+      const progress = el('audio-progress');
+      const playBtn = el('audio-play');
+      const audioCurrent = el('audio-current'), audioTotal = el('audio-total');
+
+      el('audio-back').addEventListener('click', ()=> audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 10));
+      el('audio-forward').addEventListener('click', ()=> audioPlayer.currentTime = Math.min(audioPlayer.duration || 0, audioPlayer.currentTime + 10));
+      playBtn.addEventListener('click', ()=> {
+        if(audioPlayer.paused) { audioPlayer.play(); playBtn.textContent = '⏸'; }
+        else { audioPlayer.pause(); playBtn.textContent = '▶'; }
+      });
+
+      audioPlayer.addEventListener('timeupdate', ()=> {
+        if(audioPlayer.duration){
+          progress.value = Math.floor((audioPlayer.currentTime / audioPlayer.duration) * 100);
+          audioCurrent.textContent = fmtTime(audioPlayer.currentTime);
+        }
+      });
+
+      audioPlayer.addEventListener('loadedmetadata', ()=> {
+        const total = audioPlayer.duration || (m.duration_seconds || 0);
+        audioTotal.textContent = fmtTime(total);
+      });
+
+      // if server provided duration_display, use it immediately
+      if(m.duration_display){
+        audioTotal.textContent = m.duration_display;
+      }
+      progress.addEventListener('input', ()=> {
+        if(audioPlayer.duration) audioPlayer.currentTime = (progress.value / 100) * audioPlayer.duration;
+      });
+    } else {
+      docBox.classList.remove('hidden');
+      docViewer.src = downloadUrl || '';
+    }
+
+    // tags
+    if(Array.isArray(m.tags) && m.tags.length){
+      const p = document.createElement('p');
+      p.textContent = 'Tag: ' + m.tags.join(', ');
+      detailsEl.appendChild(p);
+    }
+
+    // comments (simple rendering - expects m.comments array)
+    const commentsList = el('comments-list');
+    commentsList.innerHTML = '';
+    const comments = m.comments || [];
+    if(comments.length === 0){
+      commentsList.innerHTML = '<p>Nessun commento</p>';
+    } else {
+      comments.forEach(c => {
+        const d = document.createElement('div');
+        d.className = 'comment';
+        d.innerHTML = `<strong>${c.username || c.author || 'Anonimo'}</strong> <small>${c.date || ''}</small><div>${c.text || c.body || ''}</div>`;
+        commentsList.appendChild(d);
+      });
+    }
+
+    // send comment (local placeholder: you should wire to a POST endpoint)
+    el('comment-send').addEventListener('click', async ()=>{
+      const text = el('comment-text').value.trim();
+      if(!text) return;
+      // simple optimistic UI append
+      const newC = { username: 'You', date: new Date().toLocaleString(), text };
+      const d = document.createElement('div');
+      d.className = 'comment';
+      d.innerHTML = `<strong>${newC.username}</strong> <small>${newC.date}</small><div>${newC.text}</div>`;
+      commentsList.prepend(d);
+      el('comment-text').value = '';
+      // TODO: POST to server to save comment (e.g. /show/comment)
+      try {
+        await fetch(`/show/comment`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ media_id: mediaId, text })
+        });
+      } catch(e){ /* ignore REST errors for now */ }
+    });
+
+  } catch (err){
+    console.error(err);
+    document.getElementById('media-title').textContent = "Errore di rete";
+  }
+})();
+</script>
+
+</body>
+</html>
