@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import secrets
 from server.objects.users.root import Root, UserLevel
-from server.db.db_crud import verify_password
+from server.db.db_crud import verify_password, db_get_followers, db_get_following
 from server.utils import user_utils as utils
 
 # =====================
@@ -13,12 +13,29 @@ from server.utils import user_utils as utils
 def _build_user_obj(user_data: Dict[str, Any]) -> Optional[Root]:
     if not user_data:
         return None
+
+    def _extract_level(data: Dict[str, Any]) -> UserLevel:
+        # Accept many possible DB keys to avoid silently defaulting to REGULAR (4)
+        for k in ("lvl", "lvl_id", "level", "lvl_value", "level_id"):
+            if k in data and data[k] is not None:
+                val = data[k]
+                if isinstance(val, UserLevel):
+                    return val
+                try:
+                    return UserLevel(int(val))
+                except Exception:
+                    print(f"[DEBUG][_extract_level] couldn't parse level from key {k}: {val!r}")
+                    break
+        # final fallback
+        return UserLevel.REGULAR
+
     bday_value = user_data.get("birthday")
     birthday = (
         datetime.strptime(bday_value, "%Y-%m-%d").date()
         if isinstance(bday_value, str) else bday_value
     )
-    return Root(
+    level = _extract_level(user_data)
+    user = Root(
         id=user_data.get("id"),
         mail=user_data.get("mail"),
         username=user_data.get("username"),
@@ -26,8 +43,19 @@ def _build_user_obj(user_data: Dict[str, Any]) -> Optional[Root]:
         birthday=birthday,
         bio=user_data.get("bio"),
         profile_pic=user_data.get("profile_pic"),
-        lvl=UserLevel(user_data.get("lvl", UserLevel.REGULAR.value))
+        lvl=level
     )
+    # populate follower/following lists so to_dict_public returns correct counts
+    try:
+        if user.id is not None:
+            followers = db_get_followers(user.id) or []
+            following = db_get_following(user.id) or []
+            # store as lists of ids (keeps memory small) — other code only needs counts or id checks
+            user.followers = [r.get("id") for r in followers if r.get("id") is not None]
+            user.followed = [r.get("id") for r in following if r.get("id") is not None]
+    except Exception as e:
+        print(f"[DEBUG][_build_user_obj] could not load follow lists: {e}")
+    return user
 
 # =====================
 # LOGIN / REGISTRAZIONE
@@ -131,7 +159,18 @@ def get_profile(user_obj: Root, target_name: Optional[str] = None) -> Optional[D
     if not target_data:
         return None
     target_obj = _build_user_obj(target_data)
-    return target_obj.to_dict_public() if target_obj else None
+    if not target_obj:
+        return None
+    public = target_obj.to_dict_public()
+    # if viewer is logged, add is_followed flag
+    try:
+        viewer_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+        if viewer_id:
+            following = db_get_following(viewer_id) or []
+            public["is_followed"] = any(f.get("id") == target_obj.id for f in following)
+    except Exception:
+        public["is_followed"] = False
+    return public
 
 
 def edit_profile(user_obj: Root, username=None, bio=None, profile_pic=None) -> str:
@@ -206,7 +245,7 @@ def unfollow_user(user_obj: Any, target_name: str) -> str:
         return "ERROR: User not found"
     result = Root.unfollow_user(follower_id, target["id"], user_obj if isinstance(user_obj, dict) else None)
     return result["response"] if result["status"] == "OK" else f"ERROR: {result['error_msg']}"
-
+from server.utils import user_utils
 def get_followers(user_obj: dict) -> list[dict]:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
@@ -228,6 +267,39 @@ def assistance(username: str, message: str) -> Dict[str, Any]:
     # esempio placeholder
     print(f"[DEBUG] Assistance request from {username}: {message}")
     return {"status": "ok", "error_msg": None}
+
+def search_users(user_obj: Any, term: str = "", offset: int = 0, limit: int = 20):
+    """
+    Search users by username or email (simple ILIKE). Returns list of small user dicts.
+    Called from client feed aggregation when searching for accounts.
+    """
+    try:
+        from server.db.db_crud import fetch_all
+        if term is None:
+            term = ""
+        q = """
+            SELECT id, username, mail, bio, profile_pic
+            FROM users
+            WHERE username ILIKE %s OR mail ILIKE %s
+            ORDER BY username ASC
+            OFFSET %s LIMIT %s
+        """
+        pattern = f"%{term}%"
+        rows = fetch_all(q, (pattern, pattern, offset, limit)) or []
+        results = []
+        for r in rows:
+            results.append({
+                "id": r.get("id"),
+                "username": r.get("username"),
+                "bio": r.get("bio"),
+                "profile_pic": r.get("profile_pic"),
+                "type": "user",
+                "thumbnail": f"/profile/picture/{r.get('profile_pic')}" if r.get("profile_pic") else "/static/images/no pp.jpg"
+            })
+        return {"status": "OK", "response": results, "count": len(results)}
+    except Exception as e:
+        print(f"[ERROR][search_users] {e}")
+        return {"status": "ERROR", "error_msg": str(e)}
 
 
 # last line

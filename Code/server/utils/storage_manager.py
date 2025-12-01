@@ -46,6 +46,8 @@ def get_path(file_type: str, file_name: str) -> str:
 # ==========================
 def save_file(file_type: str, file_name: str, content: bytes) -> str:
     path = get_path(file_type, file_name)
+    # Ensure directory exists before writing
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         f.write(content)
     return f"File saved at {path}"
@@ -99,7 +101,6 @@ def fetch_file(file_type: str, file_name: str) -> Optional[bytes]:
                         return f.read()
                 except Exception:
                     continue
-
     return None
 
 # ==========================
@@ -109,6 +110,8 @@ def update_file(file_type: str, file_name: str, content: bytes) -> str:
     path = get_path(file_type, file_name)
     if not os.path.isfile(path):
         return "File does not exist"
+    # Ensure directory exists (defensive) and then overwrite
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         f.write(content)
     return f"File updated at {path}"

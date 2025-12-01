@@ -62,6 +62,7 @@ def feed_data():
     fetch_limit = 100  # batch size per remote request (cap)
     max_iterations = 50  # safety cap to avoid infinite loops
     iterations = 0
+    user_search_done = False
 
     while len(accumulated) < offset + limit and iterations < max_iterations:
         iterations += 1
@@ -75,6 +76,26 @@ def feed_data():
         inner = response.get("response", {})
         batch = inner.get("results") if isinstance(inner, dict) else inner
         batch = batch or []
+
+        # if a textual search is present and we haven't queried users yet, fetch matching accounts
+        if search and not user_search_done and filter_by in ("all", "user"):
+            try:
+                users_res = http_client.send_request("SEARCH_USERS", [search, remote_offset, fetch_limit], require_auth=True)
+                if isinstance(users_res, dict) and users_res.get("status") in (None, "OK"):
+                    u_list = users_res.get("response") or users_res.get("results") or []
+                    # convert users into feed-like items and append
+                    for u in u_list:
+                        batch.append({
+                            "id": f"user:{u.get('id')}",
+                            "title": u.get("username"),
+                            "username": u.get("username"),
+                            "type": "user",
+                            "tags": [ (u.get("bio") or "").split("\n")[0] ],
+                            "thumbnail": u.get("thumbnail") or (f"/profile/picture/{u.get('profile_pic')}" if u.get("profile_pic") else "/static/images/no pp.jpg")
+                        })
+            except Exception as e:
+                print(f"[DEBUG] user search failed: {e}")
+            user_search_done = True
 
         if not batch:
             # remote exhausted

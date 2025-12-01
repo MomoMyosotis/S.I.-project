@@ -3,185 +3,380 @@
 <head>
     <meta charset="UTF-8">
     <title>Pubblica Media</title>
-    <link rel="stylesheet" href="/static/publish_style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='publish_style.css') }}">
 </head>
 
 <body>
 
-<main class="form-wrap" role="main" aria-label="Pubblica media">
+<!-- ========== TOP BAR ========== -->
+<div class="top-info">
   <h1>Pubblica Media</h1>
 
-  <form id="publishForm" novalidate>
+  <div class="top-right">
+    {% if username %}
+      <a class="username" href="/home/?form_type=profile&username={{ username }}">{{ username }}</a>
+    {% else %}
+      <span class="username muted">Non autenticato</span>
+    {% endif %}
 
-      <!-- TYPE + HELPER -->
-      <div class="section" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <label style="min-width:80px">Tipo:</label>
-        <select name="type" id="mediaType" aria-label="Tipo di media">
-            <option value="document">Documento</option>
-            <option value="video">Video</option>
-            <option value="song">Brano</option>
-        </select>
+    <a id="goFeedTop" class="go-feed" href="/home/?form_type=feed={/home/feed}">↩ Vai al Feed</a>
+  </div>
+</div>
 
-        <div id="typeHint" style="margin-left:auto;color:var(--muted);font-size:0.95rem">
-          Compila solo i campi relativi al tipo selezionato.
-        </div>
+{% if user_level is defined and user_level|int == 6 %}
+  <div class="box warning">
+    <h3>Permessi di pubblicazione disabilitati</h3>
+    <p>Il tuo account non ha permessi per pubblicare contenuti.</p>
+  </div>
+{% else %}
+
+<!-- ========== FORM ========== -->
+<form id="publishForm" enctype="multipart/form-data">
+
+    <!-- TYPE -->
+    <label class="label">Tipo</label>
+    <select name="type" id="mediaType" required>
+        {% if user_level is not defined %}
+          <option value="concert">YouTube / Concert link</option>
+        {% elif user_level|int in [0,1,3] %}
+          <option value="video">Video file</option>
+          <option value="audio">Audio file</option>
+          <option value="document">Documento</option>
+          <option value="concert">YouTube / Concert link</option>
+        {% elif user_level|int in [2,4,5] %}
+          <option value="concert">YouTube / Concert link</option>
+        {% else %}
+          <option value="concert">YouTube / Concert link</option>
+        {% endif %}
+    </select>
+
+    <!-- ========== COMMON FIELDS ========== -->
+    <div id="commonFields" class="box">
+      <label class="label">Titolo</label>
+      <input type="text" name="title" id="title">
+
+      <label class="label">Descrizione</label>
+      <textarea name="description" id="description" class="big-text" placeholder="Aggiungi una descrizione del contenuto..."></textarea>
+
+      <label class="label">Autori (separati da virgola)</label>
+      <input type="text" name="authors" id="authors">
+
+      <label class="label">Genere</label>
+      <input type="text" name="genre" id="genre">
+
+      <label class="label">Anno composizione</label>
+      <input type="number" name="composition_year" id="composition_year" min="0" step="1">
+
+      <div class="row check-row">
+        <label>Sono il compositore</label>
+        <input type="checkbox" id="is_composer" name="is_composer" value="1">
+        <label>Sono l'esecutore</label>
+        <input type="checkbox" id="is_performer" name="is_performer" value="1">
       </div>
 
-      <!-- =======================
-           DATI COMUNI
-      ======================== -->
-      <div class="section">
-          <h2>Dati Generali</h2>
-
-          <label>Titolo:</label>
-          <input type="text" name="title" required>
-
-          <label>Anno:</label>
-          <input type="number" name="year">
-
-          <label>Descrizione:</label>
-          <textarea name="description"></textarea>
-
-          <label>Link:</label>
-          <input type="text" name="link">
-
-          <label>Durata (secondi):</label>
-          <input type="number" name="duration">
-
-          <label>Data Registrazione:</label>
-          <input type="date" name="recording_date">
-
-          <label>Luogo:</label>
-          <input type="text" name="location">
-
-          <label>Note aggiuntive:</label>
-          <textarea name="additional_info"></textarea>
+      <div id="instruments_used_row" class="hidden">
+        <label class="label">Strumenti usati</label>
+        <input type="text" id="instruments_used" placeholder="Es: piano, violino">
       </div>
+    </div>
 
-      <!-- =======================
-           RELAZIONI
-      ======================== -->
-      <div class="section">
-          <h2>Autori / Esecutori / Generi / Riferimenti</h2>
+    <div id="fileUploader" class="box">
+        <label class="label">Carica file (pdf/mp3/mp4/midi)</label>
+        <input type="file" id="files" name="files" multiple>
 
-          <label>Autori (ID separati da virgola):</label>
-          <input type="text" id="authors" name="authors" placeholder="es: 12,45,78">
+        <label class="label">Formato rilevato</label>
+        <input type="text" id="file_format" readonly>
 
-          <label>Esecutori (ID separati da virgola):</label>
-          <input type="text" id="performers" name="performers" placeholder="es: 3,8">
+        <label class="label">Durata (sec)</label>
+        <input type="number" id="duration" step="0.1" min="0">
+    </div>
 
-          <label>Generi (ID separati da virgola):</label>
-          <input type="text" id="genres" name="genres" placeholder="es: 2,4">
 
-          <label>Riferimenti (ID separati da virgola):</label>
-          <input type="text" id="references" name="references" placeholder="es: 9,11">
+
+    <!-- PERFORMANCE -->
+    <div id="performanceArea" class="box hidden">
+      <h3>Performance</h3>
+
+      <div id="performersList"></div>
+      <button type="button" id="addPerformerBtn" class="small-btn">+ Aggiungi Performer</button>
+
+      <label class="label">Data registrazione</label>
+      <input type="date" id="recording_date" name="recording_date">
+
+      <label class="label">Luogo</label>
+      <input type="text" id="recording_location" name="recording_location">
+
+      <div class="row check-row">
+        <label>Live performance</label>
+        <input type="checkbox" id="is_live" name="is_live" value="1">
       </div>
-
-      <!-- =======================
-           DATI DOCUMENTO
-      ======================== -->
-      <div id="documentFields" class="section hidden" data-type="document">
-        <h2>Info Documento</h2>
-
-        <label>Formato:</label>
-        <input type="text" name="format">
-
-        <label>Pagine:</label>
-        <input type="number" name="pages">
-
-        <label>Caption:</label>
-        <textarea name="caption"></textarea>
     </div>
 
-    <!-- =======================
-         DATI VIDEO
-    ======================== -->
-    <div id="videoFields" class="section hidden" data-type="video">
-        <h2>Info Video</h2>
+    <!-- DOCUMENT -->
+    <div id="documentArea" class="box hidden">
+      <label class="label">Document type</label>
+      <select id="document_type" name="document_type">
+        <option value="score">Score</option>
+        <option value="lyrics">Lyrics</option>
+        <option value="chords">Chords</option>
+        <option value="other">Other</option>
+      </select>
 
-        <label>Risoluzione:</label>
-        <input type="text" name="resolution">
-
-        <label>FPS:</label>
-        <input type="number" name="fps">
+      <label class="label">Note di esecuzione</label>
+      <textarea id="document_annotations" name="document_annotations"></textarea>
     </div>
 
-    <!-- =======================
-         DATI BRANO
-    ======================== -->
-    <div id="songFields" class="section hidden" data-type="song">
-        <h2>Info Brano</h2>
+    <!-- CONCERT -->
+    <div id="concertArea" class="box hidden">
+      <label class="label">YouTube URL</label>
+      <input type="url" id="concert_link" name="link">
 
-        <label>Strumenti (str_list separati da virgola):</label>
-        <input type="text" name="instruments">
+      <label class="label">Titolo evento</label>
+      <input type="text" id="concert_title" name="event_title">
 
-        <label>Tonalità:</label>
-        <input type="text" name="key_signature">
+      <label class="label">Data evento</label>
+      <input type="date" id="concert_date" name="concert_date">
 
-        <label>BPM:</label>
-        <input type="number" name="bpm">
+      <label class="label">Luogo evento</label>
+      <input type="text" id="concert_location" name="concert_location">
+
+      <h4>Sottotracce</h4>
+      <div id="subtracks"></div>
+      <button type="button" id="addSubtrackBtn" class="small-btn">+ Aggiungi Sottotraccia</button>
     </div>
 
-    <button type="submit">Pubblica</button>
+    <!-- SEGMENTS -->
+    <div id="segmentsArea" class="box hidden">
+      <h3>Annotazioni Segmentate</h3>
+      <div id="segmentsList"></div>
+      <button type="button" id="addSegmentBtn" class="small-btn">+ Aggiungi Segmento</button>
+    </div>
 
+    <br>
+
+    <button type="submit" class="submit-btn">Pubblica</button>
 </form>
+{% endif %}
 
-<!-- Inlined JavaScript: mantiene tutto nel singolo file come richiesto -->
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    const mediaType = document.getElementById('mediaType');
-    const docFields = document.getElementById('documentFields');
-    const videoFields = document.getElementById('videoFields');
-    const songFields = document.getElementById('songFields');
+/* Reusable UI components + validation + auto-detection */
+/* Inject server-provided values into JS in a safe way */
 
-    function updateFields() {
-        const t = mediaType.value;
-        docFields.classList.toggle('hidden', t !== 'document');
-        videoFields.classList.toggle('hidden', t !== 'video');
-        songFields.classList.toggle('hidden', t !== 'song');
+const mediaTypeEl = document.getElementById('mediaType');
+const fileUploader = document.getElementById('fileUploader');
+const performanceArea = document.getElementById('performanceArea');
+const documentArea = document.getElementById('documentArea');
+const concertArea = document.getElementById('concertArea');
+const segmentsArea = document.getElementById('segmentsArea');
+const performersList = document.getElementById('performersList');
+const segmentsList = document.getElementById('segmentsList');
+const subtracksList = document.getElementById('subtracks');
+const filesInput = document.getElementById('files');
+const fileFormatInput = document.getElementById('file_format');
+const durationInput = document.getElementById('duration');
+const addPerformerBtn = document.getElementById('addPerformerBtn');
+const addSegmentBtn = document.getElementById('addSegmentBtn');
+const addSubtrackBtn = document.getElementById('addSubtrackBtn');
+const isPerformerCheckbox = document.getElementById('is_performer');
+const instrumentsUsedRow = document.getElementById('instruments_used_row');
+const isLiveCheckbox = document.getElementById('is_live');
+const backBtn = document.getElementById('backBtn');
+
+/* Removed stray top-level fd/description code that caused early exceptions */
+
+/* UI helpers unchanged... (kept from original) */
+filesInput && filesInput.addEventListener('change', async ()=>{
+  const f = filesInput.files && filesInput.files[0];
+  if(!f){ fileFormatInput.value=''; durationInput.value=''; return; }
+  // prefer mime type but fallback to extension
+  fileFormatInput.value = f.type || getExtension(f.name) || 'unknown';
+  // try to load media to get duration if video/audio
+  try {
+    if(f.type && (f.type.startsWith('audio/') || f.type.startsWith('video/')) || /\.(mp4|mov|avi|mp3|wav|m4a|ogg|webm)$/i.test(f.name)){
+      const d = await probeDuration(f);
+      if(d) durationInput.value = Math.round(d*10)/10;
     }
-
-    mediaType.addEventListener('change', updateFields);
-    updateFields();
-
-    const form = document.getElementById('publishForm');
-    form.addEventListener('submit', function (ev) {
-        ev.preventDefault();
-
-        // Costruisce un payload semplice leggendo i campi del form
-        const fd = new FormData(form);
-        const payload = {};
-        for (const [k, v] of fd.entries()) {
-            payload[k] = v;
-        }
-
-        // Trasforma campi separati da virgola in array
-        ['authors','performers','genres','references','instruments'].forEach(id => {
-            if (payload[id] && typeof payload[id] === 'string') {
-                payload[id] = payload[id].split(',').map(s => s.trim()).filter(Boolean);
-            }
-        });
-
-        // Converte alcuni campi numerici in number
-        ['year','duration','pages','fps','bpm'].forEach(id => {
-            if (payload[id] !== undefined && payload[id] !== '') {
-                const n = Number(payload[id]);
-                if (!Number.isNaN(n)) payload[id] = n;
-            }
-        });
-
-        console.log('Publish payload:', payload);
-        alert('Form intercettato — vedi console per il payload. Implementa invio al server se necessario.');
-        // Esempio di invio (decommentare e adattare l'URL se necessario)
-        /*
-        fetch('/content/publish', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }).then(r => r.json()).then(console.log).catch(console.error);
-        */
-    });
+  } catch(e){
+    console.warn('duration probe failed', e);
+  }
 });
+
+/* helpers */
+function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
+function getExtension(name){ return (name || '').split('.').pop(); }
+
+/* probe media duration by loading into element */
+function probeDuration(file){
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file);
+    let el;
+    if((file.type||'').startsWith('video/') || /\.(mp4|mov|avi|webm)$/i.test(file.name)) el = document.createElement('video');
+    else el = document.createElement('audio');
+    el.preload = 'metadata';
+    el.src = url;
+    el.addEventListener('loadedmetadata', ()=> {
+      URL.revokeObjectURL(url);
+      resolve(el.duration || 0);
+    }, {once:true});
+    el.addEventListener('error', (ev)=> {
+      URL.revokeObjectURL(url);
+      reject(ev);
+    }, {once:true});
+  });
+}
+
+/* build payload and validation on submit */
+const formEl = document.getElementById('publishForm');
+formEl && formEl.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const t = mediaTypeEl.value;
+
+  // gather fields
+  const title = document.getElementById('title').value.trim();
+  const description = document.getElementById('description').value.trim(); // moved here
+  const authors = (document.getElementById('authors').value || '').split(',').map(s=>s.trim()).filter(Boolean);
+  const genre = document.getElementById('genre').value.trim();
+  const composition_year = document.getElementById('composition_year').value;
+  const is_composer = document.getElementById('is_composer').checked;
+  const is_performer = document.getElementById('is_performer').checked;
+  const instruments_used = document.getElementById('instruments_used').value.trim();
+  const is_live = document.getElementById('is_live') && document.getElementById('is_live').checked;
+
+  // performers
+  const performers = [];
+  document.querySelectorAll('#performersList .row').forEach(r=>{
+    const name = (r.querySelector('.perf_name') && r.querySelector('.perf_name').value.trim()) || '';
+    const inst = (r.querySelector('.perf_instruments') && r.querySelector('.perf_instruments').value.split(',').map(s=>s.trim()).filter(Boolean)) || [];
+    if(name) performers.push({ performer: name, instruments: inst });
+  });
+
+  // segments
+  const segments = [];
+  document.querySelectorAll('#segmentsList .box').forEach(b=>{
+    const start = parseFloat(b.querySelector('.seg_start').value) || 0;
+    const end = b.querySelector('.seg_end').value ? parseFloat(b.querySelector('.seg_end').value) : null;
+    const text = b.querySelector('.seg_text').value.trim();
+    if(text) segments.push({ start_time: start, end_time: end, note_text: text });
+  });
+
+  // subtracks
+  const subtracks = [];
+  document.querySelectorAll('#subtracks .box').forEach(b=>{
+    const start = parseFloat(b.querySelector('.st_start').value) || 0;
+    const end = b.querySelector('.st_end').value ? parseFloat(b.querySelector('.st_end').value) : null;
+    const titleT = b.querySelector('.st_title').value.trim();
+    const authorsT = (b.querySelector('.st_authors').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const genreT = b.querySelector('.st_genre').value.trim();
+    const performersT = (b.querySelector('.st_performers').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const instrumentsT = (b.querySelector('.st_instruments').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+    const comments = b.querySelector('.st_comments').value.trim();
+    if(titleT) subtracks.push({ start_time: start, end_time: end, title: titleT, authors: authorsT, genre: genreT, performers: performersT, instruments: instrumentsT, comments });
+  });
+
+  // specific validations
+  if(t === 'video' || t === 'audio'){
+    if(!title){ return alert('Titolo richiesto'); }
+    if(authors.length === 0){ return alert('Almeno un autore è richiesto'); }
+    if(!genre){ return alert('Genere richiesto'); }
+    // require one file
+    if(!(filesInput.files && filesInput.files.length)){
+      return alert('Devi caricare il file ' + t);
+    }
+    // if recording date provided, require location
+    const recDate = document.getElementById('recording_date').value;
+    const recLocation = document.getElementById('recording_location').value.trim();
+    if(recDate && !recLocation) return alert('Se imposti recording date devi specificare la location');
+    // if live performance checkbox selected both date and location required
+    if(is_live){
+      if(!recDate) return alert('Se "Live performance" selezionato, la data di registrazione è richiesta');
+      if(!recLocation) return alert('Se "Live performance" selezionato, la location è richiesta');
+    }
+  } else if(t === 'document'){
+    if(!title){ return alert('Titolo richiesto'); }
+    if(!(filesInput.files && filesInput.files.length)) return alert('File documento richiesto');
+  } else if(t === 'concert'){
+    const link = document.getElementById('concert_link').value.trim();
+    if(!link) return alert('YouTube URL richiesto per concert');
+    for(const s of subtracks) if(!s.title) return alert('Ogni sottotraccia deve avere un titolo');
+  }
+
+  // prepare FormData (reuse server parsing)
+  const fd = new FormData();
+  fd.append('type', t);
+  fd.append('title', title);
+  fd.append('description', description);
+  fd.append('authors', JSON.stringify(authors));
+  fd.append('genre', genre);
+  fd.append('composition_year', composition_year || '');
+  fd.append('is_composer', is_composer ? '1' : '');
+  fd.append('is_performer', is_performer ? '1' : '');
+  fd.append('instruments_used', instruments_used || '');
+  fd.append('is_live', is_live ? '1' : '');
+  fd.append('performers', JSON.stringify(performers));
+  fd.append('segments', JSON.stringify(segments));
+  fd.append('subtracks', JSON.stringify(subtracks));
+
+  // recording info
+  fd.append('recording_date', document.getElementById('recording_date').value || '');
+  fd.append('recording_location', document.getElementById('recording_location').value || '');
+
+  // document extras
+  fd.append('document_type', document.getElementById('document_type').value || '');
+  fd.append('document_annotations', document.getElementById('document_annotations').value || '');
+
+  // concert extras
+  fd.append('event_title', document.getElementById('concert_title').value || '');
+  fd.append('concert_date', document.getElementById('concert_date').value || '');
+  fd.append('concert_location', document.getElementById('concert_location').value || '');
+  fd.append('link', document.getElementById('concert_link').value || '');
+
+  // duration/format: ensure we compute/fallback synchronously before appending
+  let file_format_val = fileFormatInput.value || '';
+  let duration_val = durationInput.value || '';
+
+  if(filesInput.files && filesInput.files.length){
+    const f0 = filesInput.files[0];
+    if(!file_format_val) file_format_val = f0.type || getExtension(f0.name) || '';
+    // probe if still missing and media likely has duration
+    if(!duration_val && ( (f0.type && (f0.type.startsWith('audio/') || f0.type.startsWith('video/'))) || /\.(mp4|mov|avi|mp3|wav|m4a|ogg|webm)$/i.test(f0.name) )){
+      try{
+        const d = await probeDuration(f0);
+        if(d) duration_val = Math.round(d*10)/10;
+      }catch(err){
+        console.warn('duration probe failed on submit', err);
+      }
+    }
+  }
+
+  fd.append('duration', duration_val || '');
+  fd.append('file_format', file_format_val || '');
+
+  // append files
+  if(filesInput.files && filesInput.files.length){
+    for(const f of filesInput.files) fd.append('files', f, f.name);
+  }
+
+  // final submit (unchanged)
+  try {
+    const res = await fetch('/content/publish', { method: 'POST', body: fd });
+    const json = await res.json();
+    if(!res.ok || json.status === 'ERROR'){
+      alert('Errore: ' + (json.error_msg || JSON.stringify(json)));
+    } else {
+      alert('Pubblicazione completata!');
+      window.location.href = '/feed';
+    }
+  } catch(err){
+    alert('Errore di rete');
+    console.error(err);
+  }
+});
+
+/* back button handler */
+if(backBtn){
+  backBtn.addEventListener('click', ()=> { window.location.href = '/feed'; });
+}
 </script>
 
 </body>

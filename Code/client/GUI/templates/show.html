@@ -1,265 +1,449 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Media Viewer</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='show_style.css') }}">
-  <style>
-    /* minimal inline styles so it funzion in assenza di file CSS */
-    .hidden { display:none; }
-    .media-container { max-width:900px; margin:20px auto; padding:10px; }
-    #media-display { margin:20px 0; }
-    video, iframe { width:100%; height:480px; background:#000; }
-    .audio-controls { display:flex; flex-direction:column; gap:8px; }
-    .audio-btns button { margin-right:8px; }
-    .comments-area { margin-top:20px; }
-    #comments-list .comment { border-top:1px solid #ddd; padding:8px 0; }
-  </style>
 </head>
-
 <body>
-
   <div class="media-container">
-
-    <h1 id="media-title">Caricamento...</h1>
-
-    <div class="media-info">
-      <div><strong id="media-author">Autore:</strong></div>
-      <div><strong id="media-type">Tipo:</strong></div>
-      <div><strong id="media-date">Pubblicato il:</strong></div>
-      <div><strong id="media-publisher">Publisher:</strong></div>
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;">
+      <button id="back-to-feed" type="button">Torna al Feed</button>
+      <h1 id="media-title">Caricamento...</h1>
     </div>
-
-    <div id="media-display">
-
-      <div id="video-box" class="media-box hidden">
-        <video id="video-player" controls playsinline>
-          <source id="video-source" src="">
+    <div id="media-uploader" style="margin-bottom:8px;color:var(--muted)"></div>
+    <div id="media-display" class="media-display">
+      <div id="video-box" class="hidden">
+        <video id="video-player" controls>
+          <source id="video-source">
         </video>
-        <div class="timebar"><span id="video-current">0:00</span><span style="float:right" id="video-total">0:00</span></div>
       </div>
-
-      <div id="audio-box" class="media-box hidden">
-        <div class="audio-controls">
-          <audio id="audio-player" preload="metadata">
-            <source id="audio-source" src="">
-          </audio>
-
-          <input type="range" id="audio-progress" min="0" max="100" value="0">
-          <div class="audio-time"><span id="audio-current">0:00</span><span style="float:right" id="audio-total">0:00</span></div>
-
-          <div class="audio-btns">
-            <button id="audio-back">⏮ 10s</button>
-            <button id="audio-play">▶</button>
-            <button id="audio-forward">⏭ 10s</button>
-          </div>
-        </div>
+      <div id="audio-box" class="hidden">
+        <audio id="audio-player" controls>
+          <source id="audio-source">
+        </audio>
       </div>
-
-      <div id="document-box" class="media-box hidden">
+      <div id="document-box" class="hidden">
         <iframe id="document-viewer" src="" frameborder="0"></iframe>
       </div>
-
+      <div id="concert-box" class="hidden">
+        <iframe id="concert-iframe" src="" frameborder="0" allowfullscreen></iframe>
+        <div id="concert-subtracks"></div>
+      </div>
     </div>
 
-    <div class="media-details">
-      <h2>Dettagli</h2>
-      <div id="media-details-content"></div>
+    <div id="media-details-content"></div>
+    <!-- OPEN WITH / EXTERNAL APPS -->
+    <div id="open-with-area" style="margin-top:12px">
+      <strong>Apri con:</strong>
+      <div id="open-with-buttons" style="margin-top:8px"></div>
     </div>
 
-    <div class="download-area">
-      <a id="download-btn" href="#" download>⬇ Scarica</a>
-    </div>
-
-    <div class="comments-area">
+    <!-- COMMENTS -->
+    <div class="comments-area" id="comments-area" style="margin-top:20px">
       <h2>Commenti</h2>
+      <div id="comments-list">Caricamento commenti...</div>
 
-      <div id="comments-list"></div>
-
-      <div class="comment-input">
-        <textarea id="comment-text" placeholder="Scrivi un commento..." rows="3" style="width:100%"></textarea>
+      <div class="comment-input" style="margin-top:12px">
+        <textarea id="comment-text" placeholder="Scrivi un commento..."></textarea>
         <button id="comment-send">Invia</button>
       </div>
     </div>
-
   </div>
 
 <script>
 (async function(){
-  function qs(name){ return new URLSearchParams(window.location.search).get(name); }
+  const qs = name => new URLSearchParams(window.location.search).get(name);
   const mediaId = qs('media_id');
-  if(!mediaId){
-    document.getElementById('media-title').textContent = "Media non trovato (missing id)";
-    return;
-  }
-
+  if(!mediaId){ document.getElementById('media-title').textContent = "Media non trovato"; return; }
   const el = id => document.getElementById(id);
-  const videoBox = el('video-box'), audioBox = el('audio-box'), docBox = el('document-box');
-  const videoPlayer = el('video-player'), audioPlayer = el('audio-player'), docViewer = el('document-viewer');
 
-  function fmtTime(s){
+  // ---------- HELPERS ----------
+  const formatTime = s => {
     s = Number(s) || 0;
     const m = Math.floor(s/60);
     const sec = Math.floor(s%60);
     return `${m}:${sec.toString().padStart(2,'0')}`;
+  };
+
+  const extractYouTubeId = url => {
+    if(!url) return null;
+    const m = url.match(/(?:v=|\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+    return m ? m[1] : null;
+  };
+
+  const getDownloadUrl = m => {
+    let downloadUrl = m.file || m.link || m.url || m.stored_at || '';
+    const isRemote = /^https?:\/\//i.test(downloadUrl) || /^data:/i.test(downloadUrl);
+    if(downloadUrl && !isRemote){
+      const fname = m.filename || (downloadUrl.split('/').pop()) || downloadUrl;
+      const proxyType = (m.type || 'document').toLowerCase();
+      return `/show/file?file_type=${encodeURIComponent(proxyType)}&filename=${encodeURIComponent(fname)}`;
+    }
+    return downloadUrl;
+  };
+
+  const safeJoin = (arr, fallback='-') => {
+    if(!arr) return fallback;
+    if(Array.isArray(arr) && arr.length){
+      // if array of objects with name/id fields, try to extract names
+      const mapped = arr.map(a => {
+        if(!a) return '';
+        if(typeof a === 'string' || typeof a === 'number') return String(a);
+        if(a.name) return a.name;
+        if(a.username) return a.username;
+        if(a.performer) return a.performer;
+        return JSON.stringify(a);
+      }).filter(Boolean);
+      return mapped.length ? mapped.join(', ') : fallback;
+    }
+    return fallback;
+  };
+
+  // ---------- COMMENTS ----------
+  async function loadComments(){
+    try {
+      const res = await fetch(`/show/comments?media_id=${encodeURIComponent(mediaId)}`);
+      const arr = await res.json();
+      const list = el('comments-list');
+      list.innerHTML = '';
+      if(!arr || !arr.length){ list.textContent = 'Nessun commento'; return; }
+      arr.forEach(c=>{
+        const div = document.createElement('div'); div.className='comment';
+        const who = c.username || c.user || c.author || c.author_username || 'Anonimo';
+        const id = c.id || c.comment_id || c._id || '';
+        const when = c.created_at || c.date || '';
+        const text = c.text || c.content || c.body || '';
+        const header = document.createElement('div');
+        const whoLink = document.createElement('a');
+        whoLink.href = `/home/?form_type=profile&username=${encodeURIComponent(who)}`;
+        whoLink.target = '_blank';
+        whoLink.textContent = who;
+        header.appendChild(whoLink);
+        const small = document.createElement('small');
+        small.style.marginLeft = '8px';
+        small.textContent = when;
+        header.appendChild(small);
+        const body = document.createElement('div'); body.textContent = text;
+        const actions = document.createElement('div'); actions.style.marginTop='6px';
+        const replyBtn = document.createElement('button'); replyBtn.textContent='Rispondi';
+        replyBtn.addEventListener('click', ()=> {
+          const ta = el('comment-text'); ta.value = `@${who} `; ta.focus();
+        });
+        const reportBtn = document.createElement('button'); reportBtn.textContent='Segnala';
+        reportBtn.style.marginLeft='8px';
+        reportBtn.addEventListener('click', async ()=>{
+          const reason = prompt('Motivo della segnalazione (opzionale):') || '';
+          if(!confirm('Segnalare questo commento?')) return;
+          await fetch('/show/comment/report', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ comment_id: id, reason })
+          });
+          alert('Segnalazione inviata');
+        });
+        actions.appendChild(replyBtn); actions.appendChild(reportBtn);
+        div.appendChild(header); div.appendChild(body); div.appendChild(actions);
+        list.appendChild(div);
+      });
+    } catch(e){
+      console.error(e); el('comments-list').textContent = 'Errore nel caricamento commenti';
+    }
   }
 
+  el('comment-send').addEventListener('click', async ()=>{
+    const text = el('comment-text').value.trim();
+    if(!text) return alert('Commento vuoto');
+    try {
+      const r = await fetch('/show/comment', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ media_id: mediaId, text })
+      });
+      if(r.ok){
+        el('comment-text').value = '';
+        await loadComments();
+      } else {
+        alert('Errore durante l\'invio del commento');
+      }
+    } catch(e){
+      console.error(e); alert('Errore di rete');
+    }
+  });
+
+  // ---------- LOAD MEDIA ----------
   try {
     const res = await fetch(`/show/data?media_id=${encodeURIComponent(mediaId)}`);
-    const payload = await res.json();
-    if(!res.ok || payload.error){
-      document.getElementById('media-title').textContent = payload.error || 'Errore nel recupero';
-      return;
+    const m = await res.json();
+    if(!res.ok || m.error){ el('media-title').textContent = m.error || 'Errore'; return; }
+
+    // prefer canonical title fields
+    el('media-title').textContent = m.title || m.name || m.filename || 'Untitled';
+
+    // -- uploader / publisher link --
+    const uploader = m.username || m.uploader || m.author || m.owner || m.author_username || null;
+    const uploaderEl = el('media-uploader');
+    if (uploader && uploaderEl) {
+      const a = document.createElement('a');
+      a.href = `/home/?form_type=profile&username=${encodeURIComponent(uploader)}`;
+      a.textContent = `Pubblicato da: ${uploader}`;
+      a.style.color = 'var(--accent-2)';
+      a.style.textDecoration = 'none';
+      a.target = '_blank';
+      uploaderEl.innerHTML = '';
+      uploaderEl.appendChild(a);
+    } else if (uploaderEl) {
+      uploaderEl.textContent = '';
     }
 
-    const m = payload;
-    el('media-title').textContent = m.title || 'Untitled';
-    // author: prefer explicit author, then username
-    const authorStr = m.author || (Array.isArray(m.author_names) && m.author_names.length ? m.author_names.join(', ') : m.username);
-    el('media-author').textContent = 'Autore: ' + (authorStr || 'Sconosciuto');
-    // show tags instead of raw type if present
-    el('media-type').textContent = 'Tipo: ' + (Array.isArray(m.tags) && m.tags.length ? m.tags.join(', ') : (m.type || 'n/a'));
-    // published year
-    el('media-date').textContent = 'Pubblicato il: ' + (m.date || m.year || 'n/d');
-    el('media-publisher').textContent = 'Publisher: ' + (m.username || (m.user_id ? String(m.user_id) : '-'));
+    // back button behaviour: prefer going back to feed when referrer indicates feed,
+    // otherwise redirect to the feed entrypoint.
+    const backBtn = el('back-to-feed');
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        try {
+          const ref = document.referrer || '';
+          if (ref && (ref.includes('/feed') || ref.includes('form_type=feed') || ref.includes('/home/?form_type=feed'))) {
+            // user came from feed — go back
+            window.history.back();
+          } else {
+            // fallback to canonical feed url
+            window.location.href = '/home/?form_type=feed';
+          }
+        } catch (e) {
+          window.location.href = '/home/?form_type=feed';
+        }
+      });
+    }
 
-    // details
-    const detailsEl = el('media-details-content');
-    detailsEl.innerHTML = '';
-    if(m.details && typeof m.details === 'object'){
-      for(const [k,v] of Object.entries(m.details)){
-        const p = document.createElement('p');
-        p.textContent = `${k}: ${v}`;
-        detailsEl.appendChild(p);
+    const t = (m.type || '').toLowerCase();
+    const downloadUrl = getDownloadUrl(m);
+
+    // choose file name
+    const filename = m.filename || (m.stored_at ? m.stored_at.split('/').pop() : (m.file || '-'));
+
+    // derive format from explicit field or extension
+    const deriveFormat = () => {
+      if(m.file_format) return m.file_format;
+      if(m.format) return m.format;
+      if(filename && filename.includes('.')){
+        return filename.split('.').pop().toLowerCase();
       }
+      return '-';
+    };
+
+    // derive duration display
+    const deriveDuration = () => {
+      if(m.duration_display) return m.duration_display;
+      if(m.duration_seconds) return formatTime(m.duration_seconds);
+      if(m.duration) return formatTime(m.duration);
+      return '-';
+    };
+
+    // show media element and attach duration updater if possible
+    const setDurationFromElement = (elMedia) => {
+      if(!elMedia) return;
+      const onLoaded = () => {
+        const d = elMedia.duration || 0;
+        const disp = formatTime(d);
+        const durEl = document.querySelector('[data-field="Duration"] .meta-value');
+        if(durEl) durEl.textContent = disp;
+      };
+      elMedia.addEventListener('loadedmetadata', onLoaded, {once:true});
+    };
+
+    // display media
+    if(t==='video' || (filename && filename.match(/\.(mp4|mov|avi|webm)$/i))){
+      el('video-box').classList.remove('hidden');
+      el('video-source').src = downloadUrl || m.link || '';
+      el('video-player').load();
+      setDurationFromElement(el('video-player'));
+    } else if(t==='audio' || (filename && filename.match(/\.(mp3|wav|m4a|ogg)$/i))){
+      el('audio-box').classList.remove('hidden');
+      el('audio-source').src = downloadUrl || '';
+      el('audio-player').load();
+      setDurationFromElement(el('audio-player'));
+    } else if(t==='document'){
+      el('document-box').classList.remove('hidden');
+      el('document-viewer').src = downloadUrl || '';
+    } else if(t==='concert' || (m.link && /youtube\.com|youtu\.be/i.test(m.link))){
+      el('concert-box').classList.remove('hidden');
+      const vid = extractYouTubeId(m.link || '');
+      el('concert-iframe').src = vid ? `https://www.youtube.com/embed/${vid}?rel=0` : m.link || '';
+    } else {
+      if(downloadUrl) window.location.href = downloadUrl;
+    }
+
+    // ---------- DETAILS ----------
+    const details = [
+      {k:'Authors', v: safeJoin((m.author_names && m.author_names.length) ? m.author_names : (m.authors || []), '-')},
+      {k:'Genre', v: (m.tags && m.tags.length) ? safeJoin(m.tags, '-') : ((m.genre_names && m.genre_names.length) ? safeJoin(m.genre_names,'-') : (Array.isArray(m.genres) && m.genres.length ? m.genres.join(', ') : '-'))},
+      {k:'Composition year', v: m.year || m.date || m.composition_year || '-'},
+      {k:'Type', v: m.type || '-'},
+      {k:'Filename', v: filename || '-'},
+      {k:'Format', v: deriveFormat()},
+      {k:'Duration', v: deriveDuration()},
+      {k:'Recording date', v: m.recording_date || '-'},
+      {k:'Recording location', v: m.recording_location || '-'},
+      {k:'Document type', v: m.document_type || '-'},
+      {k:'Document annotations', v: m.document_annotations || '-'},
+      {k:'Event title', v: m.event_title || '-'},
+      {k:'Concert date', v: m.concert_date || '-'},
+      {k:'Concert location', v: m.concert_location || '-'},
+      {k:'Link', v: m.link || '-'},
+      {k:'Description', v: m.description || m.full_description || '-'}
+    ];
+
+    const container = el('media-details-content');
+    const grid = document.createElement('div'); grid.className='meta-grid';
+    details.forEach(d=>{
+      const item = document.createElement('div'); item.className='meta-item';
+      const title = document.createElement('strong');
+      title.style.color = 'var(--accent-2)';
+      title.textContent = d.k;
+      const value = document.createElement('div');
+      value.className = 'meta-value';
+      value.style.marginTop = '6px';
+      value.style.color = 'var(--muted)';
+      value.textContent = d.v;
+      item.appendChild(title); item.appendChild(value);
+      grid.appendChild(item);
+    });
+    container.appendChild(grid);
+
+    // performers (clean display)
+    if(m.performers && m.performers.length){
+      const ptitle = document.createElement('div'); ptitle.className='list-title'; ptitle.textContent='Performers';
+      const plist = document.createElement('div'); plist.className='performers-list';
+      m.performers.forEach(p=>{
+        const it = document.createElement('div'); it.className='performer-item';
+        const name = (p.name || p.performer || p.username || p);
+        const inst = (p.instruments && p.instruments.length) ? 'Instruments: '+p.instruments.join(', ') : '';
+        it.innerHTML = `<strong>${name}</strong><div style="color:var(--muted)">${inst}</div>`;
+        plist.appendChild(it);
+      });
+      container.appendChild(ptitle); container.appendChild(plist);
+    }
+
+    // segments (clean display)
+    if(m.segments && m.segments.length){
+      const stitle = document.createElement('div'); stitle.className='list-title'; stitle.textContent='Segments';
+      const slist = document.createElement('div'); slist.className='segments-list';
+      m.segments.forEach(s=>{
+        const it = document.createElement('div'); it.className='segment-item';
+        const start = s.start_time || s.start || 0;
+        const end = s.end_time || s.end || 0;
+        it.innerHTML = `<strong>${formatTime(start)} — ${end ? formatTime(end) : ''}</strong><div style="color:var(--muted)">${s.note_text||s.content||''}</div>`;
+        slist.appendChild(it);
+      });
+      container.appendChild(stitle); container.appendChild(slist);
     }
 
     // download
-    const downloadBtn = el('download-btn');
-    let downloadUrl = m.file || m.link || m.url || '';
-    function isRemoteUrl(u){
-      return /^https?:\/\//i.test(u) || /^data:/i.test(u);
-    }
-    if(downloadUrl && !isRemoteUrl(downloadUrl)){
-      const fname = m.filename || downloadUrl;
-      const proxyType = (m.type || 'document').toLowerCase();
-      downloadUrl = `/show/file?file_type=${encodeURIComponent(proxyType)}&filename=${encodeURIComponent(fname)}`;
-    }
-
     if(downloadUrl){
-      downloadBtn.href = downloadUrl;
-      if(m.filename) downloadBtn.setAttribute('download', m.filename);
-    } else {
-      downloadBtn.style.display = 'none';
-    }
+      const dl = document.createElement('a'); dl.id='download-btn'; dl.href=downloadUrl; dl.textContent='Scarica / Apri file'; dl.target='_blank';
+      container.appendChild(dl);
+      // Open-with buttons (external players)
+      const openWithArea = document.getElementById('open-with-buttons');
+      const absUrl = (downloadUrl.startsWith('http') || downloadUrl.startsWith('data:')) ? downloadUrl : (window.location.origin + (downloadUrl.startsWith('/') ? downloadUrl : '/' + downloadUrl));
 
-    // show appropriate viewer
-    const t = (m.type || '').toLowerCase();
-    if(t === 'video' || (m.filename && m.filename.match(/\.(mp4|webm|ogg)$/i))){
-      videoBox.classList.remove('hidden');
-      videoPlayer.pause();
-      el('video-source').src = downloadUrl;
-      videoPlayer.load();
-      // duration handling
-      el('video-total').textContent = m.duration_display || '0:00';
-      videoPlayer.addEventListener('timeupdate', ()=> {
-        el('video-current').textContent = fmtTime(videoPlayer.currentTime);
-      });
-      videoPlayer.addEventListener('loadedmetadata', ()=> {
-        if(videoPlayer.duration && !m.duration_display){
-          el('video-total').textContent = fmtTime(videoPlayer.duration);
+      // detect platform for tailored instructions
+      const platform = (() => {
+        const p = navigator.platform || '';
+        if(/Mac|iPhone|iPad|iPod/i.test(p)) return 'mac';
+        if(/Win/i.test(p)) return 'windows';
+        if(/Linux/i.test(p)) return 'linux';
+        return 'other';
+      })();
+
+      const apps = [
+        {
+          id: 'default',
+          name: 'Apri con app predefinita',
+          instructions: {
+            windows: `Apri il file scaricato con l'app predefinita:\nstart "" "${absUrl}"`,
+            mac: `Apri con l'app predefinita:\nopen "${absUrl}"`,
+            linux: `Apri con l'app predefinita:\nxdg-open "${absUrl}"`,
+            other: `Scarica il file e aprilo con l'app desiderata:\n${absUrl}`
+          }
+        },
+        {
+          id: 'vlc',
+          name: 'VLC Media Player',
+          instructions: {
+            windows: `Apri direttamente con VLC (esempio):\n"C:\\Program Files\\VideoLAN\\VLC\\vlc.exe" "${absUrl}"`,
+            mac: `Apri con VLC (macOS):\nopen -a VLC "${absUrl}"`,
+            linux: `Apri con VLC (Linux):\nvlc "${absUrl}"`,
+            other: `Se il protocollo è registrato puoi provare:\nvlc://open?url=${encodeURIComponent(absUrl)}\nAltrimenti scarica e apri con VLC.`
+          }
+        },
+        {
+          id: 'quicktime',
+          name: 'QuickTime Player',
+          instructions: {
+            windows: `QuickTime non è comune su Windows. Scarica il file e aprilo con QuickTime o altro player:\n${absUrl}`,
+            mac: `Apri con QuickTime (macOS):\nopen -a "QuickTime Player" "${absUrl}"`,
+            linux: `QuickTime non disponibile su Linux. Scarica e apri con un player alternativo:\n${absUrl}`,
+            other: `Scarica il file e aprilo con QuickTime o app equivalente:\n${absUrl}`
+          }
+        },
+        {
+          id: 'music',
+          name: 'Apple Music / iTunes',
+          instructions: {
+            windows: `Apri con iTunes (Windows):\n"C:\\Program Files\\iTunes\\iTunes.exe" "${absUrl}"`,
+            mac: `Apri con Musica (macOS):\nopen -a Music "${absUrl}"`,
+            linux: `iTunes/Apple Music non disponibile su Linux. Scarica e apri con un altro player:\n${absUrl}`,
+            other: `Scarica il file e aprilo con la tua app preferita:\n${absUrl}`
+          }
+        },
+        {
+          id: 'wmp',
+          name: 'Windows Media Player',
+          instructions: {
+            windows: `Apri con Windows Media Player (Windows):\nstart wmplayer "${absUrl}"`,
+            mac: `Windows Media Player non è disponibile su macOS. Usa QuickTime o VLC:\nopen -a "QuickTime Player" "${absUrl}"`,
+            linux: `Windows Media Player non disponibile su Linux. Usa VLC o altro:\nvlc "${absUrl}"`,
+            other: `Scarica il file e aprilo con Windows Media Player o un player equivalente:\n${absUrl}`
+          }
         }
-      });
-    } else if(t === 'song' || (m.filename && m.filename.match(/\.(mp3|wav|ogg|m4a)$/i))){
-      audioBox.classList.remove('hidden');
-      el('audio-source').src = downloadUrl;
-      audioPlayer.load();
+      ];
 
-      const progress = el('audio-progress');
-      const playBtn = el('audio-play');
-      const audioCurrent = el('audio-current'), audioTotal = el('audio-total');
-
-      el('audio-back').addEventListener('click', ()=> audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 10));
-      el('audio-forward').addEventListener('click', ()=> audioPlayer.currentTime = Math.min(audioPlayer.duration || 0, audioPlayer.currentTime + 10));
-      playBtn.addEventListener('click', ()=> {
-        if(audioPlayer.paused) { audioPlayer.play(); playBtn.textContent = '⏸'; }
-        else { audioPlayer.pause(); playBtn.textContent = '▶'; }
-      });
-
-      audioPlayer.addEventListener('timeupdate', ()=> {
-        if(audioPlayer.duration){
-          progress.value = Math.floor((audioPlayer.currentTime / audioPlayer.duration) * 100);
-          audioCurrent.textContent = fmtTime(audioPlayer.currentTime);
-        }
-      });
-
-      audioPlayer.addEventListener('loadedmetadata', ()=> {
-        const total = audioPlayer.duration || (m.duration_seconds || 0);
-        audioTotal.textContent = fmtTime(total);
-      });
-
-      // if server provided duration_display, use it immediately
-      if(m.duration_display){
-        audioTotal.textContent = m.duration_display;
-      }
-      progress.addEventListener('input', ()=> {
-        if(audioPlayer.duration) audioPlayer.currentTime = (progress.value / 100) * audioPlayer.duration;
-      });
-    } else {
-      docBox.classList.remove('hidden');
-      docViewer.src = downloadUrl || '';
-    }
-
-    // tags
-    if(Array.isArray(m.tags) && m.tags.length){
-      const p = document.createElement('p');
-      p.textContent = 'Tag: ' + m.tags.join(', ');
-      detailsEl.appendChild(p);
-    }
-
-    // comments (simple rendering - expects m.comments array)
-    const commentsList = el('comments-list');
-    commentsList.innerHTML = '';
-    const comments = m.comments || [];
-    if(comments.length === 0){
-      commentsList.innerHTML = '<p>Nessun commento</p>';
-    } else {
-      comments.forEach(c => {
-        const d = document.createElement('div');
-        d.className = 'comment';
-        d.innerHTML = `<strong>${c.username || c.author || 'Anonimo'}</strong> <small>${c.date || ''}</small><div>${c.text || c.body || ''}</div>`;
-        commentsList.appendChild(d);
-      });
-    }
-
-    // send comment (local placeholder: you should wire to a POST endpoint)
-    el('comment-send').addEventListener('click', async ()=>{
-      const text = el('comment-text').value.trim();
-      if(!text) return;
-      // simple optimistic UI append
-      const newC = { username: 'You', date: new Date().toLocaleString(), text };
-      const d = document.createElement('div');
-      d.className = 'comment';
-      d.innerHTML = `<strong>${newC.username}</strong> <small>${newC.date}</small><div>${newC.text}</div>`;
-      commentsList.prepend(d);
-      el('comment-text').value = '';
-      // TODO: POST to server to save comment (e.g. /show/comment)
-      try {
-        await fetch(`/show/comment`, {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ media_id: mediaId, text })
+      // render buttons and send POST to backend to open the downloaded temp file with chosen app
+      apps.forEach(app => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = app.name;
+        btn.style.marginRight = '8px';
+        btn.addEventListener('click', async () => {
+          try {
+            const res = await fetch('/show/open_with', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ media_id: mediaId, app_id: app.id })
+            });
+            const json = await res.json();
+            if (res.ok && json.status === 'OK') {
+              alert(`Aperto: ${json.message}`);
+            } else {
+              alert(`Impossibile aprire con ${app.name}:\n${json.error_msg || JSON.stringify(json)}`);
+            }
+          } catch (e) {
+            console.error(e);
+            alert('Errore di rete durante l\'apertura con app esterna');
+          }
         });
-      } catch(e){ /* ignore REST errors for now */ }
-    });
+        openWithArea.appendChild(btn);
+      });
+    }
 
-  } catch (err){
-    console.error(err);
-    document.getElementById('media-title').textContent = "Errore di rete";
+    await loadComments();
+
+  } catch(err){
+    console.error(err); el('media-title').textContent = "Errore di rete";
   }
 })();
 </script>
-
 </body>
 </html>

@@ -125,3 +125,71 @@ def show_file():
     mt, _ = mimetypes.guess_type(filename)
     mimetype = mt or "application/octet-stream"
     return send_file(io.BytesIO(content), mimetype=mimetype, download_name=filename)
+
+@show_bp.route("/comments", methods=["GET"])
+def get_comments():
+    if http_client.token is None:
+        http_client.token = session.get("session_token")
+
+    media_id = request.args.get("media_id")
+    if not media_id:
+        return jsonify([])
+
+    res = ShowService.get_comments(media_id, offset=0, limit=200)
+    # normalize shapes
+    if isinstance(res, dict) and res.get("status") in (None, "OK"):
+        payload = res.get("response") or res.get("results") or []
+        if isinstance(payload, dict) and "results" in payload:
+            payload = payload["results"]
+        if not isinstance(payload, list):
+            payload = []
+        return jsonify(payload)
+    elif isinstance(res, list):
+        return jsonify(res)
+    return jsonify([])
+
+@show_bp.route("/comment/report", methods=["POST"])
+def report_comment():
+    if http_client.token is None:
+        http_client.token = session.get("session_token")
+
+    data = request.get_json(silent=True) or {}
+    comment_id = data.get("comment_id")
+    reason = data.get("reason", "")
+    if not comment_id:
+        return jsonify({"status":"ERROR","error_msg":"missing comment_id"}), 400
+
+    res = ShowService.report_comment(comment_id, reason)
+    if isinstance(res, dict) and res.get("status") in (None, "OK"):
+        return jsonify({"status":"OK"})
+    return jsonify({"status":"ERROR","error_msg": res.get("error_msg", "Unknown error")}), 400
+
+@show_bp.route("/open_with", methods=["POST"])
+def open_with():
+    """
+    POST JSON: { "media_id": "<id>", "app_id": "<one of allowed ids>" }
+    Allowed app_ids: default, vlc, quicktime, music, wmp
+    This route downloads the single file for the media and tries to open it
+    with a local external app via subprocess. Only operates on the single file
+    being viewed (uses backend FETCH_FILE RPC).
+    """
+    if http_client.token is None:
+        http_client.token = session.get("session_token")
+
+    data = request.get_json(silent=True) or {}
+    media_id = data.get("media_id")
+    app_id = data.get("app_id")
+
+    if not media_id or not app_id:
+        return jsonify({"status": "ERROR", "error_msg": "missing media_id or app_id"}), 400
+
+    try:
+        from client.services.open_with_service import OpenWithService
+    except Exception as e:
+        current_app.logger.exception("failed importing OpenWithService")
+        return jsonify({"status": "ERROR", "error_msg": "server misconfiguration: open_with service unavailable"}), 500
+
+    res = OpenWithService.open_media(media_id, app_id)
+    if res.get("status") == "OK":
+        return jsonify({"status": "OK", "message": res.get("message")}), 200
+    return jsonify({"status": "ERROR", "error_msg": res.get("error_msg", "Unknown error")}), 400

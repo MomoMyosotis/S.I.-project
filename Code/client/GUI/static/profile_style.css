@@ -258,7 +258,15 @@ body {
   align-items: center;
   justify-content: center;
 }
-.card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ensure the whole thumbnail is clickable and fills the area */
+.card-thumb a.thumb-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+  text-decoration: none;
+}
+.card-thumb a.thumb-link img { display: block; width:100%; height:100%; object-fit:cover; }
 
 .card-body { flex: 1; min-width: 0; }
 .card-title { display: block; color: var(--accent); font-weight: 700; font-size: 0.98rem; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -396,3 +404,25 @@ button:focus, a:focus {
   outline: 3px solid rgba(69,243,255,0.08);
   outline-offset: 6px;
 }
+
+/* Make whole publication card clickable and preserve layout */
+.publication-card > a.card-link {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  text-decoration: none;
+  color: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ensure thumbnail inside card-link fills area */
+.publication-card .card-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* keep hover effects when anchor is hovered */
+.publication-card > a.card-link:hover .publication-card,
+.publication-card:hover { transform: translateY(-6px); }

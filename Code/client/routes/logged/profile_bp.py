@@ -68,7 +68,8 @@ def get_publications():
             "description": p.get("description") or p.get("additional_info") or "",
             "date_published": p.get("date_published") or p.get("created_at") or "",
             "stored_at": p.get("stored_at") or p.get("file_path") or "",
-            "file_name": (p.get("stored_at") or "").split("/")[-1] if (p.get("stored_at") or "") else ""
+            "file_name": (p.get("stored_at") or "").split("/")[-1] if p.get("stored_at") else None,
+            "file_type": p.get("type") or p.get("media_type") or "unknown"
         })
 
     return jsonify(normalized)
@@ -191,4 +192,35 @@ def upload_profile_file():
     except Exception as e:
         return jsonify({"status": "error", "error_msg": str(e)}), 500
 
-# last line
+# ------------------------
+# Follow / Unfollow endpoints used by client JS (toggleFollow)
+# ------------------------
+@profile_bp.route("/follow", methods=["POST"])
+def follow_user():
+    if http_client.token is None:
+        http_client.token = session.get("session_token")
+
+    payload = request.get_json() or {}
+    target = payload.get("username") or request.args.get("username")
+    if not target:
+        return jsonify({"status": "ERROR", "error_msg": "Missing username"}), 400
+
+    res = ProfileService.follow(target, None)
+    if isinstance(res, dict) and res.get("status") in (None, "OK"):
+        return jsonify({"status": "OK", "response": res.get("response", {})})
+    return jsonify({"status": "ERROR", "error_msg": res.get("error_msg", "Unknown error")}), 400
+
+@profile_bp.route("/unfollow", methods=["POST"])
+def unfollow_user():
+    if http_client.token is None:
+        http_client.token = session.get("session_token")
+
+    payload = request.get_json() or {}
+    target = payload.get("username") or request.args.get("username")
+    if not target:
+        return jsonify({"status": "ERROR", "error_msg": "Missing username"}), 400
+
+    res = ProfileService.unfollow(target, None)
+    if isinstance(res, dict) and res.get("status") in (None, "OK"):
+        return jsonify({"status": "OK", "response": res.get("response", {})})
+    return jsonify({"status": "ERROR", "error_msg": res.get("error_msg", "Unknown error")}), 400

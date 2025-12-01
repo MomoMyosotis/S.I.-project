@@ -218,3 +218,22 @@ video, iframe{
 ::-webkit-scrollbar-thumb:hover{
   background:#2fe0e9;
 }
+
+/* Back to feed button */
+#back-to-feed {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(90deg, var(--accent-2), #2fe0e9);
+  color: #081018;
+  font-weight: 700;
+}
+#back-to-feed:hover { transform: translateY(-2px); }
+
+/* uploader link style (keeps consistent theme) */
+#media-uploader a {
+  color: var(--accent-2);
+  font-weight: 600;
+}
+#media-uploader a:hover { text-decoration: underline; }

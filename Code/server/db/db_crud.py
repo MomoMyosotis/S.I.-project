@@ -542,10 +542,33 @@ def delete_comment_db(comment_id: int) -> bool:
 # DICTIONARY CRUD
 # =====================
 def create_dict_entry(table: str, name: str) -> Optional[int]:
-    existing = fetch_one(f"SELECT id FROM {table} WHERE name = %s", (name,))
-    if existing: return existing.get("id")
-    row = fetch_one(f"INSERT INTO {table} (name) VALUES (%s) RETURNING id", (name,))
-    return row.get("id") if row else None
+    """
+    Ensure a row with given name exists in `table`. If present return id,
+    otherwise INSERT and COMMIT and return the new id.
+    This avoids race/visibility problems when other connections try to use the id.
+    """
+    conn = None
+    try:
+        # First try to fetch existing entry using a dedicated connection
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT id FROM {table} WHERE name = %s FOR UPDATE", (name,))
+            row = cur.fetchone()
+            if row:
+                return row[0]
+            # not present -> insert and commit so other connections can see it
+            cur.execute(f"INSERT INTO {table} (name) VALUES (%s) RETURNING id", (name,))
+            new_row = cur.fetchone()
+            conn.commit()
+            return new_row[0] if new_row else None
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        debug(f"[DB ERROR create_dict_entry]: {e}")
+        return None
+    finally:
+        if conn:
+            connection.close(None, conn)
 
 def fetch_dict_entry_by_name(table: str, name: str) -> Optional[Dict[str, Any]]:
     return fetch_one(f"SELECT * FROM {table} WHERE name=%s", (name,))

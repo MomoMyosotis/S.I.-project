@@ -111,16 +111,41 @@
       updateActions(data.self, data.user);
       attachBioToggle();
 
-      // initial publications chunk from profile endpoint
-      const initial = data.recent_publications || [];
+      // fetch a detailed publications chunk (so we get 'type', 'stored_at', etc).
+      // fallback to data.recent_publications if the detailed request fails.
+      let initial = data.recent_publications || [];
+      try {
+        const usernameParam = viewedUsername ? `&username=${encodeURIComponent(viewedUsername)}` : "";
+        const pubsRes = await fetch(`/profile/publications?offset=0&limit=${pageLimit}${usernameParam}`);
+        if (pubsRes.ok) {
+          const pubsData = await pubsRes.json();
+          initial = pubsData.publications || initial;
+          if (typeof pubsData.count === 'number') {
+            totalPublications = pubsData.count;
+          } else {
+            totalPublications = data.user?.publications_count ?? null;
+          }
+        } else {
+          // non-ok -> fall back
+          totalPublications = data.user?.publications_count ?? null;
+        }
+      } catch (e) {
+        console.warn("[DEBUG][loadProfile] detailed publications fetch failed:", e);
+        totalPublications = data.user?.publications_count ?? null;
+      }
+
+      // render the initial publications and paging state
       updatePublications(initial, true);
       currentOffset = initial.length;
-      totalPublications = data.user?.publications_count ?? null;
       renderLoadMoreButton();
-      animateCounters();
+      // call animateCounters only if defined (avoids ReferenceError)
+      if (typeof animateCounters === "function") {
+        try { animateCounters(); } catch (e) { console.warn("[DEBUG] animateCounters failed:", e); }
+      }
     } catch (err) {
       console.error("[DEBUG][loadProfile] Errore:", err);
-      document.getElementById("username").textContent = "@error";
+      // don't overwrite username on recoverable errors; keep existing UI or show a mild message
+      // document.getElementById("username").textContent = "@error";
     } finally {
       showSkeleton(false);
     }
@@ -168,6 +193,39 @@
     }
   }
 
+  // media type detection + icon helper (improves on feed logic; falls back to stored_at extension/path)
+  function detectMediaType(pub = {}) {
+    const raw = (pub.type || pub.media_type || pub.format || pub.file_type || '').toString().toLowerCase().trim();
+    if (raw && raw !== 'unknown') {
+      // normalize common synonyms
+      if (raw === 'song') return 'audio';
+      if (raw === 'audio' || raw === 'music') return 'audio';
+      if (raw === 'video' || raw === 'movie') return 'video';
+      if (raw === 'document' || raw === 'doc' || raw === 'pdf') return 'document';
+      return raw;
+    }
+    const stored = (pub.stored_at || pub.location || pub.link || pub.file || '').toString().toLowerCase();
+    if (!stored) return '';
+    if (stored.includes('/songs') || stored.includes('/audio') || stored.match(/\.(mp3|wav|m4a|ogg|flac)$/i)) return 'audio';
+    if (stored.includes('/videos') || stored.match(/\.(mp4|mov|webm|avi|mkv)$/i)) return 'video';
+    if (stored.includes('/documents') || stored.match(/\.(pdf|docx?|txt|odt|pptx?)$/i)) return 'document';
+    return '';
+  }
+
+  function getMediaIcon(type) {
+    switch ((type || '').toString().toLowerCase()) {
+      case 'song':
+      case 'audio':
+        return '/static/images/song.png';
+      case 'document':
+        return '/static/images/document.png';
+      case 'video':
+        return '/static/images/video.png';
+      default:
+        return '/static/images/unknown.jpg';
+    }
+  }
+
   function updatePublications(list, replace = false) {
     const ul = document.getElementById("recent-publications");
     const emptyMsg = document.getElementById("no-publications");
@@ -183,13 +241,36 @@
     list.forEach(pub => {
       const li = document.createElement("li");
       li.className = "publication-card";
+
+      // determine media id / link (fallbacks)
+      const mediaId = pub.id || pub.media_id || pub._id || pub.link || '';
+      const mediaHref = mediaId ? `/show?media_id=${encodeURIComponent(mediaId)}` : '#';
+
+      // Prefer explicit pub.type when available, otherwise fall back to robust detector
+      let mediaType = (pub.type || pub.media_type || pub.format || pub.file_type || '').toString().toLowerCase().trim();
+      if (!mediaType || mediaType === 'unknown') {
+        mediaType = detectMediaType(pub) || 'unknown';
+      }
+      // normalize a couple synonyms to keep icon mapping consistent
+      if (mediaType === 'music') mediaType = 'audio';
+      if (mediaType === 'movie') mediaType = 'video';
+      if (mediaType === 'song') mediaType = 'audio';
+      if (mediaType === 'document') mediaType = 'document';
+
+      const iconSrc = getMediaIcon(mediaType);
+
+      // make the whole card clickable by wrapping content in an anchor
       li.innerHTML = `
-        <div class="card-thumb"><img src="/static/images/song.png" alt="thumb"></div>
-        <div class="card-body">
-          <strong class="card-title">${escapeHtml(pub.title)}</strong>
-          <p class="card-desc">${escapeHtml(pub.description)}</p>
-          <div class="card-meta">${escapeHtml(pub.date_published)}</div>
-        </div>
+        <a class="card-link" href="${mediaHref}" aria-label="Apri pubblicazione" data-media-type="${escapeHtml(mediaType)}">
+          <div class="card-thumb" aria-hidden="true">
+            <img src="${iconSrc}" alt="${escapeHtml(mediaType)} thumbnail">
+          </div>
+          <div class="card-body">
+            <strong class="card-title">${escapeHtml(pub.title)}</strong>
+            <p class="card-desc">${escapeHtml(pub.description)}</p>
+            <div class="card-meta">${escapeHtml(pub.date_published)}</div>
+          </div>
+        </a>
       `;
       ul.appendChild(li);
     });
@@ -247,34 +328,24 @@
     if (!container) return;
     container.innerHTML = "";
 
-    // debug: mostra i payload ricevuti nella console per verificare i campi
-    // (rimuovere in produzione)
     console.debug("[DEBUG][updateActions] viewer:", viewer, "targetUser:", targetUser);
 
-    // normalise viewer fields (server may return different keys)
-    const viewerId = viewer?.id ?? viewer?.user_id ?? null;
-    let viewerLvl = Number(viewer?.lvl ?? viewer?.level ?? viewer?.level_id ?? -1);
+    // Extract viewer info coming from backend (ProfileService now includes id/username/lvl)
+    const viewerId = viewer?.id ?? null;
+    const viewerLvl = Number.isFinite(Number(viewer?.lvl)) ? Number(viewer.lvl) : -1;
+    const isSelf = viewer?.is_self === true;
 
-    // se non abbiamo il livello del viewer ma stiamo visualizzando il profilo
-    // della stessa persona, proviamo a leggere il livello dal targetUser (fallback)
-    const isSelf = viewer?.is_self === true || (viewerId && viewerId === (targetUser?.id ?? targetUser?.user_id));
-    if ((Number.isNaN(viewerLvl) || viewerLvl < 0) && isSelf) {
-      viewerLvl = Number(targetUser?.lvl ?? targetUser?.level ?? targetUser?.level_id ?? viewerLvl);
-    }
+    // safe-normalize target username
+    const targetUsername = targetUser?.username ?? targetUser?.user_name ?? targetUser?.id ?? null;
 
-    // assicurati che viewerLvl sia un numero valido
-    if (Number.isNaN(viewerLvl)) viewerLvl = -1;
-
-    const isFollowing = Boolean(viewer?.is_following ?? viewer?.following ?? viewer?.follows ?? targetUser?.is_followed ?? false);
-
-    // Edit button: if same user OR viewer lvl is 0 or 1
-    const canEdit = isSelf || viewerLvl === 0 || viewerLvl === 1;
+    // Edit button: allowed only when viewing own profile OR viewer level is 0 or 1
+    const canEdit = isSelf || [0,1].includes(viewerLvl);
     if (canEdit) {
       container.insertAdjacentHTML("beforeend",
         `<button class="edit-btn" onclick="editProfile()">Modifica Profilo</button>`);
     }
 
-    // Publish button: if viewer is self OR viewer lvl is 0,1,3
+    // Publish button: allowed when viewer is self OR viewer level is 0,1,3
     if (isSelf || [0,1,3].includes(viewerLvl)) {
       container.insertAdjacentHTML("beforeend",
         `<button class="edit-btn" onclick="window.location.href='/publish.html'">Pubblica</button>`);
@@ -282,11 +353,13 @@
 
     // Follow / Unfollow only when viewing other user's profile and viewer is logged
     if (!isSelf && viewerId) {
+      // if backend provided an 'is_followed' flag on the targetUser, use it to set label
+      const isFollowing = Boolean(targetUser?.is_followed ?? targetUser?.is_following ?? false);
       const btnText = isFollowing ? "Unfollow" : "Segui";
       container.insertAdjacentHTML("beforeend",
         `<button id="follow-btn" class="follow-btn">${btnText}</button>`);
       const btn = document.getElementById("follow-btn");
-      if (btn) btn.addEventListener("click", () => toggleFollow(targetUser.username ?? targetUser?.id));
+      if (btn) btn.addEventListener("click", () => toggleFollow(targetUsername));
     }
   }
 

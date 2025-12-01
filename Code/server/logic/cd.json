@@ -2,7 +2,7 @@
     "HOST": "0.0.0.0",
     "PORT": 8000,
     "MODE": "auto",
-    "TIMEOUT": 15,
+    "TIMEOUT": 999999999,
     "BLACKLIST" : [
         "a@b.c"
     ]

@@ -22,47 +22,63 @@ def default_encoder(obj):
 # FILE MANAGER WRAPPERS
 # =====================
 def dispatch_save_file(user_obj, file_type, file_name, content: bytes):
-    # Accept base64 string or raw bytes. If string, decode.
-    import base64
-    if isinstance(content, str):
-        try:
-            content_bytes = base64.b64decode(content)
-        except Exception:
-            # fallback: treat as raw (may fail in storage layer)
-            content_bytes = content.encode('utf-8')
-    else:
-        content_bytes = content
+    import base64, traceback
+    try:
+        if isinstance(content, str):
+            try:
+                content_bytes = base64.b64decode(content)
+            except Exception:
+                content_bytes = content.encode('utf-8')
+        else:
+            content_bytes = content
 
-    save_file(file_type, file_name, content_bytes)
-    return f"{file_name} saved successfully"
+        save_file(file_type, file_name, content_bytes)
+        return {"status": "OK", "response": f"{file_name} saved successfully"}
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "ERROR", "error_msg": str(e)}
 
 def dispatch_fetch_file(user_obj, file_type, file_name):
-    content = fetch_file(file_type, file_name)
-    if content is None:
-        return None
-    return base64.b64encode(content).decode('utf-8')
+    import base64, traceback
+    try:
+        content = fetch_file(file_type, file_name)
+        if content is None:
+            return {"status": "ERROR", "error_msg": "File not found"}
+        return {"status": "OK", "response": base64.b64encode(content).decode('utf-8')}
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "ERROR", "error_msg": str(e)}
 
 def dispatch_update_file(user_obj, file_type, file_name, content: bytes):
-    # Same handling as save: accept base64 string or raw bytes
-    import base64
-    if isinstance(content, str):
-        try:
-            content_bytes = base64.b64decode(content)
-        except Exception:
-            content_bytes = content.encode('utf-8')
-    else:
-        content_bytes = content
-    update_file(file_type, file_name, content_bytes)
-    return f"{file_name} updated successfully"
+    import base64, traceback
+    try:
+        if isinstance(content, str):
+            try:
+                content_bytes = base64.b64decode(content)
+            except Exception:
+                content_bytes = content.encode('utf-8')
+        else:
+            content_bytes = content
+        update_file(file_type, file_name, content_bytes)
+        return {"status": "OK", "response": f"{file_name} updated successfully"}
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "ERROR", "error_msg": str(e)}
 
 def dispatch_download_file(user_obj, file_type, file_name, target_path: str):
     download_file(file_type, file_name, target_path)
     return f"{file_name} downloaded to {target_path}"
 
 def dispatch_delete_file(user_obj, file_type, file_name):
-    delete_file(file_type, file_name)
-    return f"{file_name} deleted successfully"
-
+    import traceback
+    try:
+        msg = delete_file(file_type, file_name)
+        if "does not exist" in msg:
+            return {"status": "ERROR", "error_msg": msg}
+        return {"status": "OK", "response": msg}
+    except Exception as e:
+        traceback.print_exc()
+        return {"status": "ERROR", "error_msg": str(e)}
 # =====================
 # DISPATCH COMMANDS
 # =====================
@@ -78,6 +94,8 @@ COMMAND_MAP = {
     "unfollow_user": user_services.unfollow_user,
     "get_followers": user_services.get_followers,
     "get_followed": user_services.get_followed,
+    "search_users": user_services.search_users,
+    # =====================
     # MEDIA
     "create_song": media_services.create_song_services,
     "get_song": media_services.get_song_services,

@@ -18,7 +18,111 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import json
-from server.db.db_crud import create_media_db, fetch_media_db, update_media_db, delete_media_db
+from server.db.db_crud import create_media_db, fetch_media_db, update_media_db, delete_media_db, create_dict_entry, fetch_dict_entry_by_name, fetch_one
+from server.utils.storage_manager import save_file, get_path
+import base64, uuid, os
+from werkzeug.utils import secure_filename
+import subprocess
+from typing import Optional
+from PyPDF2 import PdfReader
+
+# helper: probe duration/pages
+def _format_duration(seconds: Optional[float]) -> Optional[str]:
+    if seconds is None:
+        return None
+    s = int(round(seconds))
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    if h:
+        return f"{h:02d}:{m:02d}:{sec:02d}"
+    return f"{m:02d}:{sec:02d}"
+
+def _probe_media_duration(path: str) -> Optional[float]:
+    """Try ffprobe to get duration (in seconds)."""
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, timeout=6
+        )
+        out = proc.stdout.strip()
+        if not out:
+            return None
+        return float(out)
+    except Exception:
+        return None
+
+def _probe_pdf_pages(path: str) -> Optional[int]:
+    """Try PyPDF2, then pdfinfo to get page count."""
+    try:
+        if PdfReader:
+            reader = PdfReader(path)
+            # PyPDF2 v2 exposes pages as list-like
+            pages = getattr(reader, "pages", None)
+            if pages is not None:
+                return len(pages)
+            # fallback older API
+            return int(reader.getNumPages())
+    except Exception:
+        pass
+    try:
+        proc = subprocess.run(["pdfinfo", path], capture_output=True, text=True, timeout=4)
+        for line in proc.stdout.splitlines():
+            if line.lower().startswith("pages:"):
+                try:
+                    return int(line.split(":")[1].strip())
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return None
+
+def _resolve_storage_file(stored_at: Optional[str], media_type: Optional[str]) -> Optional[str]:
+    """
+    Given a stored_at value (any of: 'folder/filename', 'server/storage/folder/filename',
+    'folder' ...) try to return the absolute filesystem path to a concrete file.
+    """
+    if not stored_at:
+        return None
+
+    # normalize and strip server/storage prefix if present
+    rel = stored_at.replace("\\", "/")
+    prefix = "server/storage/"
+    if rel.startswith(prefix):
+        rel = rel[len(prefix):].lstrip("/")
+
+    parts = rel.split("/")
+    # if we have folder + filename -> use get_path(folder, filename)
+    if len(parts) >= 2:
+        folder = parts[0]
+        filename = "/".join(parts[1:])
+        try:
+            p = get_path(folder, filename)
+            if os.path.isfile(p):
+                return p
+        except Exception:
+            pass
+
+    # if only a filename or ambiguous -> try using media_type as folder
+    basename = parts[-1]
+    try:
+        p = get_path((media_type or "song"), basename)
+        if os.path.isfile(p):
+            return p
+    except Exception:
+        pass
+
+    # if stored_at points to a folder -> pick first file in that folder
+    try:
+        maybe_folder = os.path.join(os.getcwd(), "server", "storage", parts[0])
+        if os.path.isdir(maybe_folder):
+            files = [f for f in os.listdir(maybe_folder) if os.path.isfile(os.path.join(maybe_folder, f))]
+            if files:
+                return os.path.join(maybe_folder, files[0])
+    except Exception:
+        pass
+
+    return None
 
 class Media(ABC):
     def __init__(
@@ -68,6 +172,11 @@ class Media(ABC):
         self.is_performer = bool(is_performer)
         self._deleted = False
 
+        # optional media-specific fields (provide defaults so subclasses don't crash)
+        self.pages = kwargs.get("pages", None)
+        self.format = kwargs.get("format", None)
+        # other optional attrs may be present in kwargs and will be set below
+
         # Gestione extra attr
         for k, v in kwargs.items():
             #print(f"[DEBUG][Media.__init__] Extra attr: {k}={v}")
@@ -88,38 +197,201 @@ class Media(ABC):
     # CRUD BASE
     # =====================
     def save(self):
-        print(f"[DEBUG][Media.save] Called on {self}")
-        if self._deleted:
-            raise Exception("Cannot save a deleted object")
-
+        """
+        Persist media:
+         - map authors/genres/performers names -> ids (creating entries when needed)
+         - save uploaded files (base64 payloads) into storage and set stored_at
+         - call create_media_db() which expects integer ids for relations
+        """
+        # build clean payload from object
         payload = self.to_dict()
-        print(f"[DEBUG][Media.save] Payload to create_media_db={payload}")
 
-        if not self.media_id:
-            print("[DEBUG][Media.save] No media_id -> creating new record")
+        # helper: ensure dict table entries exist and return ids
+        def ensure_ids(table: str, items):
+            ids = []
+            if not items:
+                return ids
+            for it in items:
+                if it is None:
+                    continue
+                # already an int -> verify it exists
+                if isinstance(it, int):
+                    try:
+                        row = fetch_one(f"SELECT id FROM {table} WHERE id=%s", (it,))
+                        if row and row.get("id"):
+                            ids.append(it)
+                        else:
+                            print(f"[Media.save] provided id={it} not found in {table}, skipping")
+                    except Exception as e:
+                        print(f"[Media.save] verify id error for {table} id={it}: {e}")
+                    continue
+
+                name = str(it).strip()
+                if not name:
+                    continue
+                # try fetch existing
+                try:
+                    row = fetch_dict_entry_by_name(table, name)
+                except Exception as e:
+                    row = None
+                    print(f"[Media.save] fetch_dict_entry_by_name error: {e}")
+
+                if row and row.get("id"):
+                    ids.append(row["id"])
+                else:
+                    # create and return new id (create_dict_entry commits)
+                    try:
+                        nid = create_dict_entry(table, name)
+                        if nid:
+                            ids.append(nid)
+                            print(f"[Media.save] created {table} entry '{name}' -> id={nid}")
+                        else:
+                            print(f"[Media.save] failed to create {table} entry '{name}'")
+                    except Exception as e:
+                        print(f"[Media.save] create_dict_entry error for {table} name={name}: {e}")
+            return ids
+
+        # normalize relations from names -> ids
+        try:
+            payload["authors"] = ensure_ids("authors", payload.get("authors") or [])
+            payload["genres"] = ensure_ids("genres", payload.get("genres") or [])
+            payload["performers"] = ensure_ids("performers", payload.get("performers") or [])
+        except Exception as e:
+            print(f"[Media.save] relation normalization failed: {e}")
+
+        # handle files array (client may send list of dicts with content_b64)
+        files = payload.pop("files", None)
+        stored_at_value = payload.get("stored_at") or None
+        if files and isinstance(files, list) and len(files) > 0:
+            # save first file (primary) and ignore extras for stored_at (you can adapt to keep list)
+            try:
+                first = files[0]
+                fname = first.get("filename") or f"{uuid.uuid4().hex}"
+                safe = secure_filename(fname)
+                # choose folder by media type if available
+                folder = (self.type or payload.get("type") or "media").lower()
+
+                # ---- robust content extraction ----
+                content = None
+                # prioritized explicit fields
+                if "content_bytes" in first and isinstance(first.get("content_bytes"), (bytes, bytearray)):
+                    content = bytes(first.get("content_bytes"))
+                elif "raw_bytes" in first and isinstance(first.get("raw_bytes"), (bytes, bytearray)):
+                    content = bytes(first.get("raw_bytes"))
+
+                # content_b64 or content may be either base64 string or raw bytes
+                if content is None:
+                    b = first.get("content_b64") if "content_b64" in first else first.get("content")
+                    if isinstance(b, (bytes, bytearray)):
+                        content = bytes(b)
+                    elif isinstance(b, str) and b:
+                        # try base64 decode, fallback to utf-8 bytes
+                        try:
+                            content = base64.b64decode(b)
+                        except Exception:
+                            try:
+                                content = b.encode("utf-8")
+                            except Exception:
+                                content = None
+
+                # file-like objects (werkzeug FileStorage, streams, etc.)
+                if content is None:
+                    fileobj = first.get("file") or first.get("stream") or first.get("fileobj")
+                    if fileobj and hasattr(fileobj, "read"):
+                        try:
+                            fileobj.seek(0)
+                        except Exception:
+                            pass
+                        try:
+                            content = fileobj.read()
+                            # ensure bytes type for memoryview / bytearray
+                            if isinstance(content, memoryview):
+                                content = content.tobytes()
+                        except Exception:
+                            content = None
+
+                # If still no content, log and skip saving to avoid writing invalid files
+                if not content:
+                    print(f"[DEBUG][Media.save] No file content available for filename='{fname}', payload first keys={list(first.keys())}")
+                else:
+                    # ensure unique file name
+                    unique_name = f"{uuid.uuid4().hex}_{safe}"
+                    # save_file returns a message but underlying path is deterministic from storage_manager.get_path
+                    save_file(folder, unique_name, content)
+                    # store a relative path used by storage manager to fetch later
+                    payload["stored_at"] = f"{folder}/{unique_name}"
+                    # --- probe saved file to fill duration/pages ---
+                    try:
+                        abs_path = os.path.join(os.getcwd(), "server", "storage", folder, unique_name)
+                        if (self.type or payload.get("type") or "").lower() in ("song", "video"):
+                            dur = _probe_media_duration(abs_path)
+                            if dur is not None:
+                                payload["duration"] = int(round(dur))
+                                payload["duration_seconds"] = dur
+                                payload["duration_display"] = _format_duration(dur)
+                        elif (self.type or payload.get("type") or "").lower() == "document":
+                            pages = _probe_pdf_pages(abs_path)
+                            if pages is not None:
+                                payload["pages"] = pages
+                    except Exception as e:
+                        print(f"[DEBUG][Media.save] probing file failed: {e}")
+            except Exception as e:
+                print(f"[DEBUG][Media.save] file save failed: {e}")
+                # continue without stored_at
+
+        # finally call DB create/update
+        if getattr(self, "id", None) is None and not payload.get("media_id"):
+            # create
             result = create_media_db(payload)
-            print(f"[DEBUG][Media.save] Result from create_media_db={result}")
-            self.media_id = result["id"] if result else None
-            print(f"[DEBUG][Media.save] Assigned new media_id={self.media_id}")
+            if result and isinstance(result, dict) and result.get("id"):
+                self.id = result["id"]
+                # also keep media_id attribute if used elsewhere
+                self.media_id = result["id"]
+            else:
+                print(f"[DEBUG][Media.save] Result from create_media_db={result}")
+                # leave id None so callers see failure
+                return None
         else:
-            print(f"[DEBUG][Media.save] Updating existing media_id={self.media_id}")
-            updates = {
-                "title": self.title,
-                "description": self.description,
-                "link": self.link,
-                "year": self.year,
-                "duration": self.duration,
-                "location": self.location,
-                "additional_info": self.additional_info,
-                "is_author": self.is_author,
-                "is_performer": self.is_performer
-            }
-            print(f"[DEBUG][Media.save] Updates dict={updates}")
-            update_media_db(self.media_id, updates)
+            # update path (existing id)
+            mid = getattr(self, "id", None) or payload.get("media_id")
+            updates = payload.copy()
+            # remove keys not allowed by update_media_db
+            updates.pop("id", None)
+            updates.pop("media_id", None)
+            update_media_db(mid, updates)
+            self.id = mid
 
-        print(f"[DEBUG][Media.save] Syncing relations for {self}")
-        self._sync_relations()
-        print(f"[DEBUG][Media.save] END for {self}")
+        # --- NEW: if duration/pages missing try to probe stored file and update DB ---
+        try:
+            need_update = {}
+            st = payload.get("stored_at") or self.stored_at
+            # try to resolve a real file path
+            file_path = _resolve_storage_file(st, (self.type or payload.get("type")))
+            if file_path:
+                if (self.type or payload.get("type") or "").lower() in ("song", "video"):
+                    dur = _probe_media_duration(file_path)
+                    if dur is not None:
+                        secs = int(round(dur))
+                        need_update["duration"] = secs
+                elif (self.type or payload.get("type") or "").lower() == "document":
+                    pages = _probe_pdf_pages(file_path)
+                    if pages is not None:
+                        need_update["pages"] = pages
+            if need_update and self.id:
+                update_media_db(self.id, need_update)
+                # also reflect on the in-memory object
+                for k, v in need_update.items():
+                    setattr(self, k, v)
+        except Exception as e:
+            print(f"[DEBUG][Media.save] post-create probing failed: {e}")
+
+        # sync relations if subclass needs it (most handled inside create_media_db already)
+        try:
+            self._sync_relations()
+        except Exception as e:
+            print(f"[DEBUG][Media.save] _sync_relations error: {e}")
+
+        return self.id
 
     def delete(self):
         print(f"[DEBUG][Media.delete] Called on {self}")
@@ -213,6 +485,7 @@ class Media(ABC):
             "description": self.description,
             "link": self.link,
             "duration": self.duration,
+            "pages": getattr(self, "pages", None),
             "location": self.location,
             "additional_info": self.additional_info,
             "stored_at": self.stored_at,

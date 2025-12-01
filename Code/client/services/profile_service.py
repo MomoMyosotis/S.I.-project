@@ -67,8 +67,27 @@ class ProfileService:
                 total_count = max(current_count, len(normalized_pubs))
             user_dict["publications_count"] = total_count
 
-            is_self = (username is None) or (username == user_obj.username)
-            return {"status": "OK", "user": user_dict, "self": {"is_self": is_self}, "recent_publications": normalized_pubs}
+            # build 'self' (viewer) object with useful fields when available
+            viewer_info = {"is_self": False}
+            # if we have an auth token, try to fetch the current logged user to provide id/lvl/username
+            try:
+                if http_client.token:
+                    viewer_res = http_client.send_request("GET_PROFILE", [], require_auth=True)
+                    if isinstance(viewer_res, dict) and viewer_res.get("status") in (None, "OK") and "response" in viewer_res:
+                        v_inner = viewer_res["response"]
+                        v_user = User.from_server(v_inner if isinstance(v_inner, dict) else {})
+                        v_dict = v_user.to_dict()
+                        viewer_info.update({
+                            "id": v_dict.get("id"),
+                            "username": v_dict.get("username"),
+                            "lvl": int(v_dict.get("lvl")) if isinstance(v_dict.get("lvl"), int) else (getattr(v_dict.get("lvl"), "value", v_dict.get("lvl")) if v_dict.get("lvl") is not None else None)
+                        })
+                        # determine ownership by comparing the logged-in username with the target profile username
+                        viewer_info["is_self"] = (username is None) or (v_dict.get("username") == user_obj.username)
+            except Exception as e:
+                print(f"[DEBUG][ProfileService.get_profile] viewer lookup failed: {e}")
+
+            return {"status": "OK", "user": user_dict, "self": viewer_info, "recent_publications": normalized_pubs}
         else:
             return {"status": "ERROR", "error_msg": res.get("error_msg", "Unknown error")}
 
@@ -106,7 +125,8 @@ class ProfileService:
 
     @staticmethod
     def follow(followed, follower):
-        args = [followed, follower]
+        # send only the target username to the API; the server derives the follower from the token
+        args = [followed]
         print(f"[DEBUG][ProfileService.follow] sending FOLLOW_USER with args={args}")
         res = http_client.send_request("FOLLOW_USER", args, require_auth=True)
         print(f"[DEBUG][ProfileService.follow] response: {res}")
@@ -114,7 +134,8 @@ class ProfileService:
 
     @staticmethod
     def unfollow(unfollowed, unfollower):
-        args = [unfollowed, unfollower]
+        # send only the target username to the API; the server derives the unfollower from the token
+        args = [unfollowed]
         print(f"[DEBUG][ProfileService.unfollow] sending UNFOLLOW_USER with args={args}")
         res = http_client.send_request("UNFOLLOW_USER", args, require_auth=True)
         print(f"[DEBUG][ProfileService.unfollow] response: {res}")
