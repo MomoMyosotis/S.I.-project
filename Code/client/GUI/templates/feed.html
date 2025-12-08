@@ -87,6 +87,37 @@
           const div = document.createElement('div');
           div.className = 'media-item';
 
+          // USER item special-case: show profile picture, username and bio snippet
+          if (item.type === 'user') {
+            const img = document.createElement('img');
+            img.className = 'media-icon user-icon';
+            img.src = item.thumbnail || (item.profile_picture_url || '/static/images/no pp.jpg');
+            img.alt = item.username || 'user';
+
+            const info = document.createElement('div');
+            info.className = 'media-info';
+
+            const h3 = document.createElement('h3');
+            const a = document.createElement('a');
+            const userIdentifier = item.username || item.id || '';
+            a.href = `/home/?form_type=profile&username=${encodeURIComponent(userIdentifier)}`;
+            a.textContent = item.title || item.username || userIdentifier;
+            h3.appendChild(a);
+
+            const bioP = document.createElement('p');
+            bioP.className = 'user-bio';
+            bioP.textContent = item.description || item.bio || '';
+
+            info.appendChild(h3);
+            info.appendChild(bioP);
+
+            div.appendChild(img);
+            div.appendChild(info);
+            feedEl.appendChild(div);
+            return;
+          }
+
+          // non-user media rendering (unchanged)
           const img = document.createElement('img');
           img.className = 'media-icon';
           img.src = getMediaIcon(item.type);
@@ -143,29 +174,27 @@
     }
   }
 
-  // Use an IntersectionObserver on a sentinel element located after the feed
-  // so we load more when the sentinel becomes visible.
-  const observer = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (entry.isIntersecting) {
-        loadMore();
-      }
-    }
-  }, { root: null, rootMargin: '200px', threshold: 0.1 });
-
   function applySearch() {
-    currentIndex = 0;
-    feedEl.innerHTML = '';
-    currentSearch = document.getElementById('search').value;
+    currentSearch = document.getElementById('search').value.trim();
     currentFilter = document.getElementById('filter').value;
+    currentIndex = 0;
     endReached = false;
     loadMore();
   }
 
-  window.addEventListener('DOMContentLoaded', () => {
-    observer.observe(sentinel);
-    loadMore();
+  // Initial load
+  loadMore();
+
+  // IntersectionObserver setup for lazy loading
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      loadMore();
+    }
+  }, {
+    rootMargin: '100px',
   });
+
+  observer.observe(sentinel);
 </script>
 
 </body>

@@ -1,7 +1,7 @@
 # first line
 
 from enum import Enum
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 class UserLevel(Enum):
     ROOT = 0
@@ -37,104 +37,141 @@ class User:
 
     def __init__(
         self,
-        id: int,
-        username: str,
-        followers: int,
-        followed: int,
-        bio: str = "",
-        lvl: UserLevel = UserLevel.REGULAR,
-        profile_pic: str = "",
-        publications_count: int = 0,
+        id: Optional[int],
+        username: Optional[str],
+        followers_count: int = 0,
         following_count: int = 0,
-        followers_count: int = 0
+        bio: str = "",
+        lvl: Optional[UserLevel] = UserLevel.REGULAR,
+        profile_pic: Optional[str] = None,
+        publications_count: int = 0,
     ):
-        print(f"[DEBUG][User.__init__] id={id}, username={username}, followers={followers}, followed={followed}, bio='{bio}', lvl={lvl}")
+        # minimal, stable attributes used across client
         self.id = id
         self.username = username
-        self.followers = followers
-        self.followed = followed
-        self.bio = bio
-        self.lvl = lvl
+        self.followers_count = followers_count
+        self.following_count = following_count
+        self.bio = bio or ""
+        self.lvl = lvl if isinstance(lvl, UserLevel) else (UserLevel(lvl) if lvl is not None else UserLevel.REGULAR)
         self.profile_pic = profile_pic
         self.publications_count = publications_count
-        self.following_count = following_count
-        self.followers_count = followers_count
+
+    @staticmethod
+    def _unwrap_envelope(data: Any) -> Dict[str, Any]:
+        # unwrap nested envelopes commonly returned by server
+        inner = data if isinstance(data, dict) else {}
+        seen = set()
+        while isinstance(inner, dict):
+            if id(inner) in seen:
+                break
+            seen.add(id(inner))
+            for k in ("response", "result", "user", "user_obj"):
+                if k in inner and isinstance(inner[k], (dict, list)):
+                    inner = inner[k]
+                    break
+            else:
+                break
+        return inner if isinstance(inner, dict) else {}
 
     @staticmethod
     def from_server(data: Dict[str, Any]) -> "User":
-        print(f"[DEBUG][User.from_server] raw server data: {data}")
-        # normalize keys that server might return with slightly different names
-        normalized = dict(data)
-        normalized["user_id"] = normalized.get("user_id", normalized.get("id"))
-        normalized["followers_count"] = normalized.get("followers_count", normalized.get("followers", 0))
-        normalized["following_count"] = normalized.get("following_count", normalized.get("followed_count", normalized.get("following", 0)))
-        normalized["profile_pic"] = normalized.get("profile_pic", normalized.get("profile_picture_url", ""))
-        normalized["bio"] = normalized.get("bio", normalized.get("full_bio", ""))
+        """
+        Robustly create a User from server data. Accepts many shapes:
+        - direct user dict
+        - envelope: {"status":"OK","response":{...}}
+        - alternative key names
+        """
+        raw = User._unwrap_envelope(data)
+        if not isinstance(raw, dict):
+            raw = {}
 
-        user = User(
-            id=normalized.get("user_id"),
-            username=normalized.get("username"),
-            followers=normalized.get("followers_count", 0),
-            followed=normalized.get("following_count", 0),
-            bio=normalized.get("bio", ""),
-            lvl=UserLevel(normalized.get("lvl")) if normalized.get("lvl") is not None else UserLevel.REGULAR,
-            profile_pic=normalized.get("profile_pic", ""),
-            publications_count=normalized.get("publications_count", 0),
-            following_count=normalized.get("following_count", 0),
-            followers_count=normalized.get("followers_count", 0)
+        # normalization with fallbacks
+        uid = raw.get("id") or raw.get("user_id") or raw.get("_id")
+        username = raw.get("username") or raw.get("user") or raw.get("name")
+        # counts: try multiple alternatives
+        followers_count = int(raw.get("followers_count")
+                              or raw.get("followers")
+                              or raw.get("followers_count_total", 0) or 0)
+        following_count = int(raw.get("following_count")
+                              or raw.get("followed")
+                              or raw.get("following")
+                              or 0)
+        publications_count = int(raw.get("publications_count") or raw.get("count") or raw.get("media_count") or 0)
+        profile_pic = raw.get("profile_pic") or raw.get("profile_picture_url") or raw.get("avatar")
+        bio = raw.get("full_bio") or raw.get("bio") or raw.get("description") or ""
+
+        # lvl may be int or string; try safe conversions
+        lvl_raw = raw.get("lvl") if "lvl" in raw else raw.get("level") if "level" in raw else raw.get("lvl_value", None)
+        lvl = UserLevel.REGULAR
+        try:
+            if lvl_raw is not None:
+                # accept numeric strings too
+                if isinstance(lvl_raw, str) and lvl_raw.isdigit():
+                    lvl = UserLevel(int(lvl_raw))
+                elif isinstance(lvl_raw, (int, float)):
+                    lvl = UserLevel(int(lvl_raw))
+                else:
+                    # try mapping by name
+                    lvl = UserLevel[lvl_raw.upper()] if isinstance(lvl_raw, str) and lvl_raw.upper() in UserLevel.__members__ else UserLevel.REGULAR
+        except Exception:
+            lvl = UserLevel.REGULAR
+
+        return User(
+            id=uid,
+            username=username,
+            followers_count=followers_count,
+            following_count=following_count,
+            bio=bio,
+            lvl=lvl,
+            profile_pic=profile_pic,
+            publications_count=publications_count
         )
-        print(f"[DEBUG][User.from_server] created User instance: {user.__dict__}")
-        return user
 
     def to_dict(self) -> Dict[str, Any]:
-        # shape data expected by the client profile page
+        """
+        Serialize the model in the shape client code (templates / services) expects.
+        Keep both 'profile_pic' (id) and 'profile_picture_url' keys for compatibility.
+        """
         return {
             "id": self.id,
             "username": self.username,
-            "profile_picture_url": self.profile_pic or None,
             "profile_pic": self.profile_pic,
-            "publications_count": self.publications_count,
-            "following_count": self.following_count,
-            "followed_count": self.following_count,
-            "followers_count": self.followers_count,
+            "profile_picture_url": f"/profile/picture/{self.profile_pic}" if self.profile_pic else None,
+            "publications_count": int(self.publications_count or 0),
+            "following_count": int(self.following_count or 0),
+            "followers_count": int(self.followers_count or 0),
             "full_bio": self.bio,
             "bio": self.bio,
-            "lvl": self.lvl.value if isinstance(self.lvl, UserLevel) else self.lvl
+            # expose lvl as integer to simplify checks in existing code
+            "lvl": int(self.lvl.value) if isinstance(self.lvl, UserLevel) else self.lvl
         }
 
     # ===== STATIC INFORMATION ABOUT PERMISSIONS =====
     @classmethod
     def possible_action_list(cls) -> Dict[int, str]:
-        print("[DEBUG][User.possible_action_list] returning PERMISSIONS map")
         return cls.PERMISSIONS
 
-    # ===== PERMISSION CHECKER (draft) =====
     def get_permission(self) -> List[int]:
-        print(f"[DEBUG][User.get_permission] Checking permissions for lvl={self.lvl}")
+        """
+        Basic permission list generator. This is a simplified implementation
+        kept for backward compatibility with existing client checks.
+        """
         lvl = self.lvl
         allowed = []
 
-        for action_id, description in self.PERMISSIONS.items():
-            if lvl == UserLevel.BANNED:
-                if action_id in [1, 15]:
-                    allowed.append(action_id)
-                    print(f"[DEBUG][User.get_permission] BANNED allowed action {action_id}: {description}")
-                continue
+        # banned: very restricted
+        if lvl == UserLevel.BANNED:
+            # allow minimal actions optionally
+            if 1 in self.PERMISSIONS:
+                allowed.append(1)
+            return allowed
 
-            if lvl == UserLevel.RESTRICTED:
-                if action_id in [11, 12, 9]:
-                    print(f"[DEBUG][User.get_permission] RESTRICTED denied action {action_id}: {description}")
-                    continue
+        # root can do everything
+        if lvl == UserLevel.ROOT:
+            return list(self.PERMISSIONS.keys())
 
-            if lvl == UserLevel.ROOT:
-                allowed.append(action_id)
-                print(f"[DEBUG][User.get_permission] ROOT allowed action {action_id}: {description}")
-                continue
-
+        # otherwise return most actions (this can be tuned)
+        for action_id in self.PERMISSIONS.keys():
             allowed.append(action_id)
-            print(f"[DEBUG][User.get_permission] allowed action {action_id}: {description}")
-
-        print(f"[DEBUG][User.get_permission] final allowed list: {allowed}")
         return allowed
-
 # last line

@@ -1,15 +1,15 @@
 # first line
 
-import json, base64, inspect
-from typing import Optional, Any, Tuple
 from server.services import user_services, media_services, interventions_services
 from server.utils.storage_manager import (save_file,
                                     update_file,
                                     fetch_file,
                                     download_file,
-                                    delete_file
-                                    )
+                                    delete_file)
 from server.objects.users.root import Root
+from typing import Optional, Any, Tuple
+import json
+
 # =====================
 # ENCODER JSON
 # =====================
@@ -79,6 +79,7 @@ def dispatch_delete_file(user_obj, file_type, file_name):
     except Exception as e:
         traceback.print_exc()
         return {"status": "ERROR", "error_msg": str(e)}
+
 # =====================
 # DISPATCH COMMANDS
 # =====================
@@ -95,8 +96,10 @@ COMMAND_MAP = {
     "get_followers": user_services.get_followers,
     "get_followed": user_services.get_followed,
     "search_users": user_services.search_users,
+    "change_lvl": user_services.change_lvl,
     # =====================
     # MEDIA
+    # =====================
     "create_song": media_services.create_song_services,
     "get_song": media_services.get_song_services,
     "get_media": media_services.get_media_services,            # <-- ADDED generic getter
@@ -200,6 +203,5 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
         import traceback
         traceback.print_exc()
         return json.dumps({"error_msg": str(e), "status": "error"}), None, None, "ERROR"
-
 
 # last line

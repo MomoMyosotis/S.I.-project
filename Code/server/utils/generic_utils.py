@@ -15,13 +15,13 @@ def save_uploaded_file(temp_path: str, original_name: str) -> str:
         shutil.copyfile(temp_path, dest)  # Copia normalmente su Windows
         print(f"File salvato su Windows: {dest}")
     elif os.name == 'posix':  # Linux
-        shutil.copyfile(temp_path, dest)  # Copia normalmente su Linux
+        shutil.copyfile(temp_path, dest)
         print(f"File salvato su Linux: {dest}")
     else:
         print("Sistema operativo non supportato")
         return None
 
-    return dest  # salva questo in media.file_path
+    return dest
 
 def delete_file(file_path: str) -> None:
     try:

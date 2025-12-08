@@ -172,15 +172,7 @@ def get_profile(user_obj: Root, target_name: Optional[str] = None) -> Optional[D
         public["is_followed"] = False
     return public
 
-
 def edit_profile(user_obj: Root, username=None, bio=None, profile_pic=None) -> str:
-    """
-    Flexible profile updater:
-    - Accepts either positional params (username, bio, profile_pic) OR a single dict payload
-      passed as the second argument (username can be a dict).
-    - Supports client key "full_bio" mapped to internal "bio".
-    - If username is omitted, the current user's username is kept.
-    """
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
 
@@ -226,6 +218,95 @@ def edit_profile(user_obj: Root, username=None, bio=None, profile_pic=None) -> s
         return "PROFILE_UPDATED"
     return "ERROR: Failed to update profile"
 
+def change_lvl(user_obj: Root, *args) -> dict:
+    """
+    Change a target user's level.
+
+    Accepts either:
+        - (user_obj, new_level)           -> change caller's own level (rare)
+        - (user_obj, target_username, new_level) -> change another user's level
+
+    Returns a dict { "status": "OK", "response": "..."} on success or
+    { "status": "ERROR", "error_msg": "..." } on failure.
+    """
+    if not is_logged(user_obj):
+        return {"status": "ERROR", "error_msg": "NOT_LOGGED_IN"}
+
+    # resolve viewer id & level
+    viewer_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+    viewer_lvl_raw = user_obj.get("lvl") if isinstance(user_obj, dict) else getattr(user_obj, "lvl", None)
+    try:
+        viewer_lvl = int(viewer_lvl_raw) if isinstance(viewer_lvl_raw, (int, float, str)) and str(viewer_lvl_raw).isdigit() else (viewer_lvl_raw.value if hasattr(viewer_lvl_raw, "value") else None)
+    except Exception:
+        viewer_lvl = None
+
+    # parse args
+    if len(args) == 1:
+        # only new_level -> target is self
+        target_identifier = viewer_id
+        try:
+            new_level = int(args[0])
+        except Exception:
+            return {"status": "ERROR", "error_msg": "Invalid new_level"}
+    elif len(args) >= 2:
+        target_identifier = args[0]
+        try:
+            new_level = int(args[1])
+        except Exception:
+            return {"status": "ERROR", "error_msg": "Invalid new_level"}
+    else:
+        return {"status": "ERROR", "error_msg": "Missing parameters"}
+
+    # fetch target user row
+    if isinstance(target_identifier, int):
+        target_row = Root.get_user(user_id=target_identifier)
+    else:
+        target_row = Root.get_user_by_username(str(target_identifier))
+
+    if not target_row:
+        return {"status": "ERROR", "error_msg": "Target user not found"}
+
+    target_id = target_row.get("id")
+    target_lvl = None
+    try:
+        t_lvl = target_row.get("lvl") if "lvl" in target_row else target_row.get("level")
+        target_lvl = int(t_lvl) if isinstance(t_lvl, (int, float, str)) and str(t_lvl).isdigit() else (UserLevel(t_lvl).value if isinstance(t_lvl, UserLevel) else None)
+    except Exception:
+        target_lvl = None
+
+    # Permission checks:
+    # - root (0) can change anyone
+    # - admin (1) can change anyone except roots (target_lvl == 0)
+    # - others cannot change levels of others; only root/admin allowed to change any level
+    if viewer_id == target_id:
+        # changing own level allowed only for admins/roots (avoid regular users escalating themselves)
+        if viewer_lvl not in (UserLevel.ROOT.value, UserLevel.ADMIN.value):
+            return {"status": "ERROR", "error_msg": "Permission denied to change own level"}
+    else:
+        if viewer_lvl == UserLevel.ROOT.value:
+            pass  # allowed
+        elif viewer_lvl == UserLevel.ADMIN.value:
+            if target_lvl == UserLevel.ROOT.value:
+                return {"status": "ERROR", "error_msg": "Cannot manage root account"}
+        else:
+            return {"status": "ERROR", "error_msg": "Permission denied"}
+
+    # apply level change
+    try:
+        ok = Root.change_user_level(target_id, new_level)
+        if ok:
+            # if server uses object instances, try to update in-memory user_obj too
+            if not isinstance(user_obj, dict):
+                try:
+                    if getattr(user_obj, "id", None) == target_id:
+                        user_obj.lvl = UserLevel(new_level)
+                except Exception:
+                    pass
+            return {"status": "OK", "response": "LEVEL_CHANGED"}
+        return {"status": "ERROR", "error_msg": "Failed to change level"}
+    except Exception as e:
+        return {"status": "ERROR", "error_msg": str(e)}
+
 def follow_user(user_obj: Any, target_name: str) -> str:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
@@ -245,7 +326,7 @@ def unfollow_user(user_obj: Any, target_name: str) -> str:
         return "ERROR: User not found"
     result = Root.unfollow_user(follower_id, target["id"], user_obj if isinstance(user_obj, dict) else None)
     return result["response"] if result["status"] == "OK" else f"ERROR: {result['error_msg']}"
-from server.utils import user_utils
+
 def get_followers(user_obj: dict) -> list[dict]:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
@@ -257,22 +338,19 @@ def get_followed(user_obj: dict) -> list[dict]:
     return utils.get_followed(user_obj["id"])
 
 # =====================
-# RECUPERO / ASSISTENZA
+# RECUPERO / ASSISTENZA (placeholders 4 now)
 # =====================
 def recover(email: str) -> Dict[str, Any]:
     # placeholder
     return {"status": "ok", "error_msg": None}
 
 def assistance(username: str, message: str) -> Dict[str, Any]:
-    # esempio placeholder
+    # placeholder
     print(f"[DEBUG] Assistance request from {username}: {message}")
     return {"status": "ok", "error_msg": None}
 
+# has to pass maybe from server.utils.user_utils that then calls server.db.db_crud
 def search_users(user_obj: Any, term: str = "", offset: int = 0, limit: int = 20):
-    """
-    Search users by username or email (simple ILIKE). Returns list of small user dicts.
-    Called from client feed aggregation when searching for accounts.
-    """
     try:
         from server.db.db_crud import fetch_all
         if term is None:
@@ -300,6 +378,5 @@ def search_users(user_obj: Any, term: str = "", offset: int = 0, limit: int = 20
     except Exception as e:
         print(f"[ERROR][search_users] {e}")
         return {"status": "ERROR", "error_msg": str(e)}
-
 
 # last line

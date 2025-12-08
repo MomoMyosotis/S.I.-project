@@ -1,6 +1,6 @@
 # first line
 
-import os, shutil, platform, pathlib
+import os, shutil, platform
 from typing import Optional
 
 # ==========================
@@ -12,9 +12,7 @@ FOLDERS = {
     "document": "documents",
     "note": "notes",
     "song": "songs",
-    "video": "videos",
-    # accept legacy/other folder names that may appear in DB stored_at
-    "music": "music",
+    "video": "videos"
 }
 
 # Assicura che tutte le cartelle esistano
@@ -22,10 +20,10 @@ for folder in FOLDERS.values():
     os.makedirs(os.path.join(BASE_STORAGE, folder), exist_ok=True)
 
 def get_path(file_type: str, file_name: str) -> str:
-    # If caller provided a "stored_at"-like path (eg. "music/name.mp3"), prefer it
+    # If caller provided a "stored_at"-like path (eg. "song/name.mp3"), prefer it
     if (os.path.sep in file_name) or ('/' in file_name):
         candidate = os.path.join(BASE_STORAGE, file_name)
-        # return candidate path (caller will check existence)
+        # return path
         return candidate
 
     folder = FOLDERS.get(file_type)
@@ -38,7 +36,7 @@ def get_path(file_type: str, file_name: str) -> str:
         if os.path.isfile(p):
             return p
 
-    # last resort: return a path under BASE_STORAGE (may not exist)
+    # last resort: return a path under BASE_STORAGE
     return os.path.join(BASE_STORAGE, file_name)
 
 # ==========================
@@ -46,7 +44,6 @@ def get_path(file_type: str, file_name: str) -> str:
 # ==========================
 def save_file(file_type: str, file_name: str, content: bytes) -> str:
     path = get_path(file_type, file_name)
-    # Ensure directory exists before writing
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         f.write(content)
@@ -57,7 +54,6 @@ def save_file(file_type: str, file_name: str, content: bytes) -> str:
 # ==========================
 def fetch_file(file_type: str, file_name: str) -> Optional[bytes]:
     path = get_path(file_type, file_name)
-    # If exact path exists, return it
     if os.path.isfile(path):
         with open(path, "rb") as f:
             return f.read()
@@ -110,7 +106,6 @@ def update_file(file_type: str, file_name: str, content: bytes) -> str:
     path = get_path(file_type, file_name)
     if not os.path.isfile(path):
         return "File does not exist"
-    # Ensure directory exists (defensive) and then overwrite
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         f.write(content)
@@ -128,13 +123,10 @@ def download_file(file_type: str, file_name: str, target_path: str) -> str:
 
     try:
         if system_name == "Windows":
-            # Usa comando nativo di Windows
             os.system(f'copy "{src}" "{target_path}"')
         elif system_name in ("Linux", "Darwin"):
-            # Usa comando nativo di Linux
             os.system(f'cp "{src}" "{target_path}"')
         else:
-            # Fallback cross-platform
             shutil.copy(src, target_path)
     except Exception as e:
         return f"Error copying file: {e}"
@@ -150,6 +142,5 @@ def delete_file(file_type: str, file_name: str) -> str:
         return "File does not exist"
     os.remove(path)
     return f"File removed from {path}"
-
 
 # last line

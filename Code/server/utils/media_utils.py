@@ -1,6 +1,7 @@
 # first line
 
 from typing import Dict, Any, Optional, List
+from server.objects.media.media import Media
 from server.db.db_crud import (
     create_dict_entry,
     fetch_dict_entry_by_name,
@@ -11,7 +12,6 @@ from server.db.db_crud import (
     fetch_relations,
     delete_relation,
 )
-from server.objects.media.media import Media
 
 # ---------------------------
 # Dizionari (genres, authors, instruments, performers)
@@ -75,4 +75,5 @@ def add_concert_segment(concert_media_id: int, start_time: float, end_time: floa
 
 def fetch_concert_segments(concert_media_id: int) -> List[Dict[str, Any]]:
     return fetch_relations("concert_segments", "concert_id", concert_media_id)
+
 # last line

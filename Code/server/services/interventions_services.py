@@ -1,23 +1,23 @@
 # first line
-from decimal import Decimal
-from datetime import date
-from typing import List, Optional, Dict, Any
 from server.objects.interventi.comment import Comment
-from server.objects.interventi.notes import Note
-from server.objects.users.root import Root
-from server.objects.media.media import Media
-from server.logs.logger import log_event
 from server.utils.media_utils import (create_dict_entry,
                                 fetch_all_dict_entries,
-                                fetch_relations,
-                                delete_dict_entry
-                                )
+                                delete_dict_entry)
+from server.objects.interventi.notes import Note
+from typing import List, Optional, Dict, Any
+from server.objects.media.media import Media
+from server.objects.users.root import Root
+from decimal import Decimal
+from datetime import date
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # ====================
 # HELPER
 # ====================
 def get_user_id(user_obj: Any) -> Optional[int]:
-    """Ritorna l'id dell'utente anche se user_obj è dict o oggetto."""
     if isinstance(user_obj, dict):
         return user_obj.get('id')
     return getattr(user_obj, 'id', None)
@@ -48,9 +48,6 @@ def get_entries(user_obj: Any, table: str) -> List[Dict[str, Any]]:
 # ====================
 # COMMENT
 # ====================
-import logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 def create_comment(user_obj, media_id=None, text=None, parent_comment_id=None, note_id=None, **kwargs):
 
@@ -102,7 +99,6 @@ def create_comment(user_obj, media_id=None, text=None, parent_comment_id=None, n
         return {"status": "ERROR", "id": None, "error_msg": str(e)}
 
 def update_comment(user_obj: Any, comment_id: int, new_text: str) -> Dict[str, Any]:
-    """Aggiorna il testo di un commento esistente."""
     user_id = get_user_id(user_obj)
     comment = Comment.fetch_by_id(comment_id)
     if not comment:
@@ -119,7 +115,6 @@ def update_comment(user_obj: Any, comment_id: int, new_text: str) -> Dict[str, A
         return {"status": "ERROR", "id": comment_id, "error_msg": str(e)}
 
 def delete_comment(user_obj: Any, comment_id: int) -> Dict[str, Any]:
-    """Elimina un commento esistente."""
     user_id = get_user_id(user_obj)
     comment = Comment.fetch_by_id(comment_id)
     if not comment:
@@ -134,10 +129,8 @@ def delete_comment(user_obj: Any, comment_id: int) -> Dict[str, Any]:
         return {"status": "ERROR", "id": comment_id, "error_msg": str(e)}
 
 def get_comments(user_obj: Any, media_id: int) -> List[Dict[str, Any]]:
-    """Recupera tutti i commenti di un media."""
-    # Recupera i commenti dal database
+
     comments = Comment.fetch_by_media(media_id)
-    # Modifica i commenti per serializzare le date
     for comment in comments:
         if isinstance(comment['created_at'], date):  # Verifica se 'created_at' è una data
             comment['created_at'] = comment['created_at'].strftime('%Y-%m-%d')  # Formatta la data come stringa
@@ -229,7 +222,6 @@ def create_note(user_obj: Any, media_id=None, note_type="regular",
         return {"status": "ERROR", "id": None, "error_msg": str(e)}
 
 def get_notes(user_obj: Any, media_id: int) -> List[Dict[str, Any]]:
-    """Recupera tutte le note di un media, serializzando Decimal e date."""
     user_id = get_user_id(user_obj)
     print(f"[DEBUG get_notes] START - user_id={user_id}, media_id={media_id}")
 
@@ -264,7 +256,6 @@ def get_notes(user_obj: Any, media_id: int) -> List[Dict[str, Any]]:
         return {"status": "ERROR", "error_msg": str(e)}
 
 def update_note(user_obj: Any, note_id: int, new_content: str) -> Dict[str, Any]:
-    """Aggiorna il contenuto di una nota esistente."""
     user_id = get_user_id(user_obj)
     print(f"[DEBUG update_note] START - user_id={user_id}, note_id={note_id}")
 
@@ -284,7 +275,6 @@ def update_note(user_obj: Any, note_id: int, new_content: str) -> Dict[str, Any]
         return {"status": "ERROR", "id": note_id, "error_msg": str(e)}
 
 def delete_note(user_obj: Any, note_id: int) -> Dict[str, Any]:
-    """Elimina una nota esistente."""
     user_id = get_user_id(user_obj)
     print(f"[DEBUG delete_note] START - user_id={user_id}, note_id={note_id}")
 

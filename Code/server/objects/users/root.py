@@ -214,6 +214,10 @@ class Root:
         return update_user_db(user_id, updates)
 
     @classmethod
+    def change_user_level(cls, user_id: int, new_level: int) -> bool:
+        return update_user_db(user_id, {"lvl_id": new_level})
+
+    @classmethod
     def delete_user(cls, user_id: int) -> bool:
         return delete_user_db(user_id)
 

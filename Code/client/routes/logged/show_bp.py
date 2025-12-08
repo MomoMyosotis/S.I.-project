@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, jsonify, request, session, current_app, send_file
 from client.services.show_service import ShowService
 from client.services.http_helper import http_client
+from client.models.media import Media
 import base64, io, mimetypes, os
 
 show_bp = Blueprint("show", __name__, url_prefix="/show")
@@ -22,57 +23,46 @@ def show_data():
     resp = ShowService.get_media(media_id)
     current_app.logger.debug(f"[DEBUG] ShowService.get_media returned: {resp!r}")
 
-    # Robustly unwrap nested RPC envelopes like {"response": {...}} or {"response": {"response": {...}}}
-    inner = resp
-    if isinstance(inner, dict):
-        # If top-level status indicates error, prefer error path
-        if inner.get("status") and str(inner.get("status")).lower() != "ok":
-            # try to find nested error message
-            err = None
-            if isinstance(inner.get("response"), dict):
-                err = inner["response"].get("error_msg") or inner["response"].get("error")
-            err = err or inner.get("error_msg") or inner.get("error") or "Unknown error"
-            return jsonify({"error": err}), 400
+    # Accept many server shapes and build a consistent media dict using the Media model
+    try:
+        # if resp is wrapped envelope with 'response' or similar, extract candidate
+        candidate = None
+        if isinstance(resp, dict):
+            # prefer explicit error handling
+            status = resp.get("status")
+            if status and str(status).lower() not in ("ok", "true", "accepted", "accepted"):
+                # try find nested error
+                err = resp.get("error_msg") or resp.get("error") or (isinstance(resp.get("response"), dict) and resp["response"].get("error_msg"))
+                return jsonify({"error": err or "Backend error"}), 400
 
-        # unwrap layers
-        seen = set()
-        while isinstance(inner, dict) and ("response" in inner or "result" in inner or "media" in inner):
-            candidate = inner.get("response") or inner.get("result") or inner.get("media")
-            # guard against infinite loops
-            key_id = id(candidate)
-            if candidate is None or key_id in seen:
-                break
-            seen.add(key_id)
-            inner = candidate
-
-        # now `inner` should be the media dict or something similar
-        if not isinstance(inner, dict):
+            # unwrap commonly used keys
+            for k in ("response", "result", "media"):
+                if k in resp and resp[k]:
+                    candidate = resp[k]
+                    break
+            if candidate is None:
+                # sometimes the server returns the media directly
+                candidate = resp
+        else:
+            # if server returned a list/string -> invalid for /data
             return jsonify({"error": "invalid response from backend"}), 400
 
-        # normalize common fields so the client JS can rely on them
-        # map media_id -> id
-        if "media_id" in inner and "id" not in inner:
-            inner["id"] = inner.get("media_id")
-
-        # map stored_at -> file/filename
-        stored = inner.get("stored_at") or inner.get("stored") or inner.get("file_path")
-        if stored:
-            inner["file"] = inner.get("file") or stored
-            inner["filename"] = inner.get("filename") or os.path.basename(stored)
-
-        # if server used 'stored_at' under different key 'stored_at'
-        if "stored_at" in inner and not inner.get("file"):
-            inner["file"] = inner.get("stored_at")
-            inner["filename"] = inner.get("filename") or os.path.basename(inner.get("stored_at") or "")
-
-        # ensure type/title present
-        if not any(k in inner for k in ("id","media_id","title","type")):
-            return jsonify({"error": "media not found"}), 400
-
-        return jsonify(inner)
-
-    # fallback
-    return jsonify({"error": "invalid response from backend"}), 400
+        # candidate should be a dict containing media fields; normalize via model
+        if isinstance(candidate, dict):
+            media_obj = Media.from_server(candidate)
+            media_dict = media_obj.to_dict()
+            # keep any server-provided publisher username if present
+            if isinstance(candidate.get("username"), str):
+                media_dict["username"] = candidate.get("username")
+            # also copy legacy fields if present (tags, author_names, segments etc)
+            for k in ("tags","author_names","authors","performers","segments","subtracks","duration_display","duration_seconds","filename","file","link","description"):
+                if k in candidate and k not in media_dict:
+                    media_dict[k] = candidate[k]
+            return jsonify(media_dict)
+        return jsonify({"error": "invalid response from backend"}), 400
+    except Exception as e:
+        current_app.logger.exception("Failed to normalize media response")
+        return jsonify({"error": "internal error"}), 500
 
 @show_bp.route("/comment", methods=["POST"])
 def post_comment():

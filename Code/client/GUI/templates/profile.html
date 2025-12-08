@@ -335,31 +335,131 @@
     const viewerLvl = Number.isFinite(Number(viewer?.lvl)) ? Number(viewer.lvl) : -1;
     const isSelf = viewer?.is_self === true;
 
-    // safe-normalize target username
+    // safe-normalize target username and level
     const targetUsername = targetUser?.username ?? targetUser?.user_name ?? targetUser?.id ?? null;
+    const targetLvl = Number.isFinite(Number(targetUser?.lvl)) ? Number(targetUser.lvl) : null;
 
     // Edit button: allowed only when viewing own profile OR viewer level is 0 or 1
     const canEdit = isSelf || [0,1].includes(viewerLvl);
     if (canEdit) {
+      // pass username to editProfile so admin/root can edit others
+      const param = targetUsername ? `'${encodeURIComponent(targetUsername)}'` : "undefined";
       container.insertAdjacentHTML("beforeend",
-        `<button class="edit-btn" onclick="editProfile()">Modifica Profilo</button>`);
+        `<button class="edit-btn" onclick="editProfile(${param})">Modifica Profilo</button>`);
     }
 
     // Publish button: allowed when viewer is self OR viewer level is 0,1,3
     if (isSelf || [0,1,3].includes(viewerLvl)) {
+      // if viewing other user's profile, route to publish with username param
+      const targetParam = targetUsername ? `?username=${encodeURIComponent(targetUsername)}` : '';
       container.insertAdjacentHTML("beforeend",
-        `<button class="edit-btn" onclick="window.location.href='/publish.html'">Pubblica</button>`);
+        `<button class="edit-btn" onclick="window.location.href='/publish.html${targetParam}'">Pubblica</button>`);
     }
 
     // Follow / Unfollow only when viewing other user's profile and viewer is logged
     if (!isSelf && viewerId) {
-      // if backend provided an 'is_followed' flag on the targetUser, use it to set label
       const isFollowing = Boolean(targetUser?.is_followed ?? targetUser?.is_following ?? false);
       const btnText = isFollowing ? "Unfollow" : "Segui";
       container.insertAdjacentHTML("beforeend",
         `<button id="follow-btn" class="follow-btn">${btnText}</button>`);
       const btn = document.getElementById("follow-btn");
       if (btn) btn.addEventListener("click", () => toggleFollow(targetUsername));
+    }
+
+    // Management buttons: visible depending on viewer level and target's level
+    // Helpers to create action buttons that call new endpoints
+    function addMgmtButton(label, onclick) {
+      container.insertAdjacentHTML("beforeend", `<button class="mgmt-btn">${label}</button>`);
+      const el = container.lastElementChild;
+      if (el) el.addEventListener("click", onclick);
+    }
+
+    // level name map for display
+    const LEVEL_NAMES = {
+      0: "Root",
+      1: "Admin",
+      2: "Mod",
+      3: "Publisher",
+      4: "Regular",
+      5: "Restricted",
+      6: "Banned"
+    };
+
+    // Only show management controls if viewer has sufficient privileges and target exists (not self for some actions)
+    if (targetUsername && (viewerLvl === 0 || viewerLvl === 1 || viewerLvl === 2)) {
+      // ROOT (0) and ADMIN (1) and MOD (2) see some moderation controls
+      // Admin cannot manage roots
+      const canManageLevels = (viewerLvl === 0) || (viewerLvl === 1 && targetLvl !== 0);
+      const canBan = (viewerLvl === 0) || (viewerLvl === 1 && targetLvl !== 0);
+      const canRestrict = (viewerLvl === 0) || (viewerLvl === 1);
+
+      // show current target level
+      const lvlLabel = targetLvl !== null ? (LEVEL_NAMES[targetLvl] || `Level ${targetLvl}`) : "Unknown";
+      container.insertAdjacentHTML("beforeend", `<div class="current-lvl">Livello: <strong>${escapeHtml(lvlLabel)}</strong></div>`);
+
+      // Mods (2) get moderate actions but not level changes or banning
+      if (viewerLvl === 2) {
+        addMgmtButton("Moderate (placeholder)", async ()=>{ alert("Moderation action - implement server RPC"); });
+      }
+
+      // Level change UI: only for admins/roots (canManageLevels)
+      if (canManageLevels) {
+        // small inline control: select + apply button
+        const selId = `lvl-select-${Math.random().toString(36).slice(2,8)}`;
+        const wrapperHtml = `
+          <div class="level-change-wrap" style="display:inline-block; margin-left:8px;">
+            <select id="${selId}" class="lvl-select">
+              ${Object.keys(LEVEL_NAMES).map(k => `<option value="${k}" ${targetLvl!==null && Number(k)===Number(targetLvl) ? "selected":""}>${LEVEL_NAMES[k]}</option>`).join("")}
+            </select>
+            <button class="mgmt-btn" id="${selId}-apply">Cambia Livello</button>
+          </div>`;
+        container.insertAdjacentHTML("beforeend", wrapperHtml);
+        const selectEl = document.getElementById(selId);
+        const applyBtn = document.getElementById(`${selId}-apply`);
+        if (applyBtn && selectEl) {
+          applyBtn.addEventListener("click", async () => {
+            const newLvl = Number(selectEl.value);
+            if (!confirm(`Impostare livello ${LEVEL_NAMES[newLvl] || newLvl} per ${targetUsername}?`)) return;
+            try {
+              const r = await fetch(`/profile/set_level/${encodeURIComponent(targetUsername)}/${newLvl}`, { method: 'POST' });
+              const j = await r.json();
+              if (!r.ok || j.status === 'ERROR') { alert('Errore: ' + (j.error_msg || JSON.stringify(j))); return; }
+              alert('Livello aggiornato'); location.reload();
+            } catch (e) { alert('Errore di rete'); }
+          });
+        }
+      }
+
+      // Restrict account (sets level to 5) - available to admin/root
+      if (canRestrict) {
+        addMgmtButton("Set Restricted", async ()=> {
+          if (!confirm("Impostare lo stato 'Restricted' per " + targetUsername + "?")) return;
+          try {
+            const r = await fetch(`/profile/set_level/${encodeURIComponent(targetUsername)}/5`, { method: 'POST' });
+            const j = await r.json();
+            if (!r.ok || j.status === 'ERROR') { alert('Errore: ' + (j.error_msg || JSON.stringify(j))); return; }
+            alert('Utente limitato'); location.reload();
+          } catch(e){ alert('Errore di rete'); }
+        });
+      }
+
+      // Ban account (sets level to 6) - only admin/root and not targeting root if admin
+      if (canBan) {
+        addMgmtButton("Ban Account", async ()=> {
+          if (!confirm("Bannare l'account di " + targetUsername + "? Questa azione rende l'utente inaccessibile.")) return;
+          try {
+            const r = await fetch(`/profile/ban/${encodeURIComponent(targetUsername)}`, { method: 'POST' });
+            const j = await r.json();
+            if (!r.ok || j.status === 'ERROR') { alert('Errore: ' + (j.error_msg || JSON.stringify(j))); return; }
+            alert('Utente bannato'); location.reload();
+          } catch(e){ alert('Errore di rete'); }
+        });
+      }
+    }
+
+    // Restricted users (5) see only a "View" hint, banned (6) see nothing
+    if ((viewerLvl === 5 && !isSelf) || viewerLvl === 6) {
+      container.innerHTML = `<span class="muted">Accesso limitato</span>`;
     }
   }
 
@@ -381,8 +481,24 @@
   }
 
   function editProfile() {
-    window.location.href = "/profile/edit";  }
-  window.editProfile = editProfile;
+    // This function is invoked from the dynamically created edit button.
+    // When called with a username (encoded by the caller) we must open the editor
+    // targeted to that user so admins/roots can edit other profiles.
+    window.editProfile = function(username){
+      try {
+        if (username && username !== 'undefined') {
+          // username passed by caller is already encodeURIComponent()-ed
+          window.location.href = `/profile/edit?username=${username}`;
+        } else {
+          window.location.href = "/profile/edit";
+        }
+      } catch (e) {
+        window.location.href = "/profile/edit";
+      }
+    };
+  }
+  // ensure global is set in case other code calls editProfile directly
+  if (typeof window.editProfile !== 'function') window.editProfile = (u)=>{ window.location.href = u ? `/profile/edit?username=${u}` : '/profile/edit'; };
   async function toggleFollow(targetIdentifier) {
     try {
       const username = viewedUsername || targetIdentifier;

@@ -35,17 +35,14 @@ def get_followed(user_id: int) -> list[dict]:
 # =====================
 
 def get_media(media_id: int) -> Optional[Media]:
-    """Recupera un oggetto Media (Song, Document o Video)."""
     return Media.fetch(media_id)
 
 def search_media(filters: Dict[str, Any]) -> List[Media]:
-    """Ricerca avanzata sui media (autore, titolo, performer, genere, ecc.)."""
     return Media.advanced_media_search(filters)
 
 # =====================
 # RELAZIONI M:N GENERICHE
 # =====================
-
 def add_relation(table: str, key_names: tuple[str, str], values: tuple[int, int]) -> bool:
     return create_relation(table, key_names, values)
 
@@ -58,7 +55,6 @@ def get_relations(table: str, key: str, value: int) -> List[Dict[str, Any]]:
 # =================
 # HELPERS
 # =================
-
 def add_genre(media_id: int, genre_id: int) -> bool:
     return add_relation("media_genres", ("media_id", "genre_id"), (media_id, genre_id))
 
@@ -89,7 +85,6 @@ def get_performers(media_id: int) -> List[Dict[str, Any]]:
 # =====================
 # INTERVENTI
 # =====================
-
 def get_commented_media(user_id: int) -> List[Media]:
     """Restituisce tutti i media su cui l'utente ha lasciato commenti o note (senza duplicati)."""
     all_media_ids = set()
@@ -107,7 +102,6 @@ def search_user_comments(user_id: int, keyword: str) -> List[Dict[str, Any]]:
 # =====================
 # DIZIONARI / ENTRIES
 # =====================
-
 def add_dict_entry(table: str, name: str) -> Optional[int]:
     return create_dict_entry(table, name)
 
@@ -125,7 +119,6 @@ def get_entries(user_obj: Any, table: str) -> List[Dict[str, Any]]:
 # =====================
 # RICERCHE AVANZATE
 # =====================
-
 def search_song(user_obj: Any, **filters) -> List[Media]:
     return Root.advanced_song_search(filters)
 

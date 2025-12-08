@@ -1,7 +1,6 @@
 # first line
 
-import random
-from typing import Type, Optional, Dict, Any, List
+from typing import Type, Optional, Dict, Any
 from server.objects.media.song import Song
 from server.objects.media.document import Document
 from server.objects.media.video import Video
@@ -35,25 +34,21 @@ def build_object(cls: Type[Media], data: Optional[Dict[str, Any]]):
 
 def get_object(cls: Type[Media], object_id: int):
     print(f"[DEBUG][get_object] cls={cls.__name__}, object_id={object_id}")
-    # Prefer a class-level "fetch_full_<type>" hook if present
     hook_name = f"fetch_full_{cls.__name__.lower()}"
     hook = getattr(cls, hook_name, None)
     if callable(hook):
         obj = hook(object_id)
     else:
-        # fallback to generic fetch
         obj = cls.fetch(object_id)
     print(f"[DEBUG][get_object] Retrieved object={obj}")
     return obj
 
 def create_object(cls: Type[Media], user_obj: Optional[Any], data: Dict[str, Any]):
     print(f"[DEBUG][create_object] cls={cls.__name__}, user_obj={user_obj}, data={data}")
-    # build object instance from dict (or accept object)
     obj = build_object(cls, data) if not isinstance(data, Media) else data
     if not obj:
         print("[DEBUG][create_object] Object is None -> returning None")
         return None
-    # Accept user_obj as either dict or Root object; extract id safely
     uid = None
     if user_obj:
         if isinstance(user_obj, dict):
@@ -187,19 +182,12 @@ def delete_video_services(user_obj, video_id: int):
 # ========================
 # SUPPORT
 # =========================
-
 def prepare_performers(performers: list) -> list:
-    """
-    Controlla e crea performer esterni e assicura che gli utenti siano performer.
-    Restituisce la lista di performer IDs pronta da associare al media.
-    """
     result_ids = []
     for p in performers:
         if p["type"] == "user":
-            # user performer is expected to provide an id
             result_ids.append(int(p["id"]))
         elif p["type"] == "external":
-            # Controlla se esiste nel dict performers (returns dict row or None)
             existing = fetch_dict_entry("performers", p["name"])
             if existing:
                 pid = existing["id"]
@@ -215,7 +203,6 @@ def prepare_performers(performers: list) -> list:
 def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset: int = 0, limit: int = 10):
     print(f"[DEBUG] feed request received offset={offset}, limit={limit}, search='{search}', filter_by='{filter_by}'")
 
-    # Funzione helper per fetchare e filtrare direttamente nel DB
     def fetch_media(cls):
         return cls.fetch_all(search=search, filter_by=filter_by, offset=offset, limit=limit)
 
@@ -269,18 +256,43 @@ def get_user_publications_services(user_obj, username: str, offset: int = 0, lim
         cnt_row = fetch_one("SELECT COUNT(*) as cnt FROM media WHERE user_id = %s", (uid,))
         total_count = int(cnt_row["cnt"]) if cnt_row and "cnt" in cnt_row else len(rows)
 
+        # small helper: infer type when DB row misses it
+        def _infer_type_from_row(row: dict) -> str:
+            if not row:
+                return "unknown"
+            t = (row.get("type") or row.get("media_type") or "").strip().lower()
+            if t:
+                # normalize common synonyms
+                if t in ("audio","music","song"): return "song"
+                if t in ("video","movie"): return "video"
+                if t in ("document","doc","pdf"): return "document"
+                return t
+            stored = (row.get("stored_at") or row.get("location") or row.get("link") or "").lower()
+            if any(stored.endswith(ext) for ext in (".mp3",".wav",".m4a",".ogg",".flac")) or "/songs" in stored or "/audio" in stored:
+                return "song"
+            if any(stored.endswith(ext) for ext in (".mp4",".mov",".webm",".avi",".mkv")) or "/videos" in stored:
+                return "video"
+            if any(stored.endswith(ext) for ext in (".pdf",".docx",".doc",".txt",".odt",".pptx")) or "/documents" in stored:
+                return "document"
+            return "unknown"
+
         # Normalize rows into dicts with serializable fields using Media.from_dict -> to_dict
         results = []
         for r in rows:
             try:
                 media_obj = Media.from_dict(dict(r))
-                results.append(media_obj.to_dict())
+                media_dict = media_obj.to_dict()
+                # ensure 'type' present and normalized
+                media_dict["type"] = (media_dict.get("type") or _infer_type_from_row(r) or "unknown")
+                results.append(media_dict)
             except Exception:
-                # fallback: include raw row but ensure created_at is isoformat if present
+                # fallback: include raw row but ensure created_at is isoformat if present and include a type
                 raw = dict(r)
                 ca = raw.get("created_at")
                 if hasattr(ca, "isoformat"):
                     raw["created_at"] = ca.isoformat()
+                # ensure we return a 'type' field so client can pick icons like the feed
+                raw["type"] = (raw.get("type") or raw.get("media_type") or _infer_type_from_row(raw) or "unknown")
                 results.append(raw)
 
         return {"status": "OK", "results": results, "count": total_count}
@@ -290,11 +302,6 @@ def get_user_publications_services(user_obj, username: str, offset: int = 0, lim
         return {"status": "error", "error_msg": str(e)}
 
 def get_media_services(user_obj, media_id: int):
-    """
-    Generic media fetch: returns a normalized dict for any media type (song/video/document).
-    Used by the client show page (command 'get_media').
-    Enhanced: include publisher username, author names, tags, duration_display and date (year).
-    """
     try:
         # allow string ids too
         mid = int(media_id)
@@ -321,7 +328,6 @@ def get_media_services(user_obj, media_id: int):
             else:
                 author_names = []
             m["author_names"] = author_names
-            # provide a single 'author' string for legacy clients
             if not m.get("author"):
                 if author_names:
                     m["author"] = ", ".join(author_names)
