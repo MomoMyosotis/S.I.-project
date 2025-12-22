@@ -2,7 +2,6 @@
 
 from typing import Optional, Dict, Any, List
 from server.objects.users.root import Root
-from server.logs.logger import log_event
 from server.db.db_crud import (
     create_comment_db,
     fetch_comments_by_media_db,
@@ -13,9 +12,7 @@ from server.db.db_crud import (
     fetch_media_db,
     delete_comment_db
 )
-# ========================
-# Comment class con debug
-# ========================
+
 class Comment:
     def __init__(self,
                 id: Optional[int] = None,
@@ -23,7 +20,8 @@ class Comment:
                 media_id: Optional[int] = None,
                 note_id: Optional[int] = None,
                 parent_comment_id: Optional[int] = None,
-                text: str = ""
+                text: str = "",
+                timestamp: Optional[str] = None
                 ):
         self.id = id
         self.user_id = user_id
@@ -31,6 +29,7 @@ class Comment:
         self.note_id = note_id
         self.parent_comment_id = parent_comment_id
         self.text = text
+        self.timestamp = timestamp
         print(f"[DEBUG __init__] Created Comment object: {self.to_dict()}")
 
     def to_dict(self) -> Dict[str, Any]:
@@ -40,12 +39,10 @@ class Comment:
             "media_id": self.media_id,
             "note_id": self.note_id,
             "parent_comment_id": self.parent_comment_id,
-            "text": self.text
+            "text": self.text,
+            "timestamp": getattr(self, "timestamp", None)
         }
 
-    # -----------------------
-    # CRUD
-    # -----------------------
     @classmethod
     def add_comment(cls, user_id: int, text: str,
                     media_id: Optional[int] = None,
@@ -71,14 +68,8 @@ class Comment:
 
         if row:
             data = row[0]
-            comment_obj = cls(
-                id=data["id"],
-                user_id=data["user_id"],
-                media_id=data.get("media_id"),
-                note_id=data.get("note_id"),
-                parent_comment_id=data.get("parent_comment_id"),
-                text=data["text"]
-            )
+            # use from_dict to pick up timestamp (created_at) and other fields reliably
+            comment_obj = cls.from_dict(data)
             print(f"[DEBUG add_comment] Created Comment object from DB: {comment_obj.to_dict()}")
             return comment_obj
 
@@ -89,7 +80,7 @@ class Comment:
     def fetch_by_media(cls, media_id: int) -> List[Dict[str, Any]]:
         print(f"[DEBUG fetch_by_media] media_id={media_id}")
         result = fetch_comments_by_media_db(media_id)
-        print(f"[DEBUG fetch_by_media] returned {len(result)} comments")
+        print(f"[DEBUG][omment.fetch_by_media] returned {len(result)} comments")
         return result
 
     @classmethod
@@ -150,19 +141,19 @@ class Comment:
         print(f"[DEBUG delete_comment] delete_comment_db result: {result}")
         return result
 
-    # -----------------------
-    # COSTRUTTORE DA DIZIONARIO
-    # -----------------------
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Comment":
         print(f"[DEBUG from_dict] data={data}")
+        # map common DB timestamp fields to `timestamp`
+        ts = data.get("timestamp") or data.get("created_at") or data.get("createdAt") or data.get("date")
         return cls(
             id=data.get("id"),
             user_id=data.get("user_id"),
             media_id=data.get("media_id"),
             note_id=data.get("note_id"),
             parent_comment_id=data.get("parent_comment_id"),
-            text=data.get("text")
+            text=data.get("text"),
+            timestamp=ts
         )
 
 # last line

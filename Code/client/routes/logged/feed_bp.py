@@ -127,7 +127,7 @@ def feed_data():
         if matches(it, search, filter_by):
             accumulated.append(it)
 
-    sliced = accumulated[offset:offset + limit]
+    sliced = accumulated[:limit]
     return jsonify(sliced)
 
 # last line

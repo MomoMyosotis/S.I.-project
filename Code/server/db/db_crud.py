@@ -165,6 +165,13 @@ def delete_user_db(user_id: int, child_table: Optional[str] = None) -> bool:
 # =====================
 # MEDIA CRUD
 # =====================
+def update_document_db(media_id: int, updates: Dict[str, Any]) -> bool:
+    if not updates:
+        return True
+    set_clause = ", ".join(f"{k}=%s" for k in updates.keys())
+    params = list(updates.values()) + [media_id]
+    return execute(f"UPDATE documents SET {set_clause} WHERE media_id=%s", tuple(params))
+
 def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     conn = None
     try:
@@ -443,10 +450,6 @@ def delete_note_db(note_id: int) -> bool:
 # =====================
 def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
                         note_id: Optional[int] = None, parent_comment_id: Optional[int] = None) -> Optional[int]:
-    """
-    Crea un commento e ritorna l'ID appena creato.
-    Aggiunta debug dettagliato per isolare errori.
-    """
     conn = connection.connect()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -573,7 +576,6 @@ def create_dict_entry(table: str, name: str) -> Optional[int]:
 def fetch_dict_entry_by_name(table: str, name: str) -> Optional[Dict[str, Any]]:
     return fetch_one(f"SELECT * FROM {table} WHERE name=%s", (name,))
 
-# compatibility alias used in other modules
 def fetch_dict_entry(table: str, name: str) -> Optional[Dict[str, Any]]:
     return fetch_dict_entry_by_name(table, name)
 
@@ -719,3 +721,5 @@ def db_get_followers(user_id: int) -> List[Dict[str, Any]]:
         WHERE uf.followed_id = %s
     """
     return fetch_all(sql, (user_id,))
+
+# last line

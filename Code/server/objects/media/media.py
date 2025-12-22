@@ -378,10 +378,32 @@ class Media(ABC):
                     if pages is not None:
                         need_update["pages"] = pages
             if need_update and self.id:
-                update_media_db(self.id, need_update)
-                # also reflect on the in-memory object
+                # split updates between media table and documents table
+                media_updates = {}
+                doc_updates = {}
                 for k, v in need_update.items():
-                    setattr(self, k, v)
+                    if k in ("pages", "format", "caption"):
+                        doc_updates[k] = v
+                    else:
+                        media_updates[k] = v
+
+                if media_updates:
+                    try:
+                        update_media_db(self.id, media_updates)
+                        for k, v in media_updates.items():
+                            setattr(self, k, v)
+                    except Exception as e:
+                        print(f"[DEBUG][Media.save] failed to update media table: {e}")
+
+                if doc_updates:
+                    try:
+                        from server.db.db_crud import update_document_db
+                        ok = update_document_db(self.id, doc_updates)
+                        if ok:
+                            for k, v in doc_updates.items():
+                                setattr(self, k, v)
+                    except Exception as e:
+                        print(f"[DEBUG][Media.save] failed to update documents table: {e}")
         except Exception as e:
             print(f"[DEBUG][Media.save] post-create probing failed: {e}")
 

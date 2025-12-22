@@ -49,29 +49,156 @@ def create_object(cls: Type[Media], user_obj: Optional[Any], data: Dict[str, Any
     if not obj:
         print("[DEBUG][create_object] Object is None -> returning None")
         return None
-    uid = None
+    target_user_id = getattr(obj, "user_id", None)
+    actor_user_id = None
     if user_obj:
         if isinstance(user_obj, dict):
-            uid = user_obj.get("id")
+            actor_user_id = user_obj.get("id")
         else:
-            uid = getattr(user_obj, "id", None)
-    if uid:
-        obj.user_id = uid
-        print(f"[DEBUG][create_object] Set obj.user_id={obj.user_id}")
+            actor_user_id = getattr(user_obj, "id", None)
+    if target_user_id:
+        print(f"[DEBUG][create_object] Using payload user_id={target_user_id}")
+    elif actor_user_id:
+        obj.user_id = actor_user_id
+        print(f"[DEBUG][create_object] Fallback obj.user_id={actor_user_id}")
 
     print(f"[DEBUG][create_object] Saving object {obj}")
-    obj.save()  # Salva media + relazioni M:N
+    obj.save()
     print(f"[DEBUG][create_object] Object saved: {obj}")
+
     return obj
 
 def update_object(obj: Media, updates: Dict[str, Any]):
     print(f"[DEBUG][update_object] obj={obj}, updates={updates}")
+    # filter out problematic fields that may cause SQL errors or should not be updated directly
+    DISALLOWED_FIELDS = {"references", "raw", "created_at", "id", "media_id"}
+    # split keys between media table and document child table
+    MEDIA_ONLY_KEYS = set()  # leave empty to default to media updates
+    DOC_KEYS = {"pages", "format", "caption"}
+
+    # build sanitized updates (remove disallowed)
+    sanitized = {}
     for k, v in updates.items():
+        if k in DISALLOWED_FIELDS:
+            print(f"[DEBUG][update_object] Skipping disallowed update field: {k}")
+            continue
+        sanitized[k] = v
+
+    if not sanitized:
+        print("[DEBUG][update_object] No sanitized fields to update -> returning object")
+        return obj
+
+    # apply attributes in-memory
+    for k, v in sanitized.items():
         print(f"[DEBUG][update_object] Setting {k}={v}")
-        setattr(obj, k, v)
-    print(f"[DEBUG][update_object] Saving updated object {obj}")
-    obj.save()
-    print(f"[DEBUG][update_object] Object after save {obj}")
+        try:
+            setattr(obj, k, v)
+        except Exception as e:
+            print(f"[DEBUG][update_object] failed to set attribute {k} on object: {e}")
+
+    # split into media vs document updates where relevant
+    media_updates = {}
+    doc_updates = {}
+    for k, v in sanitized.items():
+        if k in DOC_KEYS:
+            doc_updates[k] = v
+        else:
+            media_updates[k] = v
+
+    # --- NEW: handle relational fields (authors, genres, performers) ---
+    # convert names -> ids (create dictionary entries when needed) and update relation tables
+    relation_map = {
+        "authors": ("authors", "media_authors", "author_id"),
+        "genres": ("genres", "media_genres", "genre_id"),
+        "performers": ("performers", "media_performances", "performer_id")
+    }
+
+    try:
+        from server.db.db_crud import create_dict_entry as db_create_dict_entry, create_relation as db_create_relation, delete_relation as db_delete_relation
+        for key, params in relation_map.items():
+            if key in sanitized:
+                table_name, rel_table, rel_col = params
+                val = sanitized[key]
+                if val is None:
+                    # clear relations
+                    try:
+                        if getattr(obj, "id", None):
+                            db_delete_relation(rel_table, {"media_id": getattr(obj, "id")})
+                        setattr(obj, key, [])
+                    except Exception as e:
+                        print(f"[DEBUG][update_object] failed to clear relations for {key}: {e}")
+                    # ensure we don't try to update media table with this field
+                    media_updates.pop(key, None)
+                    continue
+
+                # normalize to list
+                items = []
+                if isinstance(val, str):
+                    # comma separated string -> split
+                    items = [s.strip() for s in val.split(",") if s.strip()]
+                elif isinstance(val, (list, tuple)):
+                    items = list(val)
+                else:
+                    items = [val]
+
+                ids = []
+                for it in items:
+                    try:
+                        if isinstance(it, int):
+                            ids.append(int(it))
+                            continue
+                        # dict form like {type:'user', id: ...}
+                        if isinstance(it, dict):
+                            if "id" in it and it["id"]:
+                                ids.append(int(it["id"]))
+                                continue
+                            name = it.get("name") or it.get("username") or it.get("performer")
+                        else:
+                            name = str(it).strip()
+                        if not name:
+                            continue
+                        # create/fetch dict entry
+                        nid = db_create_dict_entry(table_name, name)
+                        if nid:
+                            ids.append(nid)
+                    except Exception as e:
+                        print(f"[DEBUG][update_object] failed to normalize relation item {it} for {key}: {e}")
+
+                # replace relations in DB: delete existing then insert new ones
+                try:
+                    mid = getattr(obj, "id", None)
+                    if mid is not None:
+                        db_delete_relation(rel_table, {"media_id": mid})
+                        for iid in ids:
+                            db_create_relation(rel_table, ("media_id", rel_col), (mid, iid))
+                        # update in-memory object
+                        setattr(obj, key, ids)
+                except Exception as e:
+                    print(f"[DEBUG][update_object] failed to update relation table {rel_table}: {e}")
+
+                # make sure these are not attempted on media table
+                media_updates.pop(key, None)
+    except Exception as e:
+        print(f"[DEBUG][update_object] relation handling failed: {e}")
+
+    # perform DB updates directly to avoid Media.save() full-payload update
+    try:
+        from server.db.db_crud import update_media_db
+        if media_updates:
+            print(f"[DEBUG][update_object] Updating media table id={getattr(obj,'id',None)} with {media_updates}")
+            update_media_db(getattr(obj, "id", None), media_updates)
+    except Exception as e:
+        print(f"[ERROR][update_object] failed to update media table: {e}")
+
+    if doc_updates:
+        try:
+            from server.db.db_crud import update_document_db
+            print(f"[DEBUG][update_object] Updating documents table id={getattr(obj,'id',None)} with {doc_updates}")
+            update_document_db(getattr(obj, "id", None), doc_updates)
+        except Exception as e:
+            print(f"[ERROR][update_object] failed to update documents table: {e}")
+
+    print(f"[DEBUG][update_object] Object after DB update {obj}")
     return obj
 
 def delete_object(obj: Media):
@@ -203,34 +330,52 @@ def prepare_performers(performers: list) -> list:
 def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset: int = 0, limit: int = 10):
     print(f"[DEBUG] feed request received offset={offset}, limit={limit}, search='{search}', filter_by='{filter_by}'")
 
-    def fetch_media(cls):
-        return cls.fetch_all(search=search, filter_by=filter_by, offset=offset, limit=limit)
+    # Pull a larger batch per media type (no per-type offset) then do global pagination.
+    per_type_limit = max(offset + limit * 2, limit)  # fetch enough from each type to cover the requested window
 
-    # Prendi media separatamente dal DB
+    def fetch_media(cls):
+        return cls.fetch_all(search=search, filter_by=filter_by, offset=0, limit=per_type_limit)
+
+    # Prendi media separatamente dal DB (no per-type offset)
     songs = fetch_media(Song)
     videos = fetch_media(Video)
     documents = fetch_media(Document)
 
-    # Combina risultati
-    all_media = songs + videos + documents
-
+    # Combina risultati and include created_at for global ordering
     from server.db.db_crud import get_user_username_by_id as duck
 
-    results = []
-    for m in all_media:
+    combined = []
+    for m in songs + videos + documents:
         d = m.to_dict()
         user_id = d.get("user_id")
         username = duck(user_id)
-        results.append({
+        created = d.get("created_at")
+        # normalize created_at to a comparable string if possible
+        if hasattr(created, "isoformat"):
+            created_iso = created.isoformat()
+        else:
+            created_iso = str(created) if created is not None else ""
+        combined.append({
             "id": d.get("id"),
             "title": d.get("title"),
             "username": username or "Unknown",
             "thumbnail": d.get("thumbnail", "https://via.placeholder.com/100"),
             "tags": d.get("genres") or d.get("keywords") or [],
             "type": d.get("type"),
+            "created_at": created_iso,
+            "raw": d
         })
 
-    return {"status": "OK", "results": results, "count": len(results)}
+    # global ordering (newest first)
+    combined.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+
+    total_count = len(combined)
+    paged = combined[offset:offset + limit]
+
+    # remove created_at/raw if you want to keep response small; keep them now for flexibility
+    results = paged
+
+    return {"status": "OK", "results": results, "count": total_count}
 
 # =========================
 # USER PUBLICATIONS SERVICES

@@ -294,10 +294,6 @@ def unfollow_user():
 # ------------------------
 @profile_bp.route("/set_level/<username>/<int:new_level>", methods=["POST"])
 def set_user_level(username, new_level):
-    """
-    Set a user's level to new_level (0..6).
-    Only available to authenticated users -- server-side RPC should enforce permission checks.
-    """
     if http_client.token is None:
         http_client.token = session.get("session_token")
 
@@ -360,3 +356,16 @@ def downgrade_user(username):
         return set_user_level(username, new_lvl)
     except Exception as e:
         return jsonify({"status": "ERROR", "error_msg": str(e)}), 500
+
+@profile_bp.route("/", methods=["GET"])
+@profile_bp.route("", methods=["GET"])
+def profile_page():
+    """
+    Serve the profile HTML page. The frontend will call /profile/data and
+    /profile/publications to populate the page; accept optional ?username=...
+    so links like /profile?username=Anna work.
+    """
+    if http_client.token is None:
+        http_client.token = session.get("session_token")
+    target_username = request.args.get("username")
+    return render_template("profile.html", username=target_username)

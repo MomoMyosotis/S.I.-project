@@ -174,4 +174,5 @@ class User:
         for action_id in self.PERMISSIONS.keys():
             allowed.append(action_id)
         return allowed
+
 # last line

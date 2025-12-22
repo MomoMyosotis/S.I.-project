@@ -1,383 +1,901 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <title>Pubblica Media</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="{{ url_for('static', filename='publish_style.css') }}">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Publish Media — Form</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='publish_style.css') }}" />
 </head>
-
-<body>
-
-<!-- ========== TOP BAR ========== -->
-<div class="top-info">
-  <h1>Pubblica Media</h1>
-
-  <div class="top-right">
-    {% if username %}
-      <a class="username" href="/home/?form_type=profile&username={{ username }}">{{ username }}</a>
-    {% else %}
-      <span class="username muted">Non autenticato</span>
-    {% endif %}
-
-    <a id="goFeedTop" class="go-feed" href="/home/?form_type=feed={/home/feed}">↩ Vai al Feed</a>
-  </div>
+<body
+  data-username="{{ username|default('') }}"
+  data-userlvl="{{ user_level|default('') }}"
+  data-target="{{ target_username|default('') }}"
+>
+<div class="top-bar">
+  <button id="btnProfile" class="btn small-btn">Profile</button>
+  <button id="btnFeed" class="btn small-btn">Go to feed</button>
 </div>
 
-{% if user_level is defined and user_level|int == 6 %}
-  <div class="box warning">
-    <h3>Permessi di pubblicazione disabilitati</h3>
-    <p>Il tuo account non ha permessi per pubblicare contenuti.</p>
-  </div>
-{% else %}
+<header><div>Publication Form</div></header>
 
-<!-- ========== FORM ========== -->
-<form id="publishForm" enctype="multipart/form-data">
+  <main>
+    <form id="publishForm" enctype="multipart/form-data" novalidate>
+      <div class="logged-info small">Logged as: <span id="whoami"></span></div>
+      <!-- Actor block: show logged user and optional target -->
+        <fieldset>
+          <legend>Actor</legend>
 
-    <!-- TYPE -->
-    <label class="label">Tipo</label>
-    <select name="type" id="mediaType" required>
-        {% if user_level is not defined %}
-          <option value="concert">YouTube / Concert link</option>
-        {% elif user_level|int in [0,1,3] %}
-          <option value="video">Video file</option>
-          <option value="audio">Audio file</option>
-          <option value="document">Documento</option>
-          <option value="concert">YouTube / Concert link</option>
-        {% elif user_level|int in [2,4,5] %}
-          <option value="concert">YouTube / Concert link</option>
-        {% else %}
-          <option value="concert">YouTube / Concert link</option>
-        {% endif %}
-    </select>
+          <div class="actor-grid">
+            <div>
+              <label>From user</label>
+              <input type="text" id="username" name="client_username" readonly />
+            </div>
 
-    <!-- ========== COMMON FIELDS ========== -->
-    <div id="commonFields" class="box">
-      <label class="label">Titolo</label>
-      <input type="text" name="title" id="title">
+            <div>
+              <label>Level</label>
+              <input type="number" id="userlvl" name="client_level" min="0" max="6" readonly />
+            </div>
 
-      <label class="label">Descrizione</label>
-      <textarea name="description" id="description" class="big-text" placeholder="Aggiungi una descrizione del contenuto..."></textarea>
+            <div class="check-row">
+              <input type="checkbox" id="onBehalfToggle" />
+              <label for="onBehalfToggle">Publish on behalf of another user</label>
+            </div>
 
-      <label class="label">Autori (separati da virgola)</label>
-      <input type="text" name="authors" id="authors">
+            <div id="targetLabel" class="hidden">
+              <label>Target username</label>
+              <input type="text" id="targetInput" name="target_username" placeholder="username to publish into" />
+            </div>
+          </div>
+        </fieldset>
 
-      <label class="label">Genere</label>
-      <input type="text" name="genre" id="genre">
 
-      <label class="label">Anno composizione</label>
-      <input type="number" name="composition_year" id="composition_year" min="0" step="1">
+      <!-- Media type & permission -->
+      <fieldset>
+        <legend>Media type & permissions</legend>
+        <div class="row">
+          <label>Type:
+            <select id="mediaType" name="media_type">
+              <option value="link">Link</option>
+              <option value="document">Document</option>
+              <option value="audio">Audio / Song</option>
+              <option value="video">Video</option>
+            </select>
+          </label>
+          <div id="permMsg" class="small error" style="margin-left:8px"></div>
+        </div>
+      </fieldset>
 
-      <div class="row check-row">
-        <label>Sono il compositore</label>
-        <input type="checkbox" id="is_composer" name="is_composer" value="1">
-        <label>Sono l'esecutore</label>
-        <input type="checkbox" id="is_performer" name="is_performer" value="1">
+      <!-- LINK -->
+      <fieldset id="linkFields">
+        <legend>Link</legend>
+        <label>Title <input type="text" id="linkTitle" name="title" required /></label>
+        <label>Description <textarea id="linkDesc" name="description" rows="3"></textarea></label>
+        <label>URL <input type="url" id="linkUrl" name="url" required placeholder="https://..." /></label>
+
+        <label><input type="checkbox" id="linkIAmAuthor" /> I am author</label>
+        <label><input type="checkbox" id="linkIAmPerformer" /> I am performer</label>
+
+        <label><input type="checkbox" id="linkIsLive" /> Is Live</label>
+        <div id="linkLiveInfo" class="hidden">
+          <label>Recording date <input type="date" id="linkRecDate" /></label>
+          <label>Recording location <input type="text" id="linkRecLoc" /></label>
+        </div>
+      </fieldset>
+
+      <!-- DOCUMENT -->
+      <fieldset id="docFields" class="hidden">
+        <legend>Document</legend>
+        <label>File <input type="file" id="docFile" accept=".pdf,application/pdf, .doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+        <label>Title <input type="text" id="docTitle" name="docTitle" required /></label>
+        <label>Description <textarea id="docDesc" rows="3"></textarea></label>
+        <label>Genres <input type="text" id="docGenres" placeholder="comma separated" /></label>
+        <label>Publication year <input type="number" id="docYear" min="1000" max="3000" /></label>
+        <label>Link to media (multi-select ids) <select id="docLinkMedia" multiple class="list"></select></label>
+        <label><input type="checkbox" id="docIAmAuthor" /> I'm the author</label>
+        <div class="small">Automatic extracted: format=<span id="docFormat">-</span> pages=<span id="docPages">-</span></div>
+      </fieldset>
+
+      <!-- AUDIO -->
+      <fieldset id="audioFields" class="hidden">
+        <legend>Audio / Song</legend>
+        <label>File <input type="file" id="audioFile" accept="audio/*" required /></label>
+        <label>Title <input type="text" id="audioTitle" required /></label>
+        <label>Description <textarea id="audioDesc" rows="3"></textarea></label>
+        <label>Genres <input type="text" id="audioGenres" placeholder="comma separated" /></label>
+        <label>Publication year <input type="number" id="audioYear" min="1000" max="3000" /></label>
+        <label>Authors <input type="text" id="audioAuthors" placeholder="comma separated" /></label>
+        <label>Link to media (multi-select ids) <select id="audioLinkMedia" multiple class="list"></select></label>
+
+        <label><input type="checkbox" id="audioIAmAuthor" /> I am author</label>
+        <label><input type="checkbox" id="audioIAmPerformer" /> I am performer</label>
+
+        <div id="audioPerformerBlock" class="hidden">
+          <label>Performers <input type="text" id="audioPerformers" placeholder="comma separated" /></label>
+          <label>Instruments <input type="text" id="audioInstruments" placeholder="comma separated" /></label>
+        </div>
+
+        <label><input type="checkbox" id="audioIsLive"
+  /> Is Live</label>
+        <div id="audioLiveInfo" class="hidden">
+          <label>Recording date <input type="date" id="audioRecDate" /></label>
+          <label>Recording location <input type="text" id="audioRecLoc" /></label>
+        </div>
+
+        <div class="small">Automatic extracted: duration=<span id="audioDuration">-</span> format=<span id="audioFormat">-</span></div>
+      </fieldset>
+
+      <!-- VIDEO -->
+      <fieldset id="videoFields" class="hidden">
+        <legend>Video</legend>
+        <label>File <input type="file" id="videoFile" accept="video/*" required /></label>
+        <label>Title <input type="text" id="videoTitle" required /></label>
+        <label>Description <textarea id="videoDesc" rows="3"></textarea></label>
+        <label>Genres <input type="text" id="videoGenres" placeholder="comma separated" /></label>
+        <label>Publication year <input type="number" id="videoYear" min="1000" max="3000" /></label>
+        <label>Authors <input type="text" id="videoAuthors" placeholder="comma separated" /></label>
+        <label>Link to media (multi-select ids) <select id="videoLinkMedia" multiple class="list"></select></label>
+
+        <label><input type="checkbox" id="videoIAmAuthor" /> I am author</label>
+        <label><input type="checkbox" id="videoIAmPerformer" /> I am performer</label>
+
+        <div id="videoPerformerBlock" class="hidden">
+          <label>Performers <input type="text" id="videoPerformers" placeholder="comma separated" /></label>
+          <label>Instruments <input type="text" id="videoInstruments" placeholder="comma separated" /></label>
+        </div>
+
+        <label><input type="checkbox" id="videoIsLive" /> Is Live</label>
+        <div id="videoLiveInfo" class="hidden">
+          <label>Recording date <input type="date" id="videoRecDate" /></label>
+          <label>Recording location <input type="text" id="videoRecLoc" /></label>
+        </div>
+
+        <div class="small">Automatic extracted: duration=<span id="videoDuration">-</span> format=<span id="videoFormat">-</span></div>
+      </fieldset>
+
+      <!-- Segments -->
+      <fieldset>
+        <legend>Segments (annotations)</legend>
+        <div id="segments"></div>
+        <button type="button" id="addSegment" class="btn">Add segment</button>
+      </fieldset>
+
+      <!-- Subtracks (concert) -->
+      <fieldset>
+        <legend>Subtracks (concert / long video)</legend>
+        <div id="subtracks"></div>
+        <button type="button" id="addSubtrack" class="btn">Add subtrack</button>
+      </fieldset>
+
+      <div style="margin-top:12px" class="flex-between">
+        <div>
+          <button type="submit" id="submitBtn" class="btn">Submit</button>
+          <button type="button" id="previewBtn" class="btn">Show payload</button>
+        </div>
+        <div class="small muted">Preview shows the payload that will be sent (debug).</div>
       </div>
 
-      <div id="instruments_used_row" class="hidden">
-        <label class="label">Strumenti usati</label>
-        <input type="text" id="instruments_used" placeholder="Es: piano, violino">
-      </div>
-    </div>
+      <h3>Payload (debug)</h3>
+      <div id="payloadView" class="jsonout">(not submitted)</div>
+    </form>
+  </main>
 
-    <div id="fileUploader" class="box">
-        <label class="label">Carica file (pdf/mp3/mp4/midi)</label>
-        <input type="file" id="files" name="files" multiple>
+  <script>
+  /************************************************************************
+   * publish.html - client
+   * - auto fills username/lvl from SERVER_USER or body data-attributes
+   * - supports publish-on-behalf toggle
+   * - dynamic fields per media type
+   * - MIME/type checks and automatic extraction (pdf pages, media duration)
+   * - builds FormData in the shape expected by your Flask publish_bp
+   * - on success redirects to /profile?username=<target>
+   ************************************************************************/
 
-        <label class="label">Formato rilevato</label>
-        <input type="text" id="file_format" readonly>
+  (function(){
+    // --- Bootstrap user data ---
+    const body = document.body;
+    const SERVER_USER = window.SERVER_USER || null;
+    const loggedUsername = SERVER_USER?.username || body.dataset.username || '';
+    const loggedLvlRaw = SERVER_USER?.lvl ?? body.dataset.userlvl ?? '';
+    const loggedLvl = (loggedLvlRaw === '' || loggedLvlRaw === undefined) ? null : Number(loggedLvlRaw);
+    const initialTarget = SERVER_USER?.target || body.dataset.target || '';
 
-        <label class="label">Durata (sec)</label>
-        <input type="number" id="duration" step="0.1" min="0">
-    </div>
+    // --- Elements ---
+    const whoamiEl = document.getElementById('whoami');
+    const btnProfile = document.getElementById('btnProfile');
+    const btnFeed = document.getElementById('btnFeed');
 
+    const usernameInput = document.getElementById('username');
+    const userlvlInput = document.getElementById('userlvl');
 
+    const onBehalfToggle = document.getElementById('onBehalfToggle');
+    const targetLabel = document.getElementById('targetLabel');
+    const targetInput = document.getElementById('targetInput');
 
-    <!-- PERFORMANCE -->
-    <div id="performanceArea" class="box hidden">
-      <h3>Performance</h3>
-
-      <div id="performersList"></div>
-      <button type="button" id="addPerformerBtn" class="small-btn">+ Aggiungi Performer</button>
-
-      <label class="label">Data registrazione</label>
-      <input type="date" id="recording_date" name="recording_date">
-
-      <label class="label">Luogo</label>
-      <input type="text" id="recording_location" name="recording_location">
-
-      <div class="row check-row">
-        <label>Live performance</label>
-        <input type="checkbox" id="is_live" name="is_live" value="1">
-      </div>
-    </div>
-
-    <!-- DOCUMENT -->
-    <div id="documentArea" class="box hidden">
-      <label class="label">Document type</label>
-      <select id="document_type" name="document_type">
-        <option value="score">Score</option>
-        <option value="lyrics">Lyrics</option>
-        <option value="chords">Chords</option>
-        <option value="other">Other</option>
-      </select>
-
-      <label class="label">Note di esecuzione</label>
-      <textarea id="document_annotations" name="document_annotations"></textarea>
-    </div>
-
-    <!-- CONCERT -->
-    <div id="concertArea" class="box hidden">
-      <label class="label">YouTube URL</label>
-      <input type="url" id="concert_link" name="link">
-
-      <label class="label">Titolo evento</label>
-      <input type="text" id="concert_title" name="event_title">
-
-      <label class="label">Data evento</label>
-      <input type="date" id="concert_date" name="concert_date">
-
-      <label class="label">Luogo evento</label>
-      <input type="text" id="concert_location" name="concert_location">
-
-      <h4>Sottotracce</h4>
-      <div id="subtracks"></div>
-      <button type="button" id="addSubtrackBtn" class="small-btn">+ Aggiungi Sottotraccia</button>
-    </div>
-
-    <!-- SEGMENTS -->
-    <div id="segmentsArea" class="box hidden">
-      <h3>Annotazioni Segmentate</h3>
-      <div id="segmentsList"></div>
-      <button type="button" id="addSegmentBtn" class="small-btn">+ Aggiungi Segmento</button>
-    </div>
-
-    <br>
-
-    <button type="submit" class="submit-btn">Pubblica</button>
-</form>
-{% endif %}
-
-<script>
-/* Reusable UI components + validation + auto-detection */
-/* Inject server-provided values into JS in a safe way */
-
-const mediaTypeEl = document.getElementById('mediaType');
-const fileUploader = document.getElementById('fileUploader');
-const performanceArea = document.getElementById('performanceArea');
-const documentArea = document.getElementById('documentArea');
-const concertArea = document.getElementById('concertArea');
-const segmentsArea = document.getElementById('segmentsArea');
-const performersList = document.getElementById('performersList');
-const segmentsList = document.getElementById('segmentsList');
-const subtracksList = document.getElementById('subtracks');
-const filesInput = document.getElementById('files');
-const fileFormatInput = document.getElementById('file_format');
-const durationInput = document.getElementById('duration');
-const addPerformerBtn = document.getElementById('addPerformerBtn');
-const addSegmentBtn = document.getElementById('addSegmentBtn');
-const addSubtrackBtn = document.getElementById('addSubtrackBtn');
-const isPerformerCheckbox = document.getElementById('is_performer');
-const instrumentsUsedRow = document.getElementById('instruments_used_row');
-const isLiveCheckbox = document.getElementById('is_live');
-const backBtn = document.getElementById('backBtn');
-
-/* Removed stray top-level fd/description code that caused early exceptions */
-
-/* UI helpers unchanged... (kept from original) */
-filesInput && filesInput.addEventListener('change', async ()=>{
-  const f = filesInput.files && filesInput.files[0];
-  if(!f){ fileFormatInput.value=''; durationInput.value=''; return; }
-  // prefer mime type but fallback to extension
-  fileFormatInput.value = f.type || getExtension(f.name) || 'unknown';
-  // try to load media to get duration if video/audio
-  try {
-    if(f.type && (f.type.startsWith('audio/') || f.type.startsWith('video/')) || /\.(mp4|mov|avi|mp3|wav|m4a|ogg|webm)$/i.test(f.name)){
-      const d = await probeDuration(f);
-      if(d) durationInput.value = Math.round(d*10)/10;
+    // --- Helper to resolve target username for navigation ---
+    function resolvedTargetUsername(){
+      // prefer explicitly-entered 'on behalf' username when toggle checked
+      try {
+        const toggleChecked = Boolean(onBehalfToggle && onBehalfToggle.checked);
+        const explicit = onBehalfToggle && targetInput && targetInput.value ? targetInput.value.trim() : '';
+        if (toggleChecked && explicit) return explicit;
+      } catch(e){}
+      // fallback to initialTarget (body data-target) then loggedUsername
+      return initialTarget || loggedUsername || '';
     }
-  } catch(e){
-    console.warn('duration probe failed', e);
-  }
-});
 
-/* helpers */
-function escapeHtml(s){ return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); }
-function getExtension(name){ return (name || '').split('.').pop(); }
-
-/* probe media duration by loading into element */
-function probeDuration(file){
-  return new Promise((resolve, reject)=>{
-    const url = URL.createObjectURL(file);
-    let el;
-    if((file.type||'').startsWith('video/') || /\.(mp4|mov|avi|webm)$/i.test(file.name)) el = document.createElement('video');
-    else el = document.createElement('audio');
-    el.preload = 'metadata';
-    el.src = url;
-    el.addEventListener('loadedmetadata', ()=> {
-      URL.revokeObjectURL(url);
-      resolve(el.duration || 0);
-    }, {once:true});
-    el.addEventListener('error', (ev)=> {
-      URL.revokeObjectURL(url);
-      reject(ev);
-    }, {once:true});
-  });
-}
-
-/* build payload and validation on submit */
-const formEl = document.getElementById('publishForm');
-formEl && formEl.addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  const t = mediaTypeEl.value;
-
-  // gather fields
-  const title = document.getElementById('title').value.trim();
-  const description = document.getElementById('description').value.trim(); // moved here
-  const authors = (document.getElementById('authors').value || '').split(',').map(s=>s.trim()).filter(Boolean);
-  const genre = document.getElementById('genre').value.trim();
-  const composition_year = document.getElementById('composition_year').value;
-  const is_composer = document.getElementById('is_composer').checked;
-  const is_performer = document.getElementById('is_performer').checked;
-  const instruments_used = document.getElementById('instruments_used').value.trim();
-  const is_live = document.getElementById('is_live') && document.getElementById('is_live').checked;
-
-  // performers
-  const performers = [];
-  document.querySelectorAll('#performersList .row').forEach(r=>{
-    const name = (r.querySelector('.perf_name') && r.querySelector('.perf_name').value.trim()) || '';
-    const inst = (r.querySelector('.perf_instruments') && r.querySelector('.perf_instruments').value.split(',').map(s=>s.trim()).filter(Boolean)) || [];
-    if(name) performers.push({ performer: name, instruments: inst });
-  });
-
-  // segments
-  const segments = [];
-  document.querySelectorAll('#segmentsList .box').forEach(b=>{
-    const start = parseFloat(b.querySelector('.seg_start').value) || 0;
-    const end = b.querySelector('.seg_end').value ? parseFloat(b.querySelector('.seg_end').value) : null;
-    const text = b.querySelector('.seg_text').value.trim();
-    if(text) segments.push({ start_time: start, end_time: end, note_text: text });
-  });
-
-  // subtracks
-  const subtracks = [];
-  document.querySelectorAll('#subtracks .box').forEach(b=>{
-    const start = parseFloat(b.querySelector('.st_start').value) || 0;
-    const end = b.querySelector('.st_end').value ? parseFloat(b.querySelector('.st_end').value) : null;
-    const titleT = b.querySelector('.st_title').value.trim();
-    const authorsT = (b.querySelector('.st_authors').value||'').split(',').map(s=>s.trim()).filter(Boolean);
-    const genreT = b.querySelector('.st_genre').value.trim();
-    const performersT = (b.querySelector('.st_performers').value||'').split(',').map(s=>s.trim()).filter(Boolean);
-    const instrumentsT = (b.querySelector('.st_instruments').value||'').split(',').map(s=>s.trim()).filter(Boolean);
-    const comments = b.querySelector('.st_comments').value.trim();
-    if(titleT) subtracks.push({ start_time: start, end_time: end, title: titleT, authors: authorsT, genre: genreT, performers: performersT, instruments: instrumentsT, comments });
-  });
-
-  // specific validations
-  if(t === 'video' || t === 'audio'){
-    if(!title){ return alert('Titolo richiesto'); }
-    if(authors.length === 0){ return alert('Almeno un autore è richiesto'); }
-    if(!genre){ return alert('Genere richiesto'); }
-    // require one file
-    if(!(filesInput.files && filesInput.files.length)){
-      return alert('Devi caricare il file ' + t);
+    // --- Wire navigation buttons ---
+    if (btnProfile){
+      btnProfile.addEventListener('click', (ev) => {
+        const target = resolvedTargetUsername();
+        const url = target ? `/home/?form_type=profile&username=${encodeURIComponent(target)}` : `/home/?form_type=profile`;
+        window.location.href = url;
+      });
     }
-    // if recording date provided, require location
-    const recDate = document.getElementById('recording_date').value;
-    const recLocation = document.getElementById('recording_location').value.trim();
-    if(recDate && !recLocation) return alert('Se imposti recording date devi specificare la location');
-    // if live performance checkbox selected both date and location required
-    if(is_live){
-      if(!recDate) return alert('Se "Live performance" selezionato, la data di registrazione è richiesta');
-      if(!recLocation) return alert('Se "Live performance" selezionato, la location è richiesta');
+
+    if (btnFeed){
+      btnFeed.addEventListener('click', (ev) => {
+        const target = resolvedTargetUsername();
+        const url = target ? `/home/?form_type=feed&username=${encodeURIComponent(target)}` : `/home/?form_type=feed`;
+        window.location.href = url;
+      });
     }
-  } else if(t === 'document'){
-    if(!title){ return alert('Titolo richiesto'); }
-    if(!(filesInput.files && filesInput.files.length)) return alert('File documento richiesto');
-  } else if(t === 'concert'){
-    const link = document.getElementById('concert_link').value.trim();
-    if(!link) return alert('YouTube URL richiesto per concert');
-    for(const s of subtracks) if(!s.title) return alert('Ogni sottotraccia deve avere un titolo');
-  }
 
-  // prepare FormData (reuse server parsing)
-  const fd = new FormData();
-  fd.append('type', t);
-  fd.append('title', title);
-  fd.append('description', description);
-  fd.append('authors', JSON.stringify(authors));
-  fd.append('genre', genre);
-  fd.append('composition_year', composition_year || '');
-  fd.append('is_composer', is_composer ? '1' : '');
-  fd.append('is_performer', is_performer ? '1' : '');
-  fd.append('instruments_used', instruments_used || '');
-  fd.append('is_live', is_live ? '1' : '');
-  fd.append('performers', JSON.stringify(performers));
-  fd.append('segments', JSON.stringify(segments));
-  fd.append('subtracks', JSON.stringify(subtracks));
+  })();
+  /************************************************************************
+   * publish.html - client
+   * - auto fills username/lvl from SERVER_USER or body data-attributes
+   * - supports publish-on-behalf toggle
+   * - dynamic fields per media type
+   * - MIME/type checks and automatic extraction (pdf pages, media duration)
+   * - builds FormData in the shape expected by your Flask publish_bp
+   * - on success redirects to /profile?username=<target>
+   ************************************************************************/
 
-  // recording info
-  fd.append('recording_date', document.getElementById('recording_date').value || '');
-  fd.append('recording_location', document.getElementById('recording_location').value || '');
+  (function(){
+    // --- Bootstrap user data ---
+    const body = document.body;
+    const SERVER_USER = window.SERVER_USER || null;
+    const loggedUsername = SERVER_USER?.username || body.dataset.username || '';
+    const loggedLvlRaw = SERVER_USER?.lvl ?? body.dataset.userlvl ?? '';
+    const loggedLvl = (loggedLvlRaw === '' || loggedLvlRaw === undefined) ? null : Number(loggedLvlRaw);
+    const initialTarget = SERVER_USER?.target || body.dataset.target || '';
 
-  // document extras
-  fd.append('document_type', document.getElementById('document_type').value || '');
-  fd.append('document_annotations', document.getElementById('document_annotations').value || '');
+    // --- Elements ---
+    const whoamiEl = document.getElementById('whoami');
+    const btnProfile = document.getElementById('btnProfile');
+    const btnFeed = document.getElementById('btnFeed');
 
-  // concert extras
-  fd.append('event_title', document.getElementById('concert_title').value || '');
-  fd.append('concert_date', document.getElementById('concert_date').value || '');
-  fd.append('concert_location', document.getElementById('concert_location').value || '');
-  fd.append('link', document.getElementById('concert_link').value || '');
+    const usernameInput = document.getElementById('username');
+    const userlvlInput = document.getElementById('userlvl');
 
-  // duration/format: ensure we compute/fallback synchronously before appending
-  let file_format_val = fileFormatInput.value || '';
-  let duration_val = durationInput.value || '';
+    const onBehalfToggle = document.getElementById('onBehalfToggle');
+    const targetLabel = document.getElementById('targetLabel');
+    const targetInput = document.getElementById('targetInput');
 
-  if(filesInput.files && filesInput.files.length){
-    const f0 = filesInput.files[0];
-    if(!file_format_val) file_format_val = f0.type || getExtension(f0.name) || '';
-    // probe if still missing and media likely has duration
-    if(!duration_val && ( (f0.type && (f0.type.startsWith('audio/') || f0.type.startsWith('video/'))) || /\.(mp4|mov|avi|mp3|wav|m4a|ogg|webm)$/i.test(f0.name) )){
-      try{
-        const d = await probeDuration(f0);
-        if(d) duration_val = Math.round(d*10)/10;
-      }catch(err){
-        console.warn('duration probe failed on submit', err);
+    const mediaType = document.getElementById('mediaType');
+    const permMsg = document.getElementById('permMsg');
+    const submitBtn = document.getElementById('submitBtn');
+
+    const linkFields = document.getElementById('linkFields');
+    const docFields = document.getElementById('docFields');
+    const audioFields = document.getElementById('audioFields');
+    const videoFields = document.getElementById('videoFields');
+
+    const linkIsLive = document.getElementById('linkIsLive');
+    const linkLiveInfo = document.getElementById('linkLiveInfo');
+    const audioIsLive = document.getElementById('audioIsLive');
+    const audioLiveInfo = document.getElementById('audioLiveInfo');
+    const videoIsLive = document.getElementById('videoIsLive');
+    const videoLiveInfo = document.getElementById('videoLiveInfo');
+
+    const audioIAmPerformer = document.getElementById('audioIAmPerformer');
+    const videoIAmPerformer = document.getElementById('videoIAmPerformer');
+    const audioPerformerBlock = document.getElementById('audioPerformerBlock');
+    const videoPerformerBlock = document.getElementById('videoPerformerBlock');
+
+    const docFile = document.getElementById('docFile');
+    const docFormatEl = document.getElementById('docFormat');
+    const docPagesEl = document.getElementById('docPages');
+
+    const audioFile = document.getElementById('audioFile');
+    const audioDurationEl = document.getElementById('audioDuration');
+    const audioFormatEl = document.getElementById('audioFormat');
+
+    const videoFile = document.getElementById('videoFile');
+    const videoDurationEl = document.getElementById('videoDuration');
+    const videoFormatEl = document.getElementById('videoFormat');
+
+    const payloadView = document.getElementById('payloadView');
+    const previewBtn = document.getElementById('previewBtn');
+    const publishForm = document.getElementById('publishForm');
+
+    // lists
+    const docLinkMedia = document.getElementById('docLinkMedia');
+    const audioLinkMedia = document.getElementById('audioLinkMedia');
+    const videoLinkMedia = document.getElementById('videoLinkMedia');
+
+    // segments/subtracks containers
+    const segmentsDiv = document.getElementById('segments');
+    const subtracksDiv = document.getElementById('subtracks');
+    const addSegmentBtn = document.getElementById('addSegment');
+    const addSubtrackBtn = document.getElementById('addSubtrack');
+
+    // simple media id placeholder (in real app populate from server)
+    const existingMedia = [101,102,203,304,405];
+    function populateMediaSelect(sel){
+      if(!sel) return;
+
+      sel.innerHTML = '';
+      existingMedia.forEach(id=>{
+        const o = document.createElement('option');
+        o.value = id;
+        o.textContent = `media(${id})`;
+        sel.appendChild(o);
+      });
+    }
+    [docLinkMedia, audioLinkMedia, videoLinkMedia].forEach(populateMediaSelect);
+
+    // initialize fields
+    usernameInput.value = loggedUsername;
+    userlvlInput.value = (loggedLvl !== null && !Number.isNaN(loggedLvl)) ? String(loggedLvl) : '';
+    if(initialTarget) {
+      onBehalfToggle.checked = true;
+      targetLabel.classList.remove('hidden');
+      targetInput.value = initialTarget;
+    } else {
+      onBehalfToggle.checked = false;
+      targetLabel.classList.add('hidden');
+      targetInput.value = '';
+    }
+    whoamiEl.textContent = (loggedUsername || 'anonymous') + (loggedLvl !== null ? ` (lvl ${loggedLvl})` : '');
+
+    // --- Navigation buttons ---
+    btnProfile.addEventListener('click', ()=> {
+      const profileUser = onBehalfToggle.checked && targetInput.value.trim() ? targetInput.value.trim() : usernameInput.value || 'me';
+      // redirect to route your server exposes: /profile?username=...
+      window.location.href = `/profile?username=${encodeURIComponent(profileUser)}`;
+    });
+    btnFeed.addEventListener('click', ()=> window.location.href = '/home/?form_type=feed');
+
+    // --- Toggle on-behalf ---
+    onBehalfToggle.addEventListener('change', (ev)=>{
+      const on = !!ev.target.checked;
+      if(on){
+        targetLabel.classList.remove('hidden');
+      } else {
+        targetLabel.classList.add('hidden');
+        targetInput.value = '';
+      }
+      // update whoami shown (keeps the logged user in place; profile button chooses target at click)
+    });
+
+    // --- permission checks ---
+    function canPublishClient(type, lvl){
+      if(type === 'link') return (lvl !== null) && (lvl >= 0 && lvl <= 4);
+      if(['document','audio','video'].includes(type)) return (lvl !== null) && ([0,1,3].includes(lvl));
+      return false;
+    }
+
+    function updateVisibility(){
+      const t = mediaType.value;
+      // show/hide relevant fieldsets
+      linkFields.classList.toggle('hidden', t !== 'link');
+      docFields.classList.toggle('hidden', t !== 'document');
+      audioFields.classList.toggle('hidden', t !== 'audio');
+      videoFields.classList.toggle('hidden', t !== 'video');
+
+      // update live info visibility (reset)
+      linkLiveInfo.classList.toggle('hidden', !document.getElementById('linkIsLive').checked);
+      audioLiveInfo.classList.toggle('hidden', !document.getElementById('audioIsLive').checked);
+      videoLiveInfo.classList.toggle('hidden', !document.getElementById('videoIsLive').checked);
+
+      // performer blocks
+      audioPerformerBlock.classList.toggle('hidden', !audioIAmPerformer.checked);
+      videoPerformerBlock.classList.toggle('hidden', !videoIAmPerformer.checked);
+
+      // perms
+      const allowed = canPublishClient(t, loggedLvl);
+      if(!allowed){
+        permMsg.textContent = `Permission denied: lvl ${loggedLvl} cannot publish ${t} media.`;
+        submitBtn.disabled = true;
+      } else {
+        permMsg.textContent = '';
+        submitBtn.disabled = false;
       }
     }
-  }
 
-  fd.append('duration', duration_val || '');
-  fd.append('file_format', file_format_val || '');
+    mediaType.addEventListener('change', updateVisibility);
+    linkIsLive.addEventListener('change', ()=> linkLiveInfo.classList.toggle('hidden', !linkIsLive.checked));
+    audioIsLive.addEventListener('change', ()=> audioLiveInfo.classList.toggle('hidden', !audioIsLive.checked));
+    videoIsLive.addEventListener('change', ()=> videoLiveInfo.classList.toggle('hidden', !videoIsLive.checked));
+    audioIAmPerformer.addEventListener('change', ()=> audioPerformerBlock.classList.toggle('hidden', !audioIAmPerformer.checked));
+    videoIAmPerformer.addEventListener('change', ()=> videoPerformerBlock.classList.toggle('hidden', !videoIAmPerformer.checked));
 
-  // append files
-  if(filesInput.files && filesInput.files.length){
-    for(const f of filesInput.files) fd.append('files', f, f.name);
-  }
+    // initial visibility
+    updateVisibility();
 
-  // final submit (unchanged)
-  try {
-    const res = await fetch('/content/publish', { method: 'POST', body: fd });
-    const json = await res.json();
-    if(!res.ok || json.status === 'ERROR'){
-      alert('Errore: ' + (json.error_msg || JSON.stringify(json)));
-    } else {
-      alert('Pubblicazione completata!');
-      window.location.href = '/feed';
+    // --- helpers ---
+    function splitListInput(str){
+      if(!str) return [];
+      return str.split(',').map(s=>s.trim()).filter(Boolean);
     }
-  } catch(err){
-    alert('Errore di rete');
-    console.error(err);
-  }
-});
 
-/* back button handler */
-if(backBtn){
-  backBtn.addEventListener('click', ()=> { window.location.href = '/feed'; });
-}
-</script>
+    function getSelectedMediaIds(sel){
+      if(!sel) return [];
+      return Array.from(sel.selectedOptions).map(o=>Number(o.value));
+    }
 
+    // --- segments/subtracks dynamic UI ---
+    function makeSegment(item){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'list';
+      wrapper.innerHTML = `
+        <div class="row">
+          <label>Start <input type="number" step="0.1" class="seg-start" /></label>
+          <label>End <input type="number" step="0.1" class="seg-end" /></label>
+          <label>Note <input type="text" class="seg-note" /></label>
+          <button type="button" class="remove btn danger">Remove</button>
+        </div>
+      `;
+      wrapper.querySelector('.remove').addEventListener('click', ()=> wrapper.remove());
+      if(item){
+        wrapper.querySelector('.seg-start').value = item.start ?? '';
+        wrapper.querySelector('.seg-end').value = item.end ?? '';
+        wrapper.querySelector('.seg-note').value = item.note ?? '';
+      }
+      return wrapper;
+    }
+    
+    function makeSubtrack(item){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'list';
+      wrapper.innerHTML = `
+        <div class="row">
+          <label>Title <input type="text" class="st-title" required /></label>
+          <label>Start <input type="number" step="0.1" class="st-start" /></label>
+          <label>End <input type="number" step="0.1" class="st-end" /></label>
+          <label>Performers <input type="text" class="st-performers" placeholder="comma separated" /></label>
+          <label>Instruments <input type="text" class="st-instruments" placeholder="comma separated" /></label>
+          <label>Comments <input type="text" class="st-comments" /></label>
+          <button type="button" class="remove btn danger">Remove</button>
+        </div>
+      `;
+      wrapper.querySelector('.remove').addEventListener('click', ()=> wrapper.remove());
+      if(item){
+        wrapper.querySelector('.st-title').value = item.title ?? '';
+        wrapper.querySelector('.st-start').value = item.start ?? '';
+        wrapper.querySelector('.st-end').value = item.end ?? '';
+        wrapper.querySelector('.st-performers').value = (item.performers || []).join(', ');
+        wrapper.querySelector('.st-instruments').value = (item.instruments || []).join(', ');
+        wrapper.querySelector('.st-comments').value = item.comments ?? '';
+      }
+      return wrapper;
+    }
+
+    addSegmentBtn.addEventListener('click', ()=> segmentsDiv.appendChild(makeSegment()));
+    addSubtrackBtn.addEventListener('click', ()=> subtracksDiv.appendChild(makeSubtrack()));
+
+    function gatherSegments(){
+      const list = [];
+      segmentsDiv.querySelectorAll('.list').forEach(node=>{
+        const s = node.querySelector('.seg-start').value;
+        const e = node.querySelector('.seg-end').value;
+        const n = node.querySelector('.seg-note').value;
+        if(s || e || n) list.push({ start: parseFloat(s) || 0, end: parseFloat(e) || 0, note: n || '' });
+      });
+      return list;
+    }
+    function gatherSubtracks(){
+      const list = [];
+      subtracksDiv.querySelectorAll('.list').forEach(node=>{
+        const t = node.querySelector('.st-title').value;
+        if(!t) return; // title required
+        const s = node.querySelector('.st-start').value;
+        const e = node.querySelector('.st-end').value;
+        const p = node.querySelector('.st-performers').value;
+        const i = node.querySelector('.st-instruments').value;
+        const c = node.querySelector('.st-comments').value;
+        list.push({
+          title: t,
+          start: parseFloat(s) || 0,
+          end: parseFloat(e) || 0,
+          performers: splitListInput(p),
+          instruments: splitListInput(i),
+          comments: c || ''
+        });
+      });
+      return list;
+    }
+
+    // --- automatic metadata extraction ---
+
+    // PDF page extraction heuristic
+    async function extractPdfInfo(file){
+      if(!file) return {format: '-', pages: '-'};
+      const name = file.name || '';
+      const type = file.type || '';
+      let format = type || (name.split('.').pop() || '-');
+      if(type.includes('pdf') || name.toLowerCase().endsWith('.pdf')){
+        try{
+          const ab = await file.arrayBuffer();
+          // decode as latin1-safe by using TextDecoder with 'utf-8' (best effort)
+          const text = new TextDecoder('utf-8', {fatal:false}).decode(ab);
+          // find /Count <num> occurrences and pick max
+          const re = /\/Count\s+(\d+)/g;
+          let match, max = 0;
+          while((match = re.exec(text)) !== null){
+            const v = Number(match[1]);
+            if(!Number.isNaN(v) && v > max) max = v;
+          }
+          const pages = max > 0 ? max : '-';
+          return { format: 'pdf', pages: pages };
+        }catch(err){
+          return { format, pages: '-' };
+        }
+      } else {
+        // non-pdf doc heuristics not implemented
+        return { format, pages: '-' };
+      }
+    }
+
+    docFile?.addEventListener('change', async (ev) => {
+      const f = ev.target.files[0];
+      if(!f){ docFormatEl.textContent = '-'; docPagesEl.textContent = '-'; return; }
+      const info = await extractPdfInfo(f);
+      docFormatEl.textContent = info.format || '-';
+      docPagesEl.textContent = info.pages ?? '-';
+    });
+
+    // Audio/video duration extraction and format
+    function setupMediaDurationExtraction(inputEl, durationEl, formatEl, isAudio=true){
+      if(!inputEl) return;
+      inputEl.addEventListener('change', (ev)=>{
+        const f = ev.target.files[0];
+        if(!f){ if(durationEl) durationEl.textContent='-'; if(formatEl) formatEl.textContent='-'; return; }
+        if(formatEl) formatEl.textContent = f.type || (f.name.split('.').pop() || '-');
+        const url = URL.createObjectURL(f);
+     
+   const media = isAudio ? new Audio() : document.createElement('video');
+        media.preload = 'metadata';
+        media.src = url;
+        media.onloadedmetadata = () => {
+          if(durationEl) durationEl.textContent = Math.round(media.duration) + 's';
+          URL.revokeObjectURL(url);
+        };
+        media.onerror = () => {
+          if(durationEl) durationEl.textContent = 'unknown';
+          URL.revokeObjectURL(url);
+        };
+      });
+    }
+    setupMediaDurationExtraction(audioFile, audioDurationEl, audioFormatEl, true);
+    setupMediaDurationExtraction(videoFile, videoDurationEl, videoFormatEl, false);
+
+    // --- mime/type validation helpers ---
+    function checkFileMatchesType(mediaType, file){
+      if(!file) return false;
+      const name = file.name.toLowerCase();
+      const mime = (file.type || '').toLowerCase();
+
+      if(mediaType === 'document'){
+        if(mime.includes('pdf') || name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx') || mime.includes('msword') || mime.includes('wordprocessingml')) return true;
+        return false;
+      }
+      if(mediaType === 'audio'){
+        if(mime.startsWith('audio')) return true;
+        if(name.match(/\.(mp3|wav|m4a|flac|aac|ogg)$/)) return true;
+        return false;
+      }
+      if(mediaType === 'video'){
+        if(mime.startsWith('video')) return true;
+        if(name.match(/\.(mp4|mkv|webm|mov|avi)$/)) return true;
+        return false;
+      }
+      return true;
+    }
+
+    // --- Build payload (client preview object) ---
+    function buildPreviewPayload(){
+      const t = mediaType.value;
+      const base = {
+        from: usernameInput.value || '',
+        on_behalf_of: (onBehalfToggle.checked && targetInput.value.trim()) ? targetInput.value.trim() : null,
+        type: t,
+      };
+
+      if(t === 'link'){
+        return {
+          ...base,
+          title: document.getElementById('linkTitle').value.trim(),
+          description: document.getElementById('linkDesc').value.trim(),
+          link: document.getElementById('linkUrl').value.trim(),
+          i_am_author: document.getElementById('linkIAmAuthor').checked,
+          i_am_performer: document.getElementById('linkIAmPerformer').checked,
+          is_live: document.getElementById('linkIsLive').checked,
+          recording_date: document.getElementById('linkRecDate').value || null,
+          recording_location: document.getElementById('linkRecLoc').value || null
+        };
+      }
+      if(t === 'document'){
+        const f = docFile?.files[0] || null;
+        return {
+          ...base,
+          title: document.getElementById('docTitle').value.trim(),
+          description: document.getElementById('docDesc').value.trim(),
+          genres: splitListInput(document.getElementById('docGenres').value),
+          publication_year: document.getElementById('docYear').value || null,
+          linked_media: getSelectedMediaIds(docLinkMedia),
+          i_am_author: document.getElementById('docIAmAuthor').checked,
+          automatic: {
+            format: docFormatEl.textContent || '-',
+            pages: docPagesEl.textContent || '-'
+          }
+        };
+      }
+      if(t === 'audio' || t === 'video'){
+        const isAudio = t === 'audio';
+        const f = isAudio ? audioFile?.files[0] : videoFile?.files[0];
+        const durationEl = isAudio ? audioDurationEl : videoDurationEl;
+        const formatEl = isAudio ? audioFormatEl : videoFormatEl;
+        return {
+          ...base,
+          title: document.getElementById((isAudio?'audioTitle':'videoTitle')).value.trim(),
+          description: document.getElementById((isAudio?'audioDesc':'videoDesc')).value.trim(),
+          genres: splitListInput(document.getElementById((isAudio?'audioGenres':'videoGenres')).value),
+          publication_year: document.getElementById((isAudio?'audioYear':'videoYear')).value || null,
+          authors: splitListInput(document.getElementById((isAudio?'audioAuthors':'videoAuthors')).value),
+          linked_media: getSelectedMediaIds(isAudio?audioLinkMedia:videoLinkMedia),
+          i_am_author: document.getElementById((isAudio?'audioIAmAuthor':'videoIAmAuthor')).checked,
+          i_am_performer: document.getElementById((isAudio?'audioIAmPerformer':'videoIAmPerformer')).checked,
+          performers: splitListInput(document.getElementById((isAudio?'audioPerformers':'videoPerformers'))?.value),
+          instruments: splitListInput(document.getElementById((isAudio?'audioInstruments':'videoInstruments'))?.value),
+          is_live: document.getElementById((isAudio?'audioIsLive':'videoIsLive')).checked,
+          recording_date: document.getElementById((isAudio?'audioRecDate':'videoRecDate')).value || null,
+          recording_location: document.getElementById((isAudio?'audioRecLoc':'videoRecLoc')).value || null,
+          automatic: {
+            duration: durationEl?.textContent || '-',
+            format: formatEl?.textContent || '-'
+          },
+          segments: gatherSegments(),
+          subtracks: gatherSubtracks()
+        };
+      }
+      return {...base};
+    }
+
+    // --- Preview button ---
+    previewBtn.addEventListener('click', (ev)=>{
+      const p = buildPreviewPayload();
+      payloadView.textContent = JSON.stringify(p, null, 2);
+    });
+
+    // --- Submit handler ---
+    publishForm.addEventListener('submit', async (ev)=>{
+      ev.preventDefault();
+
+      // Basic client-side validation before sending
+      const type = mediaType.value;
+
+      // permission check
+      if(!canPublishClient(type, loggedLvl)){
+        alert(`Permission denied: lvl ${loggedLvl} cannot publish ${type} media.`);
+        return;
+      }
+
+      // required fields check per type
+      if(type === 'link'){
+        const title = document.getElementById('linkTitle').value.trim();
+        const url = document.getElementById('linkUrl').value.trim();
+        if(!title){ alert('Title required'); return; }
+        if(!url){ alert('URL required'); return; }
+        if(linkIsLive.checked){
+          if(!document.getElementById('linkRecDate').value || !document.getElementById('linkRecLoc').value.trim()){
+            alert('Recording date & location required for live link'); return;
+          }
+        }
+      } else if(type === 'document'){
+        const title = document.getElementById('docTitle').value.trim();
+        const f = docFile?.files[0];
+        if(!title){ alert('Title required'); return; }
+        if(!f){ alert('Document file required'); return; }
+        if(!checkFileMatchesType('document', f)){ alert('Uploaded file does not look like a document (pdf/doc)'); return; }
+      } else if(type === 'audio' || type === 'video'){
+        const isAudio = type === 'audio';
+        const title = document.getElementById((isAudio?'audioTitle':'videoTitle')).value.trim();
+        const authors = splitListInput(document.getElementById((isAudio?'audioAuthors':'videoAuthors')).value);
+        const genre = document.getElementById((isAudio?'audioGenres':'videoGenres')).value.trim();
+        const f = (isAudio?audioFile:videoFile)?.files[0];
+        if(!title){ alert('Title required'); return; }
+        if(!authors || authors.length === 0){ alert('At least one author is required'); return; }
+        if(!genre){ alert('Genre required'); return; }
+        if(!f){ alert('File required'); return; }
+        if(!checkFileMatchesType(type, f)){ alert(`Uploaded file does not match ${type} type`); return; }
+        // performer instruments required if performer box is checked
+        const performerChecked = document.getElementById((isAudio?'audioIAmPerformer':'videoIAmPerformer')).checked;
+        const instr = document.getElementById((isAudio?'audioInstruments':'videoInstruments')).value.trim();
+        if(performerChecked && !instr){ alert('You declared yourself performer: instruments field is required'); return; }
+        if(document.getElementById((isAudio?'audioIsLive':'videoIsLive')).checked){
+          if(!document.getElementById((isAudio?'audioRecDate':'videoRecDate')).value || !document.getElementById((isAudio?'audioRecLoc':'videoRecLoc')).value.trim()){
+            alert('Recording date & location required for live performance'); return;
+          }
+        }
+      }
+
+      // build FormData expected by publish_bp
+      const fd = new FormData();
+
+      // server expects 'type' values mapping client 'link' -> server 'concert'
+      const serverType = (type === 'link') ? 'concert' : type;
+      fd.append('type', serverType);
+
+      // common fields: title/description/genre/composition_year
+      if(type === 'link'){
+        fd.append('title', document.getElementById('linkTitle').value || '');
+        fd.append('description', document.getElementById('linkDesc').value || '');
+        fd.append('link', document.getElementById('linkUrl').value || '');
+      } else if(type === 'document'){
+        fd.append('title', document.getElementById('docTitle').value || '');
+        fd.append('description', document.getElementById('docDesc').value || '');
+        const genres = splitListInput(document.getElementById('docGenres').value);
+        fd.append('genre', genres.join(', '));
+        if(document.getElementById('docYear').value) fd.append('composition_year', document.getElementById('docYear').value);
+        // automatic metadata (format/pages) - send as fields so server can store them if needed
+        fd.append('document_type', docFormatEl.textContent || '');
+        fd.append('document_annotations', '');
+      } else if(type === 'audio' || type === 'video'){
+        const isAudio = type === 'audio';
+        fd.append('title', document.getElementById((isAudio?'audioTitle':'videoTitle')).value || '');
+        fd.append('description', document.getElementById((isAudio?'audioDesc':'videoDesc')).value || '');
+        const genres = splitListInput(document.getElementById((isAudio?'audioGenres':'videoGenres')).value);
+
+        fd.append('genre', genres.join(', '));
+        if(document.getElementById((isAudio?'audioYear':'videoYear')).value) fd.append('composition_year', document.getElementById((isAudio?'audioYear':'videoYear')).value);
+        // authors + performers arrays as JSON strings (publish_bp expects JSON)
+        const authorsArr = splitListInput(document.getElementById((isAudio?'audioAuthors':'videoAuthors')).value);
+        fd.append('authors', JSON.stringify(authorsArr));
+        // performers (extra field)
+        const performersArr = splitListInput(document.getElementById((isAudio?'audioPerformers':'videoPerformers')).value);
+        if(performersArr.length) fd.append('performers', JSON.stringify(performersArr));
+        // segments & subtracks
+        const segments = gatherSegments();
+        if(segments.length) fd.append('segments', JSON.stringify(segments));
+        const subtracks = gatherSubtracks();
+        if(subtracks.length) fd.append('subtracks', JSON.stringify(subtracks));
+      }
+
+      // flags/checkboxes: is_composer, is_performer, is_live
+      let isComposer = false, isPerformer = false, isLive = false;
+      if(type === 'link'){
+        isComposer = document.getElementById('linkIAmAuthor').checked;
+        isPerformer = document.getElementById('linkIAmPerformer').checked;
+        isLive = document.getElementById('linkIsLive').checked;
+      } else if(type === 'document'){
+        isComposer = document.getElementById('docIAmAuthor').checked;
+      } else if(type === 'audio'){
+        isComposer = document.getElementById('audioIAmAuthor').checked;
+        isPerformer = document.getElementById('audioIAmPerformer').checked;
+        isLive = document.getElementById('audioIsLive').checked;
+      } else if(type === 'video'){
+        isComposer = document.getElementById('videoIAmAuthor').checked;
+        isPerformer = document.getElementById('videoIAmPerformer').checked;
+        isLive = document.getElementById('videoIsLive').checked;
+      }
+      if(isComposer) fd.append('is_composer', 'on');
+      if(isPerformer) fd.append('is_performer', 'on');
+      if(isLive) fd.append('is_live', 'on');
+
+      // recording info
+      if(type === 'link'){
+        const rd = document.getElementById('linkRecDate').value; if(rd) fd.append('recording_date', rd);
+        const rl = document.getElementById('linkRecLoc').value; if(rl) fd.append('recording_location', rl);
+      } else if(type === 'audio'){
+        const rd = document.getElementById('audioRecDate').value; if(rd) fd.append('recording_date', rd);
+        const rl = document.getElementById('audioRecLoc').value; if(rl) fd.append('recording_location', rl);
+      } else if(type === 'video'){
+        const rd = document.getElementById('videoRecDate').value; if(rd) fd.append('recording_date', rd);
+        const rl = document.getElementById('videoRecLoc').value; if(rl) fd.append('recording_location', rl);
+      }
+
+      // files: append actual File objects under name "files"
+      if(type === 'document'){
+        const f = docFile?.files[0];
+        if(f) fd.append('files', f, f.name);
+      } else if(type === 'audio'){
+        const f = audioFile?.files[0];
+        if(f) fd.append('files', f, f.name);
+      } else if(type === 'video'){
+        const f = videoFile?.files[0];
+        if(f) fd.append('files', f, f.name);
+      }
+
+      // add client-side authors/instruments/perf lists as fields if present
+      if(type === 'audio' || type === 'video'){
+        const isAudio = type === 'audio';
+        const instruments = splitListInput(document.getElementById((isAudio?'audioInstruments':'videoInstruments')).value);
+        if(instruments.length) fd.append('instruments_used', instruments.join(', '));
+      }
+
+      // include optional target username so backend services can publish on behalf when allowed
+      // IMPORTANT: publish_bp uses request.form.get("username") or request.form.get("target_username") to decide target
+      const targetUsername = (onBehalfToggle.checked && targetInput.value.trim()) 
+                              ? targetInput.value.trim() 
+                              : null;
+
+      if (targetUsername) {
+        // resolve target user ID via resolve_user endpoint before submitting
+        try {
+          const resolveRes = await fetch(`/resolve_user`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: targetUsername })
+          });
+          const resolveData = await resolveRes.json();
+          
+          if (resolveData.status === 'OK' && resolveData.id) {
+            fd.append('user_id', resolveData.id);
+            fd.append('target_username', targetUsername);
+          } else {
+            console.error('[publish.html] failed to resolve target user:', resolveData.error_msg);
+            alert('Error: ' + (resolveData.error_msg || 'Could not find target user'));
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit';
+            return;
+          }
+        } catch (err) {
+          console.error('[publish.html] failed to resolve target user:', err);
+          alert('Error resolving target user: ' + err.message);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Submit';
+          return;
+        }
+      } else {
+        // publish as logged user
+        const loggedUserId = SERVER_USER?.id || body.dataset.userId;
+        if (loggedUserId) {
+          fd.append('user_id', loggedUserId);
+        }
+      }
+
+      // append other small fields expected
+      // description already appended for link/document/audio/video above
+
+      // send POST
+      try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Publishing...';
+        const res = await fetch('/content/publish', { method: 'POST', body: fd });
+        const j = await res.json().catch(()=>({status:'ERROR', error_msg:'Invalid JSON response'}));
+        if(!res.ok || (j.status && j.status === 'ERROR')){
+          const err = j.error_msg || JSON.stringify(j);
+          alert('Publish failed: ' + err);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Submit';
+          return;
+        }
+        // success: redirect to profile of finalTarget (or feed fallback)
+        const finalTarget = (onBehalfToggle.checked && targetInput.value.trim())
+                              ? targetInput.value.trim()
+                              : usernameInput.value || '';
+        if (finalTarget) {
+          window.location.href = `/home/?form_type=profile&username=${encodeURIComponent(finalTarget)}`;
+        } else {
+          window.location.href = '/home/?form_type=feed';
+        }
+      } catch(err){
+        alert('Network error while publishing: ' + (err && err.message ? err.message : err));
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit';
+      }
+    });
+
+    // expose a few utility functions to console for debugging
+    window.__publish_debug = {
+      buildPreviewPayload,
+      gatherSegments,
+      gatherSubtracks
+    };
+
+  })();
+  </script>
 </body>
 </html>

@@ -186,7 +186,7 @@ CREATE TABLE comments (
     note_id INT REFERENCES notes(id) ON DELETE CASCADE,
     parent_comment_id INT REFERENCES comments(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
-    created_at DATE DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ========================================

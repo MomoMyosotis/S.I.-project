@@ -119,14 +119,32 @@ class ProfileService:
     def update_profile(content, target_username: str = None):
         """
         Send an update request to backend. Include target username both as:
-         - a field inside the content dict (many RPC handlers expect this)
-         - a second positional RPC arg (some handlers accept [content, target])
-        Try a list of common command names until one succeeds.
+            - a field inside the content dict (many RPC handlers expect this)
+            - a second positional RPC arg (some handlers accept [content, target])
+        Resolve target user ID if publish-on-behalf is requested.
         """
         if not isinstance(content, dict):
             content = {}
 
         if target_username:
+            # resolve target user ID first
+            try:
+                profile_res = http_client.send_request("GET_PROFILE", [target_username], require_auth=True)
+                target_user_info = {}
+
+                # extract from nested response
+                if isinstance(profile_res, dict):
+                    if "response" in profile_res and isinstance(profile_res["response"], dict):
+                        target_user_info = profile_res["response"]
+                    elif "id" in profile_res:
+                        target_user_info = profile_res
+
+                if target_user_info.get("id"):
+                    content["user_id"] = target_user_info["id"]
+                    content["target_user_id"] = target_user_info["id"]
+            except Exception as e:
+                print(f"[DEBUG][ProfileService.update_profile] failed to resolve target user: {e}")
+
             # make sure both forms are present so server-side handlers that
             # look at either the payload or the positional args will apply
             content["username"] = target_username

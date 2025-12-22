@@ -1,179 +1,347 @@
-/* ==========================
-    VARIABILI DI TEMA
-   ========================== */
-:root {
-  --bg: #1e1b29;           /* Colore di sfondo principale della pagina */
-  --card: #2b2537;         /* Colore di sfondo per le card e box */
-  --glass: rgba(255, 255, 255, 0.05); /* Effetto vetro traslucido per elementi */
-  --accent: #45f3ff;       /* Colore principale di evidenziazione (link, pulsanti) */
-  --text: #e8e8e8;         /* Colore testo principale */
-  --muted: #bcb7c7;        /* Colore testo secondario / grigio */
-  --danger: #ff6b6b;       /* Colore per alert / errori */
-}
-
-/* ==========================
-    STILE GLOBALE
-   ========================== */
+/* ============
+  BASE STYLE
+============ */
 body {
-  background: var(--bg);     /* Sfondo della pagina */
-  color: var(--text);        /* Colore testo principale */
-  font-family: "Inter", sans-serif; /* Font generale */
-  margin: 0;                 /* Rimuove margini di default */
-  padding: 0;                /* Rimuove padding di default */
+  margin: 0;
+  padding: 20px;
+  font-family: "Poppins", system-ui, sans-serif;
+  background: #1e1b29;
+  color: #eee;
 }
 
-h1, h3, h4 {
-  margin: 0 0 10px 0;        /* Margine solo sotto il titolo */
-  font-weight: 600;          /* Peso testo semi-bold */
+/* Supporto per animazioni con --a */
+@property --a {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
-/* ==========================
-    BARRA SUPERIORE (TOP BAR)
-   ========================== */
-.top-info {
-  display: flex;                     /* Layout orizzontale */
-  justify-content: space-between;    /* Spazio tra elementi estremi */
-  align-items: center;               /* Allinea verticalmente */
-  background: var(--glass);          /* Sfondo traslucido */
-  padding: 15px 20px;                /* Padding interno */
-  backdrop-filter: blur(6px);        /* Sfocatura dietro l'elemento */
-  border-bottom: 1px solid rgba(255,255,255,0.05); /* Sottile bordo inferiore */
+@keyframes rotating {
+  0% { --a: 0deg; }
+  100% { --a: 360deg; }
 }
 
-.top-info h1 {
-  font-size: 1.6rem;                 /* Dimensione del titolo nella top bar */
+.logged-info {
+  margin-bottom: 10px;
+  color: #bbb;
+  text-align: right;
 }
 
-.top-right {
-  display: flex;                     /* Layout orizzontale per elementi a destra */
-  align-items: center;               /* Allinea verticalmente */
-  gap: 20px;                         /* Spazio tra elementi */
+.actor-grid {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 12px 18px;
+  align-items: center;
 }
 
-.username {
-  color: var(--accent);              /* Colore link username */
-  font-weight: 500;                  /* Peso medio */
-  text-decoration: none;             /* Rimuove sottolineatura */
-  transition: 0.2s;                  /* Transizione morbida per hover */
-}
-.username:hover { opacity: 0.7; }    /* Effetto al passaggio del mouse */
-
-.go-feed {
-  color: var(--text);                /* Colore testo */
-  text-decoration: none;             /* Rimuove sottolineatura */
-  background: var(--glass);          /* Sfondo traslucido */
-  padding: 6px 12px;                 /* Padding interno */
-  border-radius: 8px;                /* Angoli arrotondati */
-  transition: 0.2s;                  /* Transizione hover */
-}
-.go-feed:hover {
-  background: var(--accent);         /* Sfondo cambia colore */
-  color: #000;                       /* Testo diventa nero */
+.actor-grid .check-row {
+  grid-column: 1 / 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-/* ==========================
-   FORM E BOX
-   ========================== */
-form {
-  width: 90%;                        /* Larghezza form */
-  max-width: 900px;                  /* Limite massimo di larghezza */
-  margin: 25px auto;                 /* Centra il form e margine sopra/sotto */
-  padding-bottom: 40px;              /* Spazio sotto il form */
+#targetLabel {
+  grid-column: 1 / 3;
 }
 
-.box {
-  background: var(--card);           /* Sfondo box */
-  border-radius: 14px;               /* Angoli arrotondati */
-  padding: 18px;                     /* Padding interno */
-  margin-bottom: 20px;               /* Spazio sotto il box */
-  box-shadow: 0 0 20px rgba(0,0,0,0.1); /* Ombra leggera */
+
+/* ============
+   FORM WRAPPER
+   ============ */
+form#publishForm {
+  max-width: 980px;
+  margin: 20px auto 60px;
+  padding: 20px;
+  background: #2d2d39;
+  border-radius: 18px;
+  box-shadow: 0 0 20px #ff277055;
+  border: 1px solid #25252b;
 }
 
-.box.warning {
-  border: 1px solid var(--danger);   /* Bordo rosso per warning */
-  background: rgba(255, 0, 0, 0.07); /* Sfondo leggermente rosato */
+/* ============
+   ON BEHALF BUTTON
+   ============ */
+.on-behalf {
+  font-weight: 600;
+  color: #ff2770;
+  background: #3a374a;
+  border: 1px solid #ff2770aa;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: 0.25s ease;
+  box-shadow: 0 0 10px #ff277066;
 }
 
-/* labels dei campi */
-.label {
-  display: block;                    /* Blocca label sopra input */
-  margin: 12px 0 4px;               /* Spazio sopra/sotto */
-  font-weight: 500;                  /* Peso medio */
+.on-behalf:hover {
+  box-shadow: 0 0 18px #ff2770cc;
 }
 
-/* input, select e textarea */
-input, select, textarea {
-  width: 97%;                       /* Larghezza completa */
-  background: var(--glass);          /* Sfondo traslucido */
-  border: 1px solid rgba(255,255,255,0.08); /* Bordo sottile */
-  padding: 10px;                     /* Padding interno */
-  color: var(--text);                /* Colore testo */
-  border-radius: 10px;               /* Angoli arrotondati */
-  margin-bottom: 12px;               /* Spazio sotto input */
-  transition: 0.15s;                 /* Transizione hover/focus */
+.on-behalf.active {
+  background: #ff2770;
+  color: #fff;
+  box-shadow: 0 0 20px #ff2770ee;
 }
 
-input:focus, select:focus, textarea:focus {
-  outline: none;                     /* Rimuove contorno default */
-  border-color: var(--accent);       /* Bordo evidenziato al focus */
+/* ============
+   HEADER PUBBLICAZIONE
+   stesse animazioni del feed
+   ============ */
+header {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin: 20px auto 15px;
+  padding: 20px 0;
+  font-weight: 700;
+  font-size: 1.8em;
+  text-align: center;
+  color: white;
+  border-radius: 20px;
+
+  /* Contorno animato */
+  background: repeating-conic-gradient(
+    from var(--a),
+    #ff2770 0%,
+    #ff2770 5%,
+    transparent 5%,
+    transparent 40%,
+    #ff2770 50%
+  );
+  filter: drop-shadow(0 15px 50px #000);
+  animation: rotating 4s linear infinite;
+  text-shadow: 0 0 10px #ff2770;
+  z-index: 1;
+  user-select: none;
+  box-shadow: 0 2px 5px rgba(255, 39, 112, 0.5);
+  letter-spacing: 0.05em;
 }
 
-textarea {
-  min-height: 80px;                  /* Altezza minima */
-  resize: vertical;                  /* Possibile ridimensionamento verticale */
+/* layer animato secondario per effetto dinamico */
+header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: repeating-conic-gradient(
+    from var(--a),
+    #45f3ff 0%,
+    #45f3ff 5%,
+    transparent 5%,
+    transparent 40%,
+    #45f3ff 50%
+  );
+  filter: drop-shadow(0 15px 50px #000);
+  animation: rotating 4s linear infinite;
+  animation-delay: -1s;
+  z-index: -1;
 }
 
-/* righe orizzontali di campi */
-.row {
-  display: flex;                     /* Layout orizzontale */
-  align-items: center;               /* Allinea verticalmente */
-  gap: 12px;                         /* Spazio tra elementi */
-  margin: 10px 0;                    /* Margine verticale */
+/* bordo interno scuro per profondità */
+header::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background: #2d2d39;
+  border-radius: 15px;
+  border: 8px solid #25252b;
+  z-index: -1;
 }
 
-.check-row {
-  display: flex;                     /* Layout per checkbox + label */
-  gap: 10px;                         /* Spazio tra checkbox e testo */
-  align-items: center;               /* Allinea verticalmente */
-}
-
-/* ==========================
-   PULSANTI
-   ========================== */
-button, .small-btn {
-  cursor: pointer;                  /* Icona mouse a mano */
-  border: none;                     /* Rimuove bordo di default */
-  padding: 10px 14px;               /* Padding interno */
-  background: var(--accent);        /* Colore principale */
-  color: #000;                      /* Testo nero */
-  border-radius: 10px;              /* Angoli arrotondati */
-  font-weight: 600;                 /* Testo semi-bold */
-  transition: 0.2s;                 /* Transizione hover */
-}
-
-button:hover, .small-btn:hover {
-  transform: translateY(-1px);      /* Piccolo sollevamento effetto hover */
-  opacity: 0.9;                     /* Leggera trasparenza */
+.top-bar {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .small-btn {
-  padding: 6px 10px;                /* Pulsante piccolo */
+  padding: 6px 12px;
+  font-size: 0.9rem;
 }
 
-/* pulsanti di rimozione */
-.rm_perf, .rm_seg, .rm_st {
-  background: var(--danger);        /* Rosso */
-  color: #000;                      /* Testo nero */
-  font-weight: 700;                 /* Testo bold */
-  padding: 6px 10px;                /* Padding ridotto */
+
+/* ============
+   PAGE TITLE
+   ============ */
+h1 {
+  margin: 0;
+  padding: 0;
+  font-size: 1.7rem;
+  text-align: center;
+  color: #ff2770;
+  text-shadow: 0 0 10px #ff2770;
+  margin-top: 10px;
 }
 
-.submit-btn {
-  margin-top: 20px;                 /* Spazio sopra pulsante */
-  width: 100%;                      /* Occupa tutta la larghezza */
-  padding: 14px;                     /* Padding maggiore */
-  font-size: 1.1rem;                 /* Testo leggermente più grande */
+/* ============
+   FIELDSETS
+   ============ */
+main {
+  max-width: 900px;
+  margin: auto;
 }
 
-/* utility nascosto */
-.hidden { display: none !important; } /* Classe per nascondere elementi completamente */
+fieldset {
+  background: #2d2d39;
+  margin: 18px 0;
+  padding: 18px 20px;
+  border-radius: 15px;
+  border: 1px solid #3a374a;
+  box-shadow: inset 0 0 12px #ff277022;
+}
+
+legend {
+  font-weight: 600;
+  color: #45f3ff;
+  text-shadow: 0 0 6px #45f3ff;
+}
+
+/* ============
+   LABELS & INPUTS
+   ============ */
+label {
+  display: block;
+  margin: 10px 0 5px;
+  font-weight: 500;
+  color: #eee;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #555;
+  background: #3a374a;
+  color: #eee;
+  font-size: 0.95rem;
+  transition: 0.2s ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: #ff2770;
+  box-shadow: 0 0 12px #ff2770aa;
+  outline: none;
+  background: #2d2d39;
+}
+
+textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+/* ============
+   ROWS
+   ============ */
+.row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.row label {
+  flex: 1;
+}
+
+/* ============
+   MULTISELECT BOXES
+   ============ */
+.list {
+  border: 1px solid #444;
+  padding: 10px;
+  border-radius: 10px;
+  background: #3a374a;
+  color: #eee;
+  box-shadow: inset 0 0 10px #0005;
+}
+
+.list div,
+#segments .list,
+#subtracks .list {
+  padding: 12px;
+  background: #2d2d39;
+  border-radius: 10px;
+  border: 1px solid #555;
+  margin-top: 10px;
+  color: #ddd;
+  box-shadow: 0 0 10px #ff277025;
+}
+
+/* ============
+   BUTTONS
+   ============ */
+.btn {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid #ff2770aa;
+  background: #2d2d39;
+  color: #ff2770;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s ease;
+  box-shadow: 0 0 10px #ff277066;
+}
+
+.btn:hover {
+  background: #ff2770;
+  color: white;
+  box-shadow: 0 0 18px #ff2770cc;
+}
+
+.danger {
+  border-color: #d33;
+  color: #ff8a8a;
+  box-shadow: 0 0 10px #d338;
+}
+
+.danger:hover {
+  background: #d33;
+  color: white;
+  box-shadow: 0 0 18px #ff5555;
+}
+
+/* ============
+  SMALL TEXT
+============ */
+.small {
+  font-size: 0.85rem;
+  color: #bbb;
+}
+
+/* ============
+  HIDDEN
+============ */
+.hidden {
+  display: none;
+}
+
+/* ============
+    DEBUG OUTPUT
+=========== */
+.jsonout {
+  white-space: pre-wrap;
+  background: #111;
+  color: #45f3ff;
+  padding: 15px;
+  border-radius: 12px;
+  max-height: 350px;
+  overflow: auto;
+  margin-top: 15px;
+  font-size: 0.9rem;
+  box-shadow: inset 0 0 10px #45f3ff44;
+}
+
+/* ============
+  RESPONSIVE
+============ */
+@media (max-width: 720px) {
+  form#publishForm { padding: 14px; }
+  .row { flex-direction: column; }
+}

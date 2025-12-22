@@ -11,7 +11,8 @@ class FeedService:
         Uses http_helper.http_client for all server communications.
         """
         args = [search, filter_by, offset, limit]
-        res = http_client.send_request("GET_FEED", args, require_auth=True)
+        # Feed is public: don't require auth (allows anonymous browsing / infinite scroll)
+        res = http_client.send_request("GET_FEED", args, require_auth=False)
 
         # pass through error responses
         if isinstance(res, dict) and res.get("status") and str(res.get("status")).lower() not in ("ok", "true"):
@@ -35,7 +36,8 @@ class FeedService:
 
         # if requested, fetch user search results and append them as user-type feed items
         if search and filter_by in ("all", "user"):
-            users_res = http_client.send_request("SEARCH_USERS", [search, offset, limit], require_auth=True)
+            # user search should also work anonymously
+            users_res = http_client.send_request("SEARCH_USERS", [search, offset, limit], require_auth=False)
             u_list = []
             if isinstance(users_res, dict) and users_res.get("status") and str(users_res.get("status")).lower() not in ("ok", "true"):
                 # ignore user search errors (keep media results)

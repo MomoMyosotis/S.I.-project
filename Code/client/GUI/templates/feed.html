@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='feed_style.css') }}">
 </head>
 
-
 <body>
 <header>Feed</header>
 
@@ -25,150 +24,151 @@
 
 <div class="feed" id="feed"></div>
 <div class="loading" id="loading">Caricamento...</div>
-<!-- sentinel element for IntersectionObserver lazy loading -->
 <div id="feed-sentinel"></div>
 
 <div class="bottom-nav-box">
-  <a href="{{ url_for('home.homepage', form_type='profile') }}" class="nav-item">
-    <i class="fas fa-user"></i><span>Profile</span>
-  </a>
-  <a href="{{ url_for('home.homepage', form_type='feed') }}" class="nav-item">
-    <i class="fas fa-rss"></i><span>Feed</span>
-  </a>
-  <a href="{{ url_for('home.homepage', form_type='libraries') }}" class="nav-item">
-    <i class="fas fa-book"></i><span>Libraries</span>
-  </a>
+  <a href="{{ url_for('home.homepage', form_type='profile') }}" class="nav-item">Profile</a>
+  <a href="{{ url_for('home.homepage', form_type='feed') }}" class="nav-item">Feed</a>
+  <a href="{{ url_for('home.homepage', form_type='libraries') }}" class="nav-item">Libraries</a>
 </div>
-
 
 <script>
   let currentIndex = 0;
   const batchSize = 10;
+
   let currentFilter = 'all';
   let currentSearch = '';
   let isLoading = false;
   let endReached = false;
+  let loadToken = 0;
 
   const feedEl = document.getElementById('feed');
   const loadingEl = document.getElementById('loading');
   const sentinel = document.getElementById('feed-sentinel');
 
+  let observer;
+
+  const mediaIcons = {
+    song: '/static/images/song.png',
+    document: '/static/images/document.png',
+    video: '/static/images/video.png',
+    default: '/static/images/unknown.jpg'
+  };
+
+  const el = (tag, className, text) => {
+    const e = document.createElement(tag);
+    if (className) e.className = className;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  };
+
   function getMediaIcon(type) {
-    switch (type) {
-      case 'song':
-        return '/static/images/song.png';
-      case 'document':
-        return '/static/images/document.png';
-      case 'video':
-        return '/static/images/video.png';
-      default:
-        return '/static/images/unknown.jpg';
+    return mediaIcons[type] || mediaIcons.default;
+  }
+
+  function buildUserItem(item) {
+    const div = el('div', 'media-item');
+
+    const img = el('img', 'media-icon user-icon');
+    img.src = item.thumbnail || item.profile_picture_url || '/static/images/no pp.jpg';
+    img.alt = item.username || 'user';
+
+    const info = el('div', 'media-info');
+
+    const h3 = el('h3');
+    const a = el('a');
+    const userId = item.username || item.id || '';
+    a.href = `/home/?form_type=profile&username=${encodeURIComponent(userId)}`;
+    a.textContent = item.title || item.username || userId;
+    h3.appendChild(a);
+
+    const bio = el('p', 'user-bio', item.description || item.bio || '');
+
+    info.append(h3, bio);
+    div.append(img, info);
+
+    return div;
+  }
+
+  function buildMediaItem(item) {
+    const div = el('div', 'media-item');
+
+    const img = el('img', 'media-icon');
+    img.src = getMediaIcon(item.type);
+    img.alt = item.type || '';
+
+    const info = el('div', 'media-info');
+
+    const h3 = el('h3');
+    const a = el('a');
+    const mediaId = item.id || item.media_id || item._id || item.link || '';
+    a.href = `/show?media_id=${encodeURIComponent(mediaId)}`;
+    a.target = '_blank';
+    a.textContent = item.title || 'Untitled';
+    h3.appendChild(a);
+
+    const by = el('p');
+    if (item.username) {
+      const u = el('a', null, item.username);
+      u.href = `/home/?form_type=profile&username=${encodeURIComponent(item.username)}`;
+      by.append('By: ', u);
+    } else {
+      by.textContent = 'By: Sconosciuto';
     }
+
+    const tags = el(
+      'p',
+      null,
+      'Tag: ' + (Array.isArray(item.tags) ? item.tags.join(', ') : '-')
+    );
+
+    info.append(h3, by, tags);
+    div.append(img, info);
+
+    return div;
   }
 
   async function loadMore() {
     if (isLoading || endReached) return;
+
     isLoading = true;
-    loadingEl.textContent = "Caricamento...";
-    
+    const token = ++loadToken;
+    loadingEl.textContent = 'Caricamento...';
+
     try {
-      const res = await fetch(`/feed/data?offset=${currentIndex}&limit=${batchSize}&filter=${currentFilter}&search=${encodeURIComponent(currentSearch)}`);
+      const res = await fetch(
+        `/feed/data?offset=${currentIndex}&limit=${batchSize}&filter=${currentFilter}&search=${encodeURIComponent(currentSearch)}`
+      );
       const data = await res.json();
 
-      if (res.ok) {
-        if (currentIndex === 0) feedEl.innerHTML = '';
-        if (!data || data.length === 0) {
-          loadingEl.textContent = "Fine dei risultati";
-          endReached = true;
-          return;
-        }
-
-        data.forEach(item => {
-          const div = document.createElement('div');
-          div.className = 'media-item';
-
-          // USER item special-case: show profile picture, username and bio snippet
-          if (item.type === 'user') {
-            const img = document.createElement('img');
-            img.className = 'media-icon user-icon';
-            img.src = item.thumbnail || (item.profile_picture_url || '/static/images/no pp.jpg');
-            img.alt = item.username || 'user';
-
-            const info = document.createElement('div');
-            info.className = 'media-info';
-
-            const h3 = document.createElement('h3');
-            const a = document.createElement('a');
-            const userIdentifier = item.username || item.id || '';
-            a.href = `/home/?form_type=profile&username=${encodeURIComponent(userIdentifier)}`;
-            a.textContent = item.title || item.username || userIdentifier;
-            h3.appendChild(a);
-
-            const bioP = document.createElement('p');
-            bioP.className = 'user-bio';
-            bioP.textContent = item.description || item.bio || '';
-
-            info.appendChild(h3);
-            info.appendChild(bioP);
-
-            div.appendChild(img);
-            div.appendChild(info);
-            feedEl.appendChild(div);
-            return;
-          }
-
-          // non-user media rendering (unchanged)
-          const img = document.createElement('img');
-          img.className = 'media-icon';
-          img.src = getMediaIcon(item.type);
-          img.alt = item.type || '';
-
-          const info = document.createElement('div');
-          info.className = 'media-info';
-
-          const h3 = document.createElement('h3');
-          const a = document.createElement('a');
-          // link to the detailed show page; prefer an id field, fall back to link
-          const mediaId = item.id || item.media_id || item._id || item.link || '';
-          a.href = `/show?media_id=${encodeURIComponent(mediaId)}`;
-          a.target = '_blank';
-          a.textContent = item.title || 'Untitled';
-          h3.appendChild(a);
-
-          const byP = document.createElement('p');
-          const username = item.username;
-          if (username) {
-            const profileLink = document.createElement('a');
-            profileLink.href = `/home/?form_type=profile&username=${encodeURIComponent(username)}`;
-            profileLink.textContent = username;
-            byP.appendChild(document.createTextNode('By: '));
-            byP.appendChild(profileLink);
-          } else {
-            byP.textContent = 'By: Sconosciuto';
-          }
-
-          const tagsP = document.createElement('p');
-          tagsP.textContent = 'Tag: ' + (Array.isArray(item.tags) ? item.tags.join(', ') : '-');
-
-          info.appendChild(h3);
-          info.appendChild(byP);
-          info.appendChild(tagsP);
-
-          div.appendChild(img);
-          div.appendChild(info);
-
-          feedEl.appendChild(div);
-        });
-
-
-        currentIndex += data.length;
-        loadingEl.textContent = "";
-      } else {
-        loadingEl.textContent = "Errore nel caricamento";
+      if (!res.ok) {
+        loadingEl.textContent = 'Errore nel caricamento';
+        return;
       }
-    } catch (err) {
-      console.error(err);
-      loadingEl.textContent = "Errore di rete";
+
+      if (token !== loadToken) return;
+
+      if (currentIndex === 0) feedEl.innerHTML = '';
+
+      if (!data || data.length === 0) {
+        endReached = true;
+        loadingEl.textContent = 'Fine dei risultati';
+        observer.unobserve(sentinel);
+        return;
+      }
+
+      data.forEach(item => {
+        const node = item.type === 'user'
+          ? buildUserItem(item)
+          : buildMediaItem(item);
+        feedEl.appendChild(node);
+      });
+
+      currentIndex += data.length;
+      loadingEl.textContent = '';
+    } catch (e) {
+      console.error(e);
+      loadingEl.textContent = 'Errore di rete';
     } finally {
       isLoading = false;
     }
@@ -179,23 +179,20 @@
     currentFilter = document.getElementById('filter').value;
     currentIndex = 0;
     endReached = false;
+    loadingEl.textContent = '';
+    observer.observe(sentinel);
     loadMore();
   }
 
-  // Initial load
-  loadMore();
-
-  // IntersectionObserver setup for lazy loading
-  const observer = new IntersectionObserver((entries) => {
-    if (entries[0].isIntersecting) {
-      loadMore();
-    }
+  observer = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) loadMore();
   }, {
-    rootMargin: '100px',
+    rootMargin: '200px',
+    threshold: 0.01
   });
 
   observer.observe(sentinel);
+  loadMore();
 </script>
-
 </body>
 </html>

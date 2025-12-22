@@ -154,7 +154,8 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
         if full:
             user_obj = user_services._build_user_obj(full)
 
-    if user_obj is None and command not in ["login", "register", "recover", "assistance"]:
+    # allow some public commands without authentication (feed browsing, user search, etc.)
+    if user_obj is None and command not in ["login", "register", "recover", "assistance", "get_feed", "search_users"]:
         return json.dumps({"error_msg": "User is not logged in. Please log in to proceed.", "status": "error"}), None, None, "ERROR"
 
     func = COMMAND_MAP.get(command)

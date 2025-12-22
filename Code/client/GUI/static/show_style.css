@@ -114,21 +114,49 @@ video, iframe{
   transform:translateY(-2px);
 }
 
-/* details section */
-.media-details{
-  padding:16px;
-  background:var(--glass);
-  border-radius:12px;
-  box-shadow:0 6px 22px rgba(0,0,0,0.45);
+/* DETAILS */
+.meta-section{
+  margin-top:26px;
+  padding-top:14px;
+  border-top:1px solid rgba(255,255,255,0.06);
 }
-.media-details h2{
-  margin:0 0 10px 0;
+
+.meta-section h3{
+  margin:0 0 12px 0;
+  font-size:1.05rem;
   color:var(--accent);
+  text-transform:uppercase;
+  letter-spacing:.06em;
 }
-.media-details p{
-  margin:6px 0;
-  color:var(--muted);
+
+.meta-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:14px;
 }
+
+.meta-item{
+  background:rgba(255,255,255,0.03);
+  padding:12px 14px;
+  border-radius:10px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+
+.meta-key{
+  font-size:.75rem;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:var(--accent-2);
+  margin-bottom:6px;
+}
+
+.meta-value{
+  font-size:.95rem;
+  color:#ddd;
+  line-height:1.4;
+  word-break:break-word;
+}
+
 
 /* download button */
 .download-area{
@@ -165,13 +193,28 @@ video, iframe{
 #comments-list .comment{
   padding:10px 0;
   border-bottom:1px solid rgba(255,255,255,0.04);
+  /* make each comment a bit separated for nested layout */
 }
-#comments-list .comment strong{
-  color:var(--accent-2);
+#comments-list .comment .children{
+  margin-left:36px;
+  padding-left:8px;
+  border-left:1px solid rgba(255,255,255,0.03);
+  margin-top:8px;
 }
-#comments-list .comment small{
-  color:var(--muted);
-  margin-left:4px;
+
+/* make avatar smaller for nested comments */
+#comments-list .comment img{
+  width:32px;
+  height:32px;
+  border-radius:50%;
+  margin-right:8px;
+  object-fit:cover;
+}
+
+/* reduce gap for deeply nested items */
+#comments-list .comment .comment{
+  padding-top:6px;
+  padding-bottom:6px;
 }
 
 /* comment input */
@@ -237,3 +280,90 @@ video, iframe{
   font-weight: 600;
 }
 #media-uploader a:hover { text-decoration: underline; }
+
+/* Modal / edit form styling (match profile_update look & feel) */
+.modal-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 9998;
+  display: none;
+}
+
+.form-modal {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(.98);
+  width: 92%;
+  max-width: 760px;
+  z-index: 9999;
+  transition: transform .12s ease, opacity .12s ease;
+  opacity: 0;
+  pointer-events: none;
+  border-radius: 12px;
+}
+
+/* panel inside modal to resemble profile_update.form-wrap inner layer */
+.form-modal .modal-panel{
+  border-radius: 10px;
+  padding: 18px;
+  background: #2d2d39;
+  border: 8px solid #25252b;
+  color: #eee;
+  box-shadow: 0 15px 50px rgba(0,0,0,0.6);
+  max-height: 90vh;
+  overflow: auto;
+}
+
+/* header */
+.form-modal h3{
+  margin: 0 0 12px 0;
+  color: #ff2770;
+  text-shadow: 0 0 8px #ff2770aa;
+}
+
+/* arrange grid inputs inside modal */
+.form-modal .modal-grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* buttons */
+.form-modal .modal-actions{
+  margin-top: 12px;
+  text-align: right;
+}
+.form-modal button{
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+.form-modal button#edit-save{
+  background: #ff2770;
+  color: #fff;
+  box-shadow: 0 0 15px #ff2770aa;
+}
+.form-modal button#edit-cancel{
+  background: #3a374a;
+  color: #eee;
+}
+
+/* visible state */
+.form-modal.open{
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* slightly different style for confirmation dialog (compact) */
+.form-modal.confirmation .modal-panel{
+  max-width: 420px;
+  padding: 14px;
+}
+.form-modal.confirmation .modal-actions button#confirmDelete{
+  background: #c33;
+  color: #fff;
+}
