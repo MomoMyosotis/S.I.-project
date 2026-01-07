@@ -1,6 +1,7 @@
 # ...existing code...
 from typing import Dict, Any, List, Optional
 from . import connection
+import json
 import hashlib, time
 import psycopg2.extras
 
@@ -179,9 +180,19 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         with conn.cursor() as cur:
 
             # --- BASE MEDIA ---
+            # Ensure linked_media is stored as JSON/text (avoid passing raw dict/list to DB driver)
+            linked_media_val = data.get("linked_media")
+            if isinstance(linked_media_val, (dict, list)):
+                try:
+                    linked_media_serialized = json.dumps(linked_media_val)
+                except Exception:
+                    linked_media_serialized = str(linked_media_val)
+            else:
+                linked_media_serialized = linked_media_val
+
             cur.execute("""
                 INSERT INTO media (
-                    type, user_id, title, year, description, link, duration,
+                    type, user_id, title, year, description, linked_media, duration,
                     recording_date, location, additional_info, stored_at,
                     is_author, is_performer
                 ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
@@ -192,7 +203,7 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 data.get("title"),
                 data.get("year"),
                 data.get("description"),
-                data.get("link"),
+                linked_media_serialized,
                 data.get("duration"),
                 data.get("recording_date"),
                 data.get("location"),
@@ -209,41 +220,96 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 conn.commit()
                 return None
 
+            # Helper to normalize incoming relation items (ids or names or comma separated strings)
+            def _normalize_ids(table_name, raw_items):
+                ids = []
+                seen = set()
+                if raw_items is None:
+                    return ids
+                # if single string like 'alt,indie' or 'alt' handle
+                if isinstance(raw_items, str):
+                    parts = [p.strip() for p in raw_items.split(",") if p.strip()]
+                elif isinstance(raw_items, (list, tuple)):
+                    parts = list(raw_items)
+                else:
+                    parts = [raw_items]
+
+                for it in parts:
+                    if it is None:
+                        continue
+                    try:
+                        if isinstance(it, int):
+                            nid = int(it)
+                        elif isinstance(it, dict):
+                            if it.get("id"):
+                                nid = int(it.get("id"))
+                            else:
+                                name = it.get("name") or it.get("username") or it.get("performer")
+                                if not name:
+                                    continue
+                                nid = create_dict_entry(table_name, str(name).strip())
+                        else:
+                            # string
+                            name = str(it).strip()
+                            if not name:
+                                continue
+                            nid = create_dict_entry(table_name, name)
+                        if nid and nid not in seen:
+                            ids.append(nid)
+                            seen.add(nid)
+                    except Exception as e:
+                        debug(f"[DB][create_media_db] normalization failed for table={table_name} item={it}: {e}")
+                return ids
+
             # --- AUTHORS ---
-            for author_id in data.get("authors", []):
+            for author_id in _normalize_ids("authors", data.get("authors", [])):
+                # avoid inserting duplicate relations without relying on a unique constraint
                 cur.execute("""
                     INSERT INTO media_authors (media_id, author_id)
-                    VALUES (%s,%s)
-                    ON CONFLICT DO NOTHING;
-                """, (media_id, author_id))
+                    SELECT %s, %s
+                    WHERE NOT EXISTS (SELECT 1 FROM media_authors WHERE media_id=%s AND author_id=%s);
+                    """, (media_id, author_id, media_id, author_id))
                 debug(f"[DB][AUTHOR] linked {author_id}")
 
             # --- PERFORMERS ---
-            for performer_id in data.get("performers", []):
+            for performer_id in _normalize_ids("performers", data.get("performers", [])):
                 cur.execute("""
                     INSERT INTO media_performances (media_id, performer_id)
-                    VALUES (%s,%s)
-                    ON CONFLICT DO NOTHING;
-                """, (media_id, performer_id))
+                    SELECT %s, %s
+                    WHERE NOT EXISTS (SELECT 1 FROM media_performances WHERE media_id=%s AND performer_id=%s);
+                    """, (media_id, performer_id, media_id, performer_id))
                 debug(f"[DB][PERF] linked {performer_id}")
 
             # --- GENRES ---
-            for genre_id in data.get("genres", []):
+            for genre_id in _normalize_ids("genres", data.get("genres", [])):
                 cur.execute("""
                     INSERT INTO media_genres (media_id, genre_id)
-                    VALUES (%s,%s)
-                    ON CONFLICT DO NOTHING;
-                """, (media_id, genre_id))
+                    SELECT %s, %s
+                    WHERE NOT EXISTS (SELECT 1 FROM media_genres WHERE media_id=%s AND genre_id=%s);
+                    """, (media_id, genre_id, media_id, genre_id))
                 debug(f"[DB][GENRE] linked {genre_id}")
 
             # --- REFERENCES ---
-            for ref_id in data.get("references", []):
-                cur.execute("""
-                    INSERT INTO media_references (active_id, passive_id)
-                    VALUES (%s,%s)
-                    ON CONFLICT DO NOTHING;
-                """, (media_id, ref_id))
-                debug(f"[DB][REF] linked {ref_id}")
+            refs = data.get("references", [])
+            if isinstance(refs, str):
+                refs = [r.strip() for r in refs.split(",") if r.strip()]
+            elif not isinstance(refs, (list, tuple)):
+                refs = [refs]
+            seen_refs = set()
+            for ref in refs:
+                try:
+                    refid = int(ref)
+                    if refid in seen_refs:
+                        continue
+                    cur.execute("""
+                        INSERT INTO media_references (active_id, passive_id)
+                        VALUES (%s,%s)
+                        ON CONFLICT DO NOTHING;
+                    """, (media_id, refid))
+                    debug(f"[DB][REF] linked {refid}")
+                    seen_refs.add(refid)
+                except Exception as e:
+                    debug(f"[DB][REF] skip invalid reference {ref}: {e}")
 
             # --- DOCUMENTI (solo se type=document) ---
             if data.get("type") == "document":
@@ -315,22 +381,202 @@ def fetch_all_media_db(
     try:
         conn = connection.connect()
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            query = "SELECT * FROM media WHERE TRUE"
+            query = ("SELECT m.*, COALESCE(array_agg(g.name) FILTER (WHERE g.name IS NOT NULL), ARRAY[]::text[]) AS genres "
+                     "FROM media m "
+                     "LEFT JOIN media_genres mg ON mg.media_id = m.id "
+                     "LEFT JOIN genres g ON g.id = mg.genre_id "
+                     "WHERE TRUE")
             params = []
 
             if media_type:
-                query += " AND type=%s"
+                query += " AND m.type=%s"
                 params.append(media_type)
 
-            if search:
-                query += " AND (title ILIKE %s OR description ILIKE %s)"
-                params.extend([f"%{search}%", f"%{search}%"])
-
+            # Apply advanced search/filter logic
             if filter_by and filter_by != "all":
-                query += " AND type=%s"
+                fb = filter_by.lower()
+            else:
+                fb = (filter_by or "all").lower()
+
+            # helper to split multi-terms (comma-separated)
+            def split_terms(s):
+                if not s or not isinstance(s, str):
+                    return []
+                parts = [p.strip() for p in s.split(",") if p.strip()]
+                return parts if parts else [s]
+
+            if fb == "title" or fb == "name":
+                query += " AND m.title ILIKE %s"
+                params.append(f"%{search}%")
+
+            elif fb == "tag":
+                fb = "genres" # for coherence with db
+                # match genre names or IDs (accept comma-separated list)
+                terms = split_terms(search)
+                sub_clauses = []
+                for t in terms:
+                    if t.isdigit():
+                        sub_clauses.append("EXISTS(SELECT 1 FROM media_genres mg JOIN genres g ON g.id=mg.genre_id WHERE mg.media_id = m.id AND g.id = %s)")
+                        params.append(int(t))
+                    else:
+                        sub_clauses.append("EXISTS(SELECT 1 FROM media_genres mg JOIN genres g ON g.id=mg.genre_id WHERE mg.media_id = m.id AND g.name ILIKE %s)")
+                        params.append(f"%{t}%")
+                if sub_clauses:
+                    query += " AND (" + " OR ".join(sub_clauses) + ")"
+
+            elif fb == "date":
+                import re, datetime
+                s = str(search or "").strip()
+                # accept YEAR, YEAR-MONTH or YEAR-MONTH-DAY first
+                m = re.match(r"^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$", s)
+                if m:
+                    y = int(m.group(1))
+                    mm = m.group(2)
+                    dd = m.group(3)
+                    if mm is None:
+                        start = datetime.datetime(y,1,1)
+                        end = datetime.datetime(y+1,1,1)
+                        extra_match = str(y)
+                        query += " AND ((m.created_at >= %s AND m.created_at < %s) OR to_char(m.created_at,'YYYY') = %s)"
+                        params.extend([start, end, extra_match])
+                    elif dd is None:
+                        month = int(mm)
+                        if month == 12:
+                            start = datetime.datetime(y,month,1)
+                            end = datetime.datetime(y+1,1,1)
+                        else:
+                            start = datetime.datetime(y,month,1)
+                            end = datetime.datetime(y,month+1,1)
+                        extra_match = f"{y:04d}-{month:02d}"
+                        query += " AND ((m.created_at >= %s AND m.created_at < %s) OR to_char(m.created_at,'YYYY-MM') = %s)"
+                        params.extend([start, end, extra_match])
+                    else:
+                        start = datetime.datetime(y,int(mm),int(dd))
+                        end = start + datetime.timedelta(days=1)
+                        extra_match = f"{y:04d}-{int(mm):02d}-{int(dd):02d}"
+                        query += " AND ((m.created_at >= %s AND m.created_at < %s) OR to_char(m.created_at,'YYYY-MM-DD') = %s)"
+                        params.extend([start, end, extra_match])
+                    debug(f"[DEBUG][fetch_all_media_db] date filter range {start} - {end} (search={search})")
+                else:
+                    # try several ISO / common timestamp formats (handle trailing Z, T, microseconds etc.)
+                    parsed = None
+                    # try robust fromisoformat with minor normalization
+                    try:
+                        s2 = s.replace('T', ' ').replace('Z', '+00:00')
+                        dt = datetime.datetime.fromisoformat(s2)
+                        # if tz-aware, convert to UTC naive for comparison
+                        if dt.tzinfo:
+                            try:
+                                dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+                            except Exception:
+                                dt = dt.replace(tzinfo=None)
+                        parsed = dt
+                    except Exception:
+                        parsed = None
+                    # fallback to strptime variants
+                    if parsed is None:
+                        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                            try:
+                                dt = datetime.datetime.strptime(s, fmt)
+                                parsed = dt
+                                break
+                            except Exception:
+                                continue
+                    if parsed:
+                        dt = parsed
+                        if ":" not in s and "T" not in s:
+                            start = datetime.datetime(dt.year, dt.month, dt.day)
+                            end = start + datetime.timedelta(days=1)
+                            query += " AND (m.created_at >= %s AND m.created_at < %s)"
+                            params.extend([start, end])
+                        else:
+                            start = dt
+                            end = start + datetime.timedelta(seconds=1)
+                            query += " AND (m.created_at >= %s AND m.created_at < %s)"
+                            params.extend([start, end])
+                        debug(f"[DEBUG][fetch_all_media_db] parsed timestamp match {start} - {end} (search={search})")
+                    else:
+                        # fallback to title/description match if date parsing fails
+                        query += " AND (m.title ILIKE %s OR m.description ILIKE %s)"
+                        params.extend([f"%{search}%", f"%{search}%"])
+            elif fb == "publisher":
+                # match uploader username or id
+                if str(search or "").isdigit():
+                    query += " AND m.user_id = %s"
+                    params.append(int(search))
+                else:
+                    query += " AND EXISTS(SELECT 1 FROM users u WHERE u.id = m.user_id AND u.username ILIKE %s)"
+                    params.append(f"%{search}%")
+
+            elif fb == "author":
+                # match authors by name or user_id, allow comma-separated list
+                # require ALL provided author terms to be present (match both authors)
+                terms = split_terms(search)
+                sub_clauses = []
+                for t in terms:
+                    if t.isdigit():
+                        sub_clauses.append("EXISTS(SELECT 1 FROM media_authors ma JOIN authors a ON a.id=ma.author_id WHERE ma.media_id = m.id AND a.user_id = %s)")
+                        params.append(int(t))
+                    else:
+                        sub_clauses.append("EXISTS(SELECT 1 FROM media_authors ma JOIN authors a ON a.id=ma.author_id WHERE ma.media_id = m.id AND a.name ILIKE %s)")
+                        params.append(f"%{t}%")
+                if sub_clauses:
+                    query += " AND (" + " AND ".join(sub_clauses) + ")"
+
+            elif fb == "performer":
+                # match performers by name or user id
+                # require ALL provided performer terms to be present (match multiple performers)
+                terms = split_terms(search)
+                sub_clauses = []
+                for t in terms:
+                    if t.isdigit():
+                        sub_clauses.append("EXISTS(SELECT 1 FROM media_performances mp JOIN performers p ON p.id=mp.performer_id WHERE mp.media_id = m.id AND p.user_id = %s)")
+                        params.append(int(t))
+                    else:
+                        sub_clauses.append("EXISTS(SELECT 1 FROM media_performances mp JOIN performers p ON p.id=mp.performer_id WHERE mp.media_id = m.id AND p.name ILIKE %s)")
+                        params.append(f"%{t}%")
+                if sub_clauses:
+                    query += " AND (" + " AND ".join(sub_clauses) + ")"
+
+            elif fb == "instrument":
+                # match instruments via performance_instruments -> instruments
+                terms = split_terms(search)
+                sub_clauses = []
+                for t in terms:
+                    sub_clauses.append("EXISTS(SELECT 1 FROM media_performances mp JOIN performance_instruments pi ON pi.performance_id = mp.id JOIN instruments i ON i.id = pi.instrument_id WHERE mp.media_id = m.id AND i.name ILIKE %s)")
+                    params.append(f"%{t}%")
+                if sub_clauses:
+                    query += " AND (" + " OR ".join(sub_clauses) + ")"
+
+            elif fb == "file":
+                query += " AND (m.stored_at ILIKE %s)"
+                params.extend([f"%{search}%"])
+
+            else:
+                # default: 'all' — broad match across common fields and relations
+                or_parts = ["m.title ILIKE %s", "m.description ILIKE %s", "m.stored_at ILIKE %s", "EXISTS(SELECT 1 FROM users u WHERE u.id = m.user_id AND u.username ILIKE %s)"]
+                params.extend([f"%{search}%"] * 4)
+                # genres
+                or_parts.append("EXISTS(SELECT 1 FROM media_genres mg JOIN genres g ON g.id=mg.genre_id WHERE mg.media_id = m.id AND g.name ILIKE %s)")
+                params.append(f"%{search}%")
+                # authors
+                or_parts.append("EXISTS(SELECT 1 FROM media_authors ma JOIN authors a ON a.id=ma.author_id WHERE ma.media_id = m.id AND a.name ILIKE %s)")
+                params.append(f"%{search}%")
+                # performers
+                or_parts.append("EXISTS(SELECT 1 FROM media_performances mp JOIN performers p ON p.id=mp.performer_id WHERE mp.media_id = m.id AND p.name ILIKE %s)")
+                params.append(f"%{search}%")
+                # instruments
+                or_parts.append("EXISTS(SELECT 1 FROM media_performances mp JOIN performance_instruments pi ON pi.performance_id = mp.id JOIN instruments i ON i.id = pi.instrument_id WHERE mp.media_id = m.id AND i.name ILIKE %s)")
+                params.append(f"%{search}%")
+
+                query += " AND (" + " OR ".join(or_parts) + ")"
+
+            # if filter_by selected a type, also ensure type matches
+            if filter_by and filter_by != "all" and filter_by in ("audio","song","video","document","concert"):
+                query += " AND m.type=%s"
                 params.append(filter_by)
 
-            query += " ORDER BY created_at DESC OFFSET %s LIMIT %s;"
+            query += " GROUP BY m.id ORDER BY m.created_at DESC OFFSET %s LIMIT %s;"
             params.extend([offset, limit])
 
             cur.execute(query, tuple(params))
@@ -351,6 +597,13 @@ def fetch_all_media_db(
 def update_media_db(media_id: int, updates: Dict[str, Any]) -> bool:
     conn = None
     try:
+        # Ensure linked_media is serialized when passing to DB
+        if 'linked_media' in updates and isinstance(updates['linked_media'], (dict, list)):
+            try:
+                updates['linked_media'] = json.dumps(updates['linked_media'])
+            except Exception:
+                updates['linked_media'] = str(updates['linked_media'])
+
         conn = connection.connect()
         with conn.cursor() as cur:
             set_clause = ", ".join(f"{k}=%s" for k in updates.keys())
@@ -582,6 +835,59 @@ def fetch_dict_entry(table: str, name: str) -> Optional[Dict[str, Any]]:
 def fetch_all_dict_entries(table: str) -> List[Dict[str, Any]]:
     return fetch_all(f"SELECT * FROM {table} ORDER BY name")
 
+# ---------------------
+# PERFORMER helpers
+# ---------------------
+
+def get_performer_by_user_id(user_id: int) -> Optional[Dict[str, Any]]:
+    """Return performer row for a given user_id if exists."""
+    return fetch_one("SELECT id, name, user_id FROM performers WHERE user_id=%s", (user_id,))
+
+
+def create_performer_with_user(user_id: int, name: str) -> Optional[int]:
+    """Try to create a performer row for a given user. If a performer with the
+    same name exists return it; otherwise insert name and user_id and return id."""
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            try:
+                cur.execute("INSERT INTO performers (name, user_id) VALUES (%s,%s) RETURNING id", (name, user_id))
+                new = cur.fetchone()
+                conn.commit()
+                return new[0] if new else None
+            except Exception:
+                # possibly name already exists -> try to fetch by name
+                cur.execute("SELECT id FROM performers WHERE name=%s", (name,))
+                row = cur.fetchone()
+                if row:
+                    return row[0]
+                return None
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        debug(f"[DB ERROR create_performer_with_user]: {e}")
+        return None
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+
+def get_or_create_performer_for_user(user_id: int, username: str) -> Optional[int]:
+    """Ensure a performer entry exists for a given user_id and return performer id."""
+    if not user_id:
+        return None
+    existing = get_performer_by_user_id(user_id)
+    if existing and existing.get("id"):
+        return existing["id"]
+    # fallback try insert using username as name
+    try:
+        pid = create_performer_with_user(user_id, username)
+        return pid
+    except Exception as e:
+        debug(f"[DB][performer] failed to create performer for user {user_id}: {e}")
+        return None
+
 def update_dict_entry(table: str, entry_id: int, new_name: str) -> bool:
     return execute(f"UPDATE {table} SET name=%s WHERE id=%s", (new_name, entry_id))
 
@@ -638,7 +944,7 @@ def advanced_song_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def advanced_document_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
     base_query = """
-        SELECT m.id, m.title, m.year, m.description, m.link, d.format, d.pages, d.caption, d.media_id
+        SELECT m.id, m.title, m.year, m.description, m.linked_media, d.format, d.pages, d.caption, d.media_id
         FROM documents d
         JOIN media m ON d.media_id = m.id
         WHERE m.type = 'document'
@@ -656,7 +962,7 @@ def advanced_document_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]
 
 def advanced_video_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
     base_query = """
-        SELECT m.id, m.title, m.year, m.description, m.link,
+        SELECT m.id, m.title, m.year, m.description, m.linked_media,
                 v.duration, v.location, v.additional_info, v.director
         FROM videos v
         JOIN media m ON v.id = m.id
@@ -673,6 +979,16 @@ def advanced_video_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     if conditions: base_query += " AND " + " AND ".join(conditions)
     return fetch_all(base_query, tuple(params))
+
+def get_commented_medias_db(user_id: int) -> List[Dict[str, Any]]:
+    query = """
+        SELECT DISTINCT m.*
+        FROM media m
+        JOIN comments c ON c.media_id = m.id
+        WHERE c.user_id = %s
+        ORDER BY m.created_at DESC
+    """
+    return fetch_all(query, (user_id,))
 
 # =====================
 # FOLLOWERS

@@ -1,6 +1,8 @@
 # first line
 
 import os, uuid, shutil
+from server.db.db_crud import get_commented_medias_db
+from typing import List, Dict, Any
 
 STORAGE = "server/storage"
 
@@ -28,5 +30,15 @@ def delete_file(file_path: str) -> None:
         os.remove(file_path)
     except FileNotFoundError:
         pass
+
+def get_commented_medias(user_id: int):
+    print(f"[DEBUG][generic_utils.get_commented_medias] user_id is: {user_id}")
+    try:
+        medias = get_commented_medias_db(user_id)
+        print(f"[DEBUG][generic_utils.get_commented_medias] medias fetched successfully.\nmedias id: {[media['id'] for media in medias]}")
+        return medias
+    except Exception as e:
+        print(f"[ERROR][generic_utils.get_commented_medias] Exception: {e}")
+        return []
 
 # last line

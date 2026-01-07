@@ -56,9 +56,45 @@ def show_page():
     except Exception:
         server_user = None
 
+    # Build concise objects the template expects: logged, publisher, commenter
+    logged = None
+    if server_user and isinstance(server_user, dict):
+        try:
+            logged = {
+                "id": server_user.get("id"),
+                "username": server_user.get("username"),
+                "lvl": int(server_user.get("lvl")) if server_user.get("lvl") is not None else None
+            }
+        except Exception:
+            logged = {"id": server_user.get("id"), "username": server_user.get("username"), "lvl": server_user.get("lvl")}
+
+    publisher = None
+    if initial_media and isinstance(initial_media, dict):
+        pub_id = initial_media.get("uploader_id") or initial_media.get("user_id") or initial_media.get("owner_id") or None
+        pub_username = initial_media.get("username") or initial_media.get("uploader") or None
+        # try to fetch publisher profile when we have a username
+        if pub_username:
+            try:
+                pprof = ProfileService.get_profile(pub_username)
+                if isinstance(pprof, dict) and pprof.get("status") in (None, "OK") and isinstance(pprof.get("user"), dict):
+                    pu = pprof["user"]
+                    publisher = {"id": pu.get("id"), "username": pu.get("username"), "lvl": int(pu.get("lvl")) if pu.get("lvl") is not None else None}
+                else:
+                    publisher = {"id": pub_id, "username": pub_username, "lvl": None}
+            except Exception:
+                publisher = {"id": pub_id, "username": pub_username, "lvl": None}
+        elif pub_id:
+            publisher = {"id": pub_id, "username": None, "lvl": None}
+
+    # commenter not known at page render time; leave as null placeholder
+    commenter = None
+
     return render_template("show.html",
                         INITIAL_MEDIA=json.dumps(initial_media) if initial_media is not None else "null",
-                        SERVER_USER=json.dumps(server_user) if server_user is not None else "null")
+                        SERVER_USER=json.dumps(server_user) if server_user is not None else "null",
+                        SERVER_LOGGED=json.dumps(logged) if logged is not None else "null",
+                        SERVER_PUBLISHER=json.dumps(publisher) if publisher is not None else "null",
+                        SERVER_COMMENTER=json.dumps(commenter) if commenter is not None else "null")
 
 @show_bp.route("/data", methods=["GET"])
 def show_data():
@@ -318,6 +354,150 @@ def get_comments():
         if not isinstance(payload, list):
             payload = []
         current_app.logger.debug(f"[DEBUG] ShowService.get_comments normalized payload length: {len(payload)}")
+
+        # --- ENRICH: ensure top-level comments have commenter level when possible ---
+        try:
+            # collect all comments missing level by username / id (include replies)
+            to_query = {}  # key -> [comment_dicts]
+            for c in payload:
+                try:
+                    if not isinstance(c, dict):
+                        continue
+
+                    # already has level?
+                    lvl = None
+                    if isinstance(c.get('user'), dict):
+                        lvl = c['user'].get('lvl') if c['user'].get('lvl') is not None else c['user'].get('level')
+                    if lvl is None:
+                        lvl = c.get('lvl') if c.get('lvl') is not None else c.get('level')
+                    if lvl is not None:
+                        continue
+
+                    # extract identifier
+                    uname = None
+                    uid = None
+                    if isinstance(c.get('user'), dict):
+                        uname = c['user'].get('username') or uname
+                        uid = c['user'].get('id') or c['user'].get('user_id') or uid
+                    uname = uname or c.get('username') or c.get('author') or c.get('author_username')
+                    uid = uid or c.get('user_id') or c.get('author_id')
+
+                    if uname:
+                        to_query.setdefault(('username', str(uname)), []).append(c)
+                    elif uid:
+                        to_query.setdefault(('user_id', str(uid)), []).append(c)
+                except Exception:
+                    current_app.logger.debug("skipping malformed comment while preparing level enrichment", exc_info=True)
+
+            # query profile service for each distinct identifier and write back lvl
+            for (kind, ident), clist in to_query.items():
+                try:
+                    prof = ProfileService.get_profile(ident)
+                    if isinstance(prof, dict) and prof.get("status") in (None, "OK") and isinstance(prof.get("user"), dict):
+                        u = prof["user"]
+                        lvl_val = u.get("lvl") if u.get("lvl") is not None else u.get("level")
+                        if lvl_val is not None:
+                            try:
+                                lvl_val = int(lvl_val)
+                            except Exception:
+                                pass
+                            for c in clist:
+                                if 'user' not in c or not isinstance(c['user'], dict):
+                                    c['user'] = {}
+                                c['user']['lvl'] = lvl_val
+                                c['lvl'] = lvl_val
+                except Exception:
+                    current_app.logger.debug(f"failed to fetch profile for {ident}", exc_info=True)
+        except Exception:
+            current_app.logger.exception("failed to enrich comment levels")
+
+        # --- ANNOTATE: assign a 'type' to each comment based on commenter and media info ---
+        try:
+            # fetch media once and normalize
+            media_resp = ShowService.get_media(media_id)
+            candidate = None
+            if isinstance(media_resp, dict):
+                status = media_resp.get("status")
+                if status and str(status).lower() not in ("ok", "true", "accepted"):
+                    candidate = None
+                else:
+                    for k in ("response", "result", "media"):
+                        if isinstance(media_resp.get(k), dict):
+                            candidate = media_resp.get(k)
+                            break
+            if isinstance(candidate, dict):
+                media_obj = Media.from_server(candidate)
+                media_dict = media_obj.to_dict()
+            else:
+                media_dict = {}
+        except Exception:
+            media_dict = {}
+
+        def _get_commenter_info(c):
+            uid = None
+            lvl = None
+            if isinstance(c.get('user'), dict):
+                uid = c['user'].get('id') or c['user'].get('user_id')
+                lvl = c['user'].get('lvl') if c['user'].get('lvl') is not None else c['user'].get('level')
+            uid = uid or c.get('user_id') or c.get('author_id')
+            if lvl is None:
+                lvl = c.get('lvl') if c.get('lvl') is not None else c.get('level')
+            try:
+                if lvl is not None:
+                    lvl = int(lvl)
+            except Exception:
+                pass
+            return (str(uid) if uid is not None else None, lvl)
+
+        # collect potential artist ids from common keys
+        artist_ids = set()
+        for key in ('authors', 'author_ids', 'author', 'performers', 'interpreters', 'interpreter'):
+            val = media_dict.get(key)
+            if not val:
+                continue
+            if isinstance(val, list):
+                for v in val:
+                    if isinstance(v, dict):
+                        vid = v.get('id') or v.get('user_id') or v.get('author_id')
+                        if vid is not None:
+                            artist_ids.add(str(vid))
+                    else:
+                        artist_ids.add(str(v))
+            else:
+                artist_ids.add(str(val))
+
+        publisher_id = media_dict.get('uploader_id') or media_dict.get('user_id') or media_dict.get('owner_id') or media_dict.get('publisher_id')
+        publisher_id = str(publisher_id) if publisher_id is not None else None
+
+        for c in payload:
+            try:
+                commenter_id, commenter_lvl = _get_commenter_info(c)
+                ctype = None
+                # 1. publisher
+                if commenter_id and publisher_id and commenter_id == publisher_id:
+                    ctype = 'publisher'
+                # 2. admin (levels 0 or 1)
+                elif commenter_lvl in (0,1):
+                    ctype = 'admin'
+                # 3. mod
+                elif commenter_lvl == 2:
+                    ctype = 'mod'
+                # 4. artist
+                elif commenter_id and commenter_id in artist_ids:
+                    ctype = 'artist'
+                # 5. regular lvl 4
+                elif commenter_lvl == 4:
+                    ctype = 'regular'
+                # 6. lvl 3 but not publisher -> regular
+                elif commenter_lvl == 3 and (not commenter_id or commenter_id != publisher_id):
+                    ctype = 'regular'
+                else:
+                    ctype = 'regular'
+                c['type'] = ctype
+            except Exception:
+                # be conservative: do not fail comment listing on errors
+                continue
+
         return jsonify(payload)
     elif isinstance(res, list):
         current_app.logger.debug(f"[DEBUG] ShowService.get_comments returned list length: {len(res)}")
@@ -325,21 +505,36 @@ def get_comments():
     current_app.logger.debug("[DEBUG] ShowService.get_comments returned unexpected shape; returning empty list")
     return jsonify([])
 
-@show_bp.route("/comment/report", methods=["POST"])
-def report_comment():
+@show_bp.route('/comment/delete', methods=['POST'])
+def delete_comment():
     if http_client.token is None:
-        http_client.token = session.get("session_token")
-
+        http_client.token = session.get('session_token')
     data = request.get_json(silent=True) or {}
-    comment_id = data.get("comment_id")
-    reason = data.get("reason", "")
+    comment_id = data.get('comment_id')
     if not comment_id:
-        return jsonify({"status":"ERROR","error_msg":"missing comment_id"}), 400
+        return jsonify({'status':'ERROR','error_msg':'missing comment_id'}), 400
+    res = ShowService.delete_comment(comment_id)
+    current_app.logger.debug(f"[DEBUG] ShowService.delete_comment returned: {res!r}")
+    if isinstance(res, dict) and res.get('status') in (None, 'OK'):
+        return jsonify({'status':'OK'})
+    err = res.get('error_msg') if isinstance(res, dict) else 'Backend error'
+    return jsonify({'status':'ERROR','error_msg':err}), 400
 
-    res = ShowService.report_comment(comment_id, reason)
-    if isinstance(res, dict) and res.get("status") in (None, "OK"):
-        return jsonify({"status":"OK"})
-    return jsonify({"status":"ERROR","error_msg": res.get("error_msg", "Unknown error")}), 400
+@show_bp.route('/comment/edit', methods=['POST'])
+def edit_comment():
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+    data = request.get_json(silent=True) or {}
+    comment_id = data.get('comment_id')
+    new_text = (data.get('new_text') or data.get('text') or '').strip()
+    if not comment_id or not new_text:
+        return jsonify({'status':'ERROR','error_msg':'missing comment_id or text'}), 400
+    res = ShowService.edit_comment(comment_id, new_text)
+    current_app.logger.debug(f"[DEBUG] ShowService.edit_comment returned: {res!r}")
+    if isinstance(res, dict) and res.get('status') in (None, 'OK'):
+        return jsonify({'status':'OK'})
+    err = res.get('error_msg') if isinstance(res, dict) else 'Backend error'
+    return jsonify({'status':'ERROR','error_msg':err}), 400
 
 @show_bp.route("/open_with", methods=["POST"])
 def open_with():

@@ -90,7 +90,12 @@
         <label>Description <textarea id="docDesc" rows="3"></textarea></label>
         <label>Genres <input type="text" id="docGenres" placeholder="comma separated" /></label>
         <label>Publication year <input type="number" id="docYear" min="1000" max="3000" /></label>
-        <label>Link to media (multi-select ids) <select id="docLinkMedia" multiple class="list"></select></label>
+        <div class="linked-uploader" data-type="document" id="docUploader">
+          <label>Upload linked files</label>
+          <div class="dropzone" id="docDropzone">Drop files here or click to select</div>
+          <input type="file" id="docLinkedFiles" multiple class="hidden" />
+          <div class="linked-list" id="docLinkedList"></div>
+        </div>
         <label><input type="checkbox" id="docIAmAuthor" /> I'm the author</label>
         <div class="small">Automatic extracted: format=<span id="docFormat">-</span> pages=<span id="docPages">-</span></div>
       </fieldset>
@@ -104,7 +109,12 @@
         <label>Genres <input type="text" id="audioGenres" placeholder="comma separated" /></label>
         <label>Publication year <input type="number" id="audioYear" min="1000" max="3000" /></label>
         <label>Authors <input type="text" id="audioAuthors" placeholder="comma separated" /></label>
-        <label>Link to media (multi-select ids) <select id="audioLinkMedia" multiple class="list"></select></label>
+        <div class="linked-uploader" data-type="audio" id="audioUploader">
+          <label>Upload linked files</label>
+          <div class="dropzone" id="audioDropzone">Drop files here or click to select</div>
+          <input type="file" id="audioLinkedFiles" multiple class="hidden" />
+          <div class="linked-list" id="audioLinkedList"></div>
+        </div>
 
         <label><input type="checkbox" id="audioIAmAuthor" /> I am author</label>
         <label><input type="checkbox" id="audioIAmPerformer" /> I am performer</label>
@@ -133,7 +143,12 @@
         <label>Genres <input type="text" id="videoGenres" placeholder="comma separated" /></label>
         <label>Publication year <input type="number" id="videoYear" min="1000" max="3000" /></label>
         <label>Authors <input type="text" id="videoAuthors" placeholder="comma separated" /></label>
-        <label>Link to media (multi-select ids) <select id="videoLinkMedia" multiple class="list"></select></label>
+        <div class="linked-uploader" data-type="video" id="videoUploader">
+          <label>Upload linked files</label>
+          <div class="dropzone" id="videoDropzone">Drop files here or click to select</div>
+          <input type="file" id="videoLinkedFiles" multiple class="hidden" />
+          <div class="linked-list" id="videoLinkedList"></div>
+        </div>
 
         <label><input type="checkbox" id="videoIAmAuthor" /> I am author</label>
         <label><input type="checkbox" id="videoIAmPerformer" /> I am performer</label>
@@ -334,6 +349,33 @@
       });
     }
     [docLinkMedia, audioLinkMedia, videoLinkMedia].forEach(populateMediaSelect);
+
+    // --- linked files manager ---
+    const linkedFiles = { document: [], audio: [], video: [] };
+    function initLinkedUploader(selectEl, inputId, dropzoneId, listId, typeKey){
+      const input = document.getElementById(inputId);
+      const dropzone = document.getElementById(dropzoneId);
+      const list = document.getElementById(listId);
+      if(!dropzone || !input || !list) return;
+      function renderList(){
+        list.innerHTML = '';
+        (linkedFiles[typeKey]||[]).forEach((f, idx)=>{
+          const item = document.createElement('div');
+          item.className = 'linked-item';
+          item.innerHTML = `<span class="fname">${f.name}</span> <button type="button" class="btn small-btn remove-link" data-idx="${idx}">Remove</button>`;
+          item.querySelector('.remove-link').addEventListener('click', ()=>{ linkedFiles[typeKey].splice(idx,1); renderList(); });
+          list.appendChild(item);
+        });
+      }
+      dropzone.addEventListener('click', ()=> input.click());
+      dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('dragover'); });
+      dropzone.addEventListener('dragleave', e=>{ dropzone.classList.remove('dragover'); });
+      dropzone.addEventListener('drop', e=>{ e.preventDefault(); dropzone.classList.remove('dragover'); const files=Array.from(e.dataTransfer.files||[]); files.forEach(f=> linkedFiles[typeKey].push(f)); renderList(); });
+      input.addEventListener('change', e=>{ const files=Array.from(e.target.files||[]); files.forEach(f=> linkedFiles[typeKey].push(f)); renderList(); input.value=''; });
+    }
+    initLinkedUploader(docLinkMedia, 'docLinkedFiles', 'docDropzone', 'docLinkedList', 'document');
+    initLinkedUploader(audioLinkMedia, 'audioLinkedFiles', 'audioDropzone', 'audioLinkedList', 'audio');
+    initLinkedUploader(videoLinkMedia, 'videoLinkedFiles', 'videoDropzone', 'videoLinkedList', 'video');
 
     // initialize fields
     usernameInput.value = loggedUsername;
@@ -618,13 +660,17 @@
       }
       if(t === 'document'){
         const f = docFile?.files[0] || null;
+        const drafts = (linkedFiles['document']||[]).map(x=>({ filename: x.name }));
         return {
           ...base,
           title: document.getElementById('docTitle').value.trim(),
           description: document.getElementById('docDesc').value.trim(),
           genres: splitListInput(document.getElementById('docGenres').value),
           publication_year: document.getElementById('docYear').value || null,
-          linked_media: getSelectedMediaIds(docLinkMedia),
+          linked_media: {
+            selected: getSelectedMediaIds(docLinkMedia),
+            drafts: drafts
+          },
           i_am_author: document.getElementById('docIAmAuthor').checked,
           automatic: {
             format: docFormatEl.textContent || '-',
@@ -637,6 +683,7 @@
         const f = isAudio ? audioFile?.files[0] : videoFile?.files[0];
         const durationEl = isAudio ? audioDurationEl : videoDurationEl;
         const formatEl = isAudio ? audioFormatEl : videoFormatEl;
+        const drafts = (linkedFiles[isAudio?'audio':'video']||[]).map(x=>({ filename: x.name,}));
         return {
           ...base,
           title: document.getElementById((isAudio?'audioTitle':'videoTitle')).value.trim(),
@@ -644,7 +691,10 @@
           genres: splitListInput(document.getElementById((isAudio?'audioGenres':'videoGenres')).value),
           publication_year: document.getElementById((isAudio?'audioYear':'videoYear')).value || null,
           authors: splitListInput(document.getElementById((isAudio?'audioAuthors':'videoAuthors')).value),
-          linked_media: getSelectedMediaIds(isAudio?audioLinkMedia:videoLinkMedia),
+          linked_media: {
+            selected: getSelectedMediaIds(isAudio?audioLinkMedia:videoLinkMedia),
+            drafts: drafts
+          },
           i_am_author: document.getElementById((isAudio?'audioIAmAuthor':'videoIAmAuthor')).checked,
           i_am_performer: document.getElementById((isAudio?'audioIAmPerformer':'videoIAmPerformer')).checked,
           performers: splitListInput(document.getElementById((isAudio?'audioPerformers':'videoPerformers'))?.value),
@@ -806,6 +856,28 @@
       } else if(type === 'video'){
         const f = videoFile?.files[0];
         if(f) fd.append('files', f, f.name);
+      }
+
+      // append linked files (from the Linked upload widgets) under 'linked_files'
+      const linkedMeta = [];
+      Object.keys(linkedFiles).forEach(k=>{
+        (linkedFiles[k]||[]).forEach(f=>{
+          fd.append('linked_files', f, f.name);
+          linkedMeta.push({ filename: f.name});
+        });
+      });
+      if(linkedMeta.length) {
+        fd.append('linked_files_meta', JSON.stringify(linkedMeta));
+        // include a helpful 'linked_media' field with draft entries so server can consume metadata immediately
+        const linked_media_payload = {
+          selected: {
+            document: getSelectedMediaIds(docLinkMedia),
+            audio: getSelectedMediaIds(audioLinkMedia),
+            video: getSelectedMediaIds(videoLinkMedia)
+          },
+          drafts: linkedMeta.map(x=>({ filename: x.filename}))
+        };
+        fd.append('linked_media', JSON.stringify(linked_media_payload));
       }
 
       // add client-side authors/instruments/perf lists as fields if present

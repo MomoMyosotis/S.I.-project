@@ -9,6 +9,32 @@
   --shadow-accent: rgba(69,243,255,0.12);
 }
 
+/* Removed rotating animation (not used for admin/publisher effects) */
+
+
+
+/* Comment base and admin/publisher styles - ensure each comment has its own background */
+#comments-list .comment.admin{
+  font-weight:700;
+  color:#eeff04;
+  border-radius:8px;
+  padding:10px;
+  background: rgba(69,243,255,0.03);
+  border: 1px solid rgba(69,243,255,0.06);
+}
+#comments-list .comment.publisher{
+  font-weight:700;
+  color: var(--accent);
+  border-radius:8px;
+  padding:10px;
+  background: rgba(255,39,112,0.04);
+  border: 1px solid rgba(255,39,112,0.08);
+}
+
+
+
+
+
 /* base layout */
 html, body{
   margin:0;
@@ -191,16 +217,82 @@ video, iframe{
 
 /* list of comments */
 #comments-list .comment{
-  padding:10px 0;
-  border-bottom:1px solid rgba(255,255,255,0.04);
+  position: relative;
+  padding:10px;
+  margin-bottom:8px;
+  border-bottom: none;
+  background: rgba(255,255,255,0.02);
+  border-radius:8px;
+  transition: box-shadow .18s ease, transform .12s ease, background-color .12s ease;
   /* make each comment a bit separated for nested layout */
 }
 #comments-list .comment .children{
   margin-left:36px;
-  padding-left:8px;
-  border-left:1px solid rgba(255,255,255,0.03);
+  padding-left:20px; /* more space for connectors */
   margin-top:8px;
+  position: relative;
 }
+
+/* visual thread connectors: vertical line for the reply column and a short horizontal connector to each child */
+#comments-list .comment .children::before{
+  content: '';
+  position: absolute;
+  left: 8px; /* aligns with child connector */
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 2px;
+}
+
+/* draw horizontal connector from vertical line to the child comment */
+#comments-list .comment .children > .comment::before{
+  content: '';
+  position: absolute;
+  left: -12px; /* reaches back to the vertical line */
+  top: 20px; /* aligns with avatar/title */
+  width: 12px;
+  height: 2px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 2px;
+}
+
+/* See-more button styling */
+.see-more-btn{
+  display:inline-block;
+  margin-top:8px;
+  padding:6px 10px;
+  border-radius:8px;
+  border:0;
+  cursor:pointer;
+  background: transparent;
+  color: var(--accent-2);
+  font-weight:700;
+}
+.see-more-btn:hover{ text-decoration:underline; transform: translateY(-2px); }
+
+/* slightly shorten connector for deeply nested levels to avoid overflow */
+#comments-list .comment .children .children > .comment::before{
+  left: -8px;
+  width: 8px;
+}
+
+
+/* per-type variants */
+#comments-list .comment.regular {
+  background: rgba(255,255,255,0.02);
+  color: #ddd;
+}
+#comments-list .comment.mod {
+  background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(69,243,255,0.02));
+  border: 1px solid rgba(69,243,255,0.08);
+}
+#comments-list .comment.artist {
+  background: linear-gradient(90deg, rgba(255,39,112,0.03), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,39,112,0.06);
+  color: #ffdede;
+}
+
 
 /* make avatar smaller for nested comments */
 #comments-list .comment img{
@@ -217,35 +309,46 @@ video, iframe{
   padding-bottom:6px;
 }
 
-/* comment input */
-.comment-input{
-  margin-top:14px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
+/* badges for special comments */
+#comments-list .comment .comment-badge{
+  margin-left:8px;
+  padding:2px 8px;
+  border-radius:8px;
+  font-size:.72rem;
+  font-weight:700;
+  display:inline-block;
 }
-#comment-text{
-  padding:10px;
-  border-radius:10px;
-  background:rgba(255,255,255,0.03);
-  border:1px solid rgba(255,255,255,0.05);
-  color:#e6e6e6;
-  resize:vertical;
-}
-#comment-send{
-  align-self:flex-start;
-  padding:10px 16px;
+#comments-list .comment.publisher .publisher-badge,
+#comments-list .comment.publisher .comment-badge.publisher-badge{ background: var(--accent); color: #fff; padding: 2px 6px; border-radius: 6px; }
+#comments-list .comment.admin .admin-badge,
+#comments-list .comment.admin .comment-badge.admin-badge{ background: var(--accent-2); color: #071018; padding: 2px 6px; border-radius: 6px; box-shadow: none; }
+#comments-list .comment.mod .mod-badge,
+#comments-list .comment.mod .comment-badge.mod-badge{ background: rgba(69,243,255,0.14); color: #071018; padding: 2px 6px; border-radius: 6px; }
+#comments-list .comment.artist .artist-badge,
+#comments-list .comment.artist .comment-badge.artist-badge{ background: rgba(255,39,112,0.14); color: #071018; padding: 2px 6px; border-radius: 6px; }
+#comments-list .comment.regular .regular-badge,
+#comments-list .comment.regular .comment-badge.regular-badge{ background: rgba(255,255,255,0.04); color: #ddd; padding: 2px 6px; border-radius: 6px; }
+
+
+
+/* Slight button style for publisher top buttons */
+.publisher-btn{
+  padding:6px 10px;
   border-radius:10px;
   border:none;
   cursor:pointer;
-  background:linear-gradient(90deg,var(--accent-2),#2fe0e9);
-  color:#071018;
+  background: linear-gradient(90deg,var(--accent-2),#2fe0e9);
+  color:#081018;
   font-weight:700;
-  box-shadow:0 6px 20px rgba(69,243,255,0.12);
+  margin-left:8px;
 }
-#comment-send:hover{
-  transform:translateY(-2px);
-}
+.publisher-btn:hover{ transform: translateY(-2px); }
+
+/* linked media list */
+.linked-media-list { margin-top:8px; display:flex; flex-direction:column; gap:8px; }
+.linked-media-item { padding:8px; background: rgba(255,255,255,0.02); border-radius:6px; display:flex; align-items:center; gap:8px; }
+.linked-media-item a { color: var(--accent-2); font-weight:600; text-decoration:none; }
+.linked-media-item button.play { background:transparent; border:1px solid rgba(255,255,255,0.06); color:var(--muted); padding:4px 8px; border-radius:4px; cursor:pointer; }
 
 /* nicer scroll */
 ::-webkit-scrollbar{
@@ -322,6 +425,38 @@ video, iframe{
   color: #ff2770;
   text-shadow: 0 0 8px #ff2770aa;
 }
+
+/* small link next to modal title for publisher profile */
+.form-modal h3 a#edit-publisher-link{
+  margin-left: 12px;
+  font-size: 0.95rem;
+  color: var(--accent-2);
+  text-decoration: none;
+  vertical-align: middle;
+}
+.form-modal h3 a#edit-publisher-link:hover{
+  text-decoration: underline;
+}
+
+/* modal header row for small publisher button */
+.form-modal .modal-header-row {
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:8px;
+  margin-bottom:8px;
+}
+.form-modal .modal-publisher-btn {
+  padding:6px 10px;
+  border-radius:8px;
+  border:none;
+  cursor:pointer;
+  background: linear-gradient(90deg, var(--accent-2), #2fe0e9);
+  color:#081018;
+  font-weight:700;
+  font-size:0.9rem;
+}
+.form-modal .modal-publisher-btn:hover{ transform: translateY(-2px); }
 
 /* arrange grid inputs inside modal */
 .form-modal .modal-grid{

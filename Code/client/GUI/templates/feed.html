@@ -11,13 +11,18 @@
 <header>Feed</header>
 
 <div class="search-bar">
-  <input type="text" id="search" placeholder="Cerca...">
+  <input type="text" id="search" placeholder="Cerca... (nome, tag, YYYY, author, performer, instrument)">
   <select id="filter">
     <option value="all">Tutti</option>
     <option value="user">Utente</option>
     <option value="title">Titolo</option>
     <option value="file">File</option>
     <option value="tag">Tag</option>
+    <option value="date">Data pubblicazione</option>
+    <option value="publisher">Publisher</option>
+    <option value="author">Autore</option>
+    <option value="performer">Interprete</option>
+    <option value="instrument">Strumento</option>
   </select>
   <button onclick="applySearch()">Cerca</button>
 </div>
@@ -64,6 +69,39 @@
 
   function getMediaIcon(type) {
     return mediaIcons[type] || mediaIcons.default;
+  }
+
+  // Short date formatter (e.g., "24 dic. 2025" or "1 gen. 2026")
+  function formatDateShort(created) {
+    if (!created) return null;
+    const s = String(created).trim();
+    // YYYY
+    if (/^\d{4}$/.test(s)) return s;
+    // YYYY-MM
+    if (/^\d{4}-\d{2}$/.test(s)) {
+      const [y, m] = s.split('-');
+      const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+      const mi = parseInt(m,10)-1;
+      if (mi >= 0 && mi < 12) return `${months[mi]}. ${y}`;
+      return s;
+    }
+    // Try parsing full date/time
+    const dt = new Date(s);
+    if (!isNaN(dt.getTime())) {
+      const day = dt.getDate();
+      const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+      const mon = months[dt.getMonth()];
+      return `${day} ${mon}. ${dt.getFullYear()}`;
+    }
+    // Fallback: try extract YYYY-MM-DD
+    const m2 = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (m2) {
+      const y = m2[1], mo = parseInt(m2[2],10)-1, d = parseInt(m2[3],10);
+      const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+      const mon = months[mo] || m2[2];
+      return `${d} ${mon}. ${y}`;
+    }
+    return s;
   }
 
   function buildUserItem(item) {
@@ -122,7 +160,13 @@
       'Tag: ' + (Array.isArray(item.tags) ? item.tags.join(', ') : '-')
     );
 
-    info.append(h3, by, tags);
+    // show publication date if available (short format)
+    const dateP = el('p', null, '');
+    const created = (item.raw && item.raw.created_at) ? item.raw.created_at : null;
+    const formattedDate = formatDateShort(created);
+    if (formattedDate) dateP.textContent = `Published: ${formattedDate}`;
+
+    info.append(h3, by, tags, dateP);
     div.append(img, info);
 
     return div;

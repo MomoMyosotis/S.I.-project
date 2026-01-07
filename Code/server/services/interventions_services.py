@@ -3,12 +3,13 @@ from server.objects.interventi.comment import Comment
 from server.utils.media_utils import (create_dict_entry,
                                 fetch_all_dict_entries,
                                 delete_dict_entry)
+from server.utils.generic_utils import get_commented_medias as fetch_commented_medias
 from server.objects.interventi.notes import Note
 from typing import List, Optional, Dict, Any
 from server.objects.media.media import Media
 from server.objects.users.root import Root
-from decimal import Decimal
 from datetime import date, datetime
+from decimal import Decimal
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -102,14 +103,14 @@ def update_comment(user_obj: Any, comment_id: int, new_text: str) -> Dict[str, A
     user_id = get_user_id(user_obj)
     comment = Comment.fetch_by_id(comment_id)
     if not comment:
-        logger.error("Comment not found with comment_id: %s", comment_id)  # Modifica '%d' a '%s'
+        logger.error("Comment not found with comment_id: %s", comment_id)
         return {"status": "ERROR", "id": comment_id, "error_msg": "NOT_FOUND"}
 
     try:
         updated = Comment.update_comment(user_id=user_id, comment_id=comment_id, new_text=new_text)
         status = "OK" if updated else "ERROR"
-
         return {"status": status, "id": comment_id, "error_msg": None if updated else "NOT_FOUND"}
+
     except Exception as e:
         logger.exception("Exception occurred while updating comment")
         return {"status": "ERROR", "id": comment_id, "error_msg": str(e)}
@@ -175,7 +176,27 @@ def get_comments(user_obj: Any, media_id: int) -> List[Dict[str, Any]]:
             # canonicalize onto comment
             comment['username'] = username  # may be None when unknown
             comment['display_name'] = display_name
-            comment['user'] = {'id': uid, 'username': username, 'avatar': avatar}
+            # include commenter id/username/avatar and try to expose their numeric level when available
+            commenter_lvl = None
+            try:
+                if uid is not None and user:
+                    # user may be dict or object
+                    if isinstance(user, dict):
+                        commenter_lvl = user.get('lvl') or user.get('level') or None
+                    else:
+                        commenter_lvl = getattr(user, 'lvl', None)
+                        # if it's an Enum-like, try to get numeric value
+                        if commenter_lvl is not None and not isinstance(commenter_lvl, int):
+                            commenter_lvl = getattr(commenter_lvl, 'value', commenter_lvl)
+                    if commenter_lvl is not None:
+                        try:
+                            commenter_lvl = int(commenter_lvl)
+                        except Exception:
+                            pass
+            except Exception:
+                commenter_lvl = None
+
+            comment['user'] = {'id': uid, 'username': username, 'avatar': avatar, 'lvl': commenter_lvl}
             if avatar:
                 comment['avatar'] = avatar
             # normalize identifier fields for client compatibility
@@ -194,6 +215,27 @@ def get_comments(user_obj: Any, media_id: int) -> List[Dict[str, Any]]:
 
     logger.debug("[get_comments] returning %d enriched comments for media_id=%s", len(enriched), media_id)
     return enriched
+
+def get_commented_medias(user_obj: Any) -> List[Dict[str, Any]]:
+    user_id = get_user_id(user_obj)
+    logger.debug("[get_commented_medias] START - user_id=%s", user_id)
+
+    if not user_id:
+        logger.error("Invalid user object: %s", user_obj)
+        return {"status": "ERROR", "error_msg": "INVALID_USER"}
+
+    user = Root.get_user(user_id)
+    if not user:
+        logger.error("User not found with id: %s", user_id)
+        return {"status": "ERROR", "error_msg": "USER_NOT_FOUND"}
+
+    try:
+        medias = fetch_commented_medias(user_id)
+        logger.debug("[get_commented_medias] fetched %d medias", len(medias))
+        return medias
+    except Exception as e:
+        logger.exception("Exception occurred while fetching commented medias")
+        return {"status": "ERROR", "error_msg": str(e)}
 
 # ====================
 # NOTE

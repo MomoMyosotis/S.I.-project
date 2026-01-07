@@ -7,6 +7,7 @@ from server.utils.storage_manager import (save_file,
                                     download_file,
                                     delete_file)
 from server.objects.users.root import Root
+from server.services.interventions_services import get_commented_medias
 from typing import Optional, Any, Tuple
 import json
 
@@ -102,7 +103,7 @@ COMMAND_MAP = {
     # =====================
     "create_song": media_services.create_song_services,
     "get_song": media_services.get_song_services,
-    "get_media": media_services.get_media_services,            # <-- ADDED generic getter
+    "get_media": media_services.get_media_services,
     "update_song": media_services.update_song_services,
     "delete_song": media_services.delete_song_services,
     "create_document": media_services.create_document_services,
@@ -131,6 +132,7 @@ COMMAND_MAP = {
     "add_entry": interventions_services.add_entry,
     "remove_entry": interventions_services.remove_entry,
     "get_entries": interventions_services.get_entries,
+    "get_commented_medias": interventions_services.get_commented_medias,
     # FILE MANAGER
     "save_file" : dispatch_save_file,
     "fetch_file" : dispatch_fetch_file,

@@ -48,10 +48,15 @@ def api_entry():
 
     true_status = parsed_response.get("status") if isinstance(parsed_response, dict) else status
 
+    # Choose an appropriate HTTP status code when errors occur so clients can react
+    status_code = 200
+    if isinstance(true_status, str) and true_status.lower() in ("error", "err", "failed"):
+        status_code = 500
+
     return jsonify({
         "status": true_status,
         "response": parsed_response,
         "token": new_token
-    }), 200
+    }), status_code
 
 # last line

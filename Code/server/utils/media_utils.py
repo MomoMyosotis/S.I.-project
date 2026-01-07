@@ -57,7 +57,7 @@ def set_execution_details(media_id: int, duration_sec: int = None,
 
 def create_concert_video(media_data: Dict[str, Any]) -> Optional[int]:
     media_data["type"] = "concert"
-    return Media.create_media(media_data, child_table="videos", child_fields=("duration_sec","link"))
+    return Media.create_media(media_data, child_table="videos", child_fields=("duration_sec","linked_media"))
 
 def add_concert_segment(concert_media_id: int, start_time: float, end_time: float,
                         song_title: str, song_id: Optional[int]=None,

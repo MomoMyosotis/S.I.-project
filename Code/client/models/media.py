@@ -3,6 +3,7 @@
 from enum import Enum
 from typing import Dict, Any, List, Optional
 from client.services.http_helper import http_client
+import json
 
 class MediaType(Enum):
     IMAGE = "image"
@@ -23,6 +24,8 @@ class Media:
         description: str = "",
         stored_at: Optional[str] = None,
         filename: Optional[str] = None,
+        linked_to: Optional[int] = None,
+        linked_media: Optional[List[Dict[str, Any]]] = None,
     ):
         self.id = id
         self.title = title or "Untitled"
@@ -32,6 +35,8 @@ class Media:
         self.description = description or ""
         self.stored_at = stored_at
         self.filename = filename
+        self.linked_to = linked_to
+        self.linked_media = linked_media or []
 
     @staticmethod
     def _unwrap_envelope(data: Any) -> Dict[str, Any]:
@@ -83,6 +88,31 @@ class Media:
         stored_at = raw.get("stored_at") or raw.get("file_path") or raw.get("file") or raw.get("stored") or raw.get("link")
         filename = raw.get("filename") or (stored_at.split("/")[-1] if stored_at and "/" in stored_at else None)
 
+        # parse linked_media if present (may be JSON string or list/dict)
+        raw_linked = raw.get("linked_media") or raw.get("linked") or None
+        linked_media = []
+        if raw_linked:
+            parsed = None
+            if isinstance(raw_linked, str):
+                try:
+                    parsed = json.loads(raw_linked)
+                except Exception:
+                    parsed = raw_linked
+            else:
+                parsed = raw_linked
+            if isinstance(parsed, dict):
+                linked_media = [parsed]
+            elif isinstance(parsed, list):
+                linked_media = parsed
+        # normalize entries to list of dicts
+        norm = []
+        for entry in linked_media:
+            if isinstance(entry, str):
+                norm.append({"filename": entry})
+            elif isinstance(entry, dict):
+                norm.append(entry)
+        linked_media = norm
+
         return Media(
             id=mid,
             title=title,
@@ -91,7 +121,9 @@ class Media:
             tags=tags,
             description=description,
             stored_at=stored_at,
-            filename=filename
+            filename=filename,
+            linked_to=raw.get("linked_to") or raw.get("protagonist"),
+            linked_media=linked_media
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -104,7 +136,9 @@ class Media:
             "tags": self.tags,
             "description": self.description,
             "stored_at": self.stored_at,
-            "filename": self.filename
+            "filename": self.filename,
+            "linked_media": self.linked_media,
+            "linked_to": self.linked_to
         }
 
     # Network helper methods (optional; call RPCs via shared http_client)

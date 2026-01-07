@@ -6,9 +6,9 @@ class ProfileService:
     @staticmethod
     def get_profile(username=None):
         args = [username] if username else []
-        print(f"[DEBUG][ProfileService.get_profile] sending GET_PROFILE with args={args}")
+        # print(f"[DEBUG][ProfileService.get_profile] sending GET_PROFILE with args={args}")
         res = http_client.send_request("GET_PROFILE", args, require_auth=True)
-        print(f"[DEBUG][ProfileService.get_profile] raw response: {res}")
+        # print(f"[DEBUG][ProfileService.get_profile] raw response: {res}")
 
         # Try to extract a user-dict from many possible server shapes
         def extract_user_dict(resp):
@@ -46,7 +46,7 @@ class ProfileService:
                 pubs_res = http_client.send_request("GET_USER_PUBLICATIONS", [target_username, 0, 100], require_auth=True)
             else:
                 pubs_res = {"status": "OK", "response": []}
-            print(f"[DEBUG][ProfileService.get_profile] pubs_res: {pubs_res}")
+            # print(f"[DEBUG][ProfileService.get_profile] pubs_res: {pubs_res}")
         except Exception as e:
             print(f"[DEBUG][ProfileService.get_profile] pubs fetch failed: {e}")
             pubs_res = {"status": "OK", "response": []}

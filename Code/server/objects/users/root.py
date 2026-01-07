@@ -197,9 +197,24 @@ class Root:
         if mail is not None:
             filters["mail"] = mail
         result = fetch_user_db(filters=filters if filters else None)
+        # normalize single-row list or dict to a canonical dict with 'lvl' key
+        user_row = None
         if isinstance(result, list):
-            return result[0] if result else None
-        return result
+            user_row = result[0] if result else None
+        else:
+            user_row = result
+        if isinstance(user_row, dict):
+            # prefer explicit 'lvl', fallback to 'lvl_id' (DB field) and coerce to int when possible
+            if 'lvl' not in user_row and 'lvl_id' in user_row:
+                user_row['lvl'] = user_row.get('lvl_id')
+            try:
+                if user_row.get('lvl') is not None:
+                    user_row['lvl'] = int(user_row['lvl'])
+            except Exception:
+                # leave as-is if it cannot be coerced
+                pass
+            return user_row
+        return None
 
     @classmethod
     def get_user_by_username(cls, username: str) -> Optional[Dict[str, Any]]:
@@ -263,8 +278,22 @@ class Root:
 
     @classmethod
     def is_admin(cls, user_id: int) -> bool:
-        user = cls.get_user(user_id)
-        return user and user.get("lvl", UserLevel.REGULAR.value) <= UserLevel.ADMIN.value
+        # Accept either a user id or a user dict to be flexible
+        user = cls.get_user(user_id) if not isinstance(user_id, dict) else user_id
+        if not user:
+            return False
+        # accept 'lvl' and 'lvl_id' shapes, coerce to integer if needed
+        lvl_val = user.get('lvl', user.get('lvl_id', UserLevel.REGULAR.value))
+        if isinstance(lvl_val, UserLevel):
+            lvl_num = lvl_val.value
+        else:
+            try:
+                lvl_num = int(lvl_val)
+            except Exception:
+                lvl_num = UserLevel.REGULAR.value
+        # debug helpful for tracing
+        print(f"[DEBUG is_admin] user_id={user.get('id') if isinstance(user, dict) else user_id}, resolved_lvl={lvl_num}, user_row={user}")
+        return lvl_num <= UserLevel.ADMIN.value
 
     # =====================
     # LOGIN

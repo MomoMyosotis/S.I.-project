@@ -9,12 +9,17 @@
     // server-injected prefetch (may be "null")
     window.INITIAL_MEDIA = {{ INITIAL_MEDIA|safe }};
     window.SERVER_USER = {{ SERVER_USER|safe }};
+    // concise objects for easier access in client code
+    window.LOGGED = {{ SERVER_LOGGED|safe }};
+    window.PUBLISHER = {{ SERVER_PUBLISHER|safe }};
+    window.COMMENTER = {{ SERVER_COMMENTER|safe }};
   </script>
 </head>
 <body>
   <div class="media-container">
     <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;">
-      <button id="back-to-feed" type="button">Torna al Feed</button>
+      <a href="{{ url_for('home.homepage', form_type='feed') }}" id="back-to-feed" class="nav-item button-like">Torna al Feed</a>
+
       <h1 id="media-title">Caricamento...</h1>
       <div id="admin-actions" style="margin-left:auto;display:flex;gap:8px;"></div>
     </div>
@@ -91,10 +96,18 @@
     <div class="comments-area" id="comments-area" style="margin-top:20px">
       <h2>Commenti</h2>
       <div id="comments-list">Caricamento commenti...</div>
+
+      <!-- reply context (hidden until user clicks "Rispondi") -->
+      <div id="reply-context" style="display:none;margin-top:8px;color:var(--muted);align-items:center;gap:8px;">
+        Rispondi a: <strong id="reply-to-name" style="margin-left:6px"></strong>
+        <button id="reply-cancel" style="margin-left:12px">Annulla</button>
+      </div>
+
+      <!-- hidden field that always stores selected parent comment id -->
+      <input type="hidden" id="parent-comment-id" value="">
+
       <div class="comment-input" style="margin-top:12px">
         <textarea id="comment-text" placeholder="Scrivi un commento..."></textarea>
-        <!-- store parent comment id when replying -->
-        <input type="hidden" id="comment-parent-id" value="">
         <button id="comment-send">Invia</button>
       </div>
     </div>
@@ -122,6 +135,22 @@
   if(!mediaId){ document.getElementById('media-title').textContent = "Media non trovato"; return; }
   const el = id => document.getElementById(id);
 
+  // reply context: active reply target id (string) and utility
+  let replyToCommentId = null;
+  const clearReply = () => {
+    replyToCommentId = null;
+    const ctx = el('reply-context');
+    if (ctx) ctx.style.display = 'none';
+    const name = el('reply-to-name');
+    if (name) name.textContent = '';
+    const hidden = el('parent-comment-id');
+    if (hidden) hidden.value = '';
+  };
+  // reply cancel button (register once)
+  document.addEventListener('click', (ev) => {
+    if (ev.target && ev.target.id === 'reply-cancel') { clearReply(); }
+  });
+
   // ---------- HELPERS ----------
   const formatTime = s => {
     s = Number(s) || 0;
@@ -130,28 +159,55 @@
     return `${m}:${sec.toString().padStart(2,'0')}`;
   };
 
-  // Format many timestamp shapes into "DD mon. YYYY HH:MM" (e.g. "12 dec. 2025 16:39")
-  const formatTimestamp = (ts) => {
-    if(!ts) return "";
+  // Format comment timestamps into '30th dec. 2025 04:05'
+  const formatTimestamp = iso => {
+    if(!iso) return '';
     try {
-      let s = String(ts).trim();
-      // support "YYYY-MM-DD" -> add time to be parseable
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) s += 'T00:00:00';
-      // common backend uses space between date and time
-      s = s.replace(' ', 'T');
-      const d = new Date(s);
-      if (isNaN(d.getTime())) return s;
-      const day = String(d.getDate()).padStart(2,'0');
+      const d = new Date(String(iso));
+      if (isNaN(d)) return String(iso);
+      const day = d.getDate();
+      const getSuffix = (n) => {
+        if (n % 100 >= 11 && n % 100 <= 13) return 'th';
+        switch (n % 10) {
+          case 1: return 'st';
+          case 2: return 'nd';
+          case 3: return 'rd';
+          default: return 'th';
+        }
+      };
       const months = ['jan.','feb.','mar.','apr.','may.','jun.','jul.','aug.','sep.','oct.','nov.','dec.'];
+      const suffix = getSuffix(day);
       const mon = months[d.getMonth()] || '';
       const year = d.getFullYear();
       const hh = String(d.getHours()).padStart(2,'0');
       const mm = String(d.getMinutes()).padStart(2,'0');
-      return `${day} ${mon} ${year} ${hh}:${mm}`;
+      return `${day}${suffix} ${mon} ${year} ${hh}:${mm}`;
     } catch (e) {
-      return String(ts);
+      return String(iso);
     }
   };
+
+  // --------- Permissions helpers (use server-injected objects) ---------
+  const LOGGED = window.LOGGED || window.SERVER_USER || null;
+  const SERVER_PUBLISHER = window.PUBLISHER || null;
+  const canComment = () => {
+    if(!LOGGED || LOGGED.lvl === undefined || LOGGED.lvl === null) return false;
+    const lvl = Number(LOGGED.lvl);
+    return ![5,6].includes(lvl);
+  };
+  const canReply = () => canComment();
+  const canEditAny = () => {
+    if(!LOGGED || LOGGED.lvl === undefined || LOGGED.lvl === null) return false;
+    return Number(LOGGED.lvl) < 3;
+  };
+  const canDeleteAny = () => {
+    if(!LOGGED) return false;
+    if(canEditAny()) return true;
+    const loggedId = LOGGED.id !== undefined && LOGGED.id !== null ? String(LOGGED.id) : null;
+    const pubId = SERVER_PUBLISHER && SERVER_PUBLISHER.id ? String(SERVER_PUBLISHER.id) : null;
+    return (loggedId && pubId && loggedId === pubId);
+  };
+
   const extractYouTubeId = url => {
     if(!url) return null;
     const m = url.match(/(?:v=|\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
@@ -206,8 +262,8 @@
       console.debug('[comments] rendering', arr.length, 'comments');
 
       const extractAuthor = (c) => {
-        // canonical: return { username, display_name, avatar }
-        if(!c) return { username: null, display_name: 'Anonimo', avatar: '/static/images/no pp.jpg' };
+        // canonical: return { username, display_name, avatar, id, lvl }
+        if(!c) return { username: null, display_name: 'Anonimo', avatar: null, id: null, lvl: null };
         // server will often send username / display_name / avatar
         const avatarKeys = ['avatar','avatar_url','profile_pic','picture','image','photo','gravatar','profile_image'];
         let username = (typeof c.username === 'string' ? c.username : null);
@@ -219,33 +275,64 @@
 
         let avatar = c.avatar || null;
         if(!avatar && c.user && typeof c.user === 'object'){
-          avatar = c.user.avatar || c.user.avatar_url || c.user.picture || c.user.profile_image || c.user.profile_pic || null;
+          avatar = c.user.avatar || c.user.avatar_url || c.user.picture || c.user.profile_image || null;
         }
         for (const k of avatarKeys) {
           if (!avatar && c[k]) { avatar = c[k]; break; }
         }
 
-        // normalize avatar:
-        if (typeof avatar === 'string') {
-          avatar = avatar.trim();
-          if (!avatar) {
-            avatar = '/static/images/no pp.jpg';
-          } else if (!/^https?:\/\//i.test(avatar) && !/^data:/i.test(avatar) && !avatar.startsWith('/')) {
-            // bare filename -> use same profile picture proxy as the feed
-            avatar = `/profile/picture/${encodeURIComponent(avatar)}`;
-          }
-        } else {
-          avatar = '/static/images/no pp.jpg';
+        // commenter's user id
+        let commenterId = null;
+        if (c.user && typeof c.user === 'object' && (c.user.id || c.user.user_id)) commenterId = c.user.id || c.user.user_id;
+        if (!commenterId && (c.user_id || c.author_id)) commenterId = c.user_id || c.author_id;
+
+        // commenter level if available (may be numeric or string)
+        let lvl = null;
+        if (c.user && typeof c.user === 'object' && (c.user.lvl !== undefined || c.user.level !== undefined)){
+          lvl = c.user.lvl !== undefined ? c.user.lvl : c.user.level;
+        } else if (c.lvl !== undefined || c.level !== undefined) {
+          lvl = c.lvl !== undefined ? c.lvl : c.level;
+        }
+        if (lvl !== null) {
+          try { lvl = Number(lvl); } catch(e) { /* leave as-is */ }
         }
 
-        return { username: username || null, display_name: display_name, avatar: avatar || '/static/images/no pp.jpg' };
+        // Normalize avatar filenames/urls:
+        // - if it's an absolute URL or starts with '/', leave it
+        // - otherwise treat as stored profile filename and proxy via /profile/picture/<name>
+        if (avatar && typeof avatar === 'string') {
+          const a = avatar.trim();
+          if (!/^([a-z]+:)?\/\//i.test(a) && !a.startsWith('/')) {
+            avatar = `/profile/picture/${encodeURIComponent(a)}`;
+          } else {
+            avatar = a;
+          }
+        }
+
+        return { username: username || null, display_name: display_name, avatar: avatar || null, id: commenterId || null, lvl: lvl };
       };
 
       // Build canonical nodes
       const getId = c => c.id || c.comment_id || c._id || c.commentId || null;
-      const getParentId = c => c.parent_comment_id || c.parent || c.reply_to || c.parentCommentId || null;
+      const getParentId = c => {
+        if (!c) return null;
+        // direct scalar parent ids
+        if (c.parent_comment_id && typeof c.parent_comment_id !== 'object') return c.parent_comment_id;
+        if (c.parent && typeof c.parent !== 'object') return c.parent;
+        // handle nested parent objects: parent_comment / parent_comment_id / parent
+        const parentObj = c.parent_comment || c.parent_comment_id || c.parent || c.parentComment || c.parent_comment_object;
+        if (parentObj && typeof parentObj === 'object') {
+          if ('id' in parentObj) return parentObj.id;
+          if ('comment_id' in parentObj) return parentObj.comment_id;
+        }
+        if (c.reply_to) return c.reply_to;
+        if (c.parentCommentId) return c.parentCommentId;
+        return null;
+      };
       const nodes = [];
       const map = {};
+      // reply state is handled at outer scope (see clearReply defined above)
+      
       arr.forEach(c=>{
         const id = getId(c);
         if(!id) return; // skip invalid
@@ -257,6 +344,8 @@
           username: who.username || null,
           display_name: who.display_name || 'Anonimo',
           avatar: who.avatar || null,
+          commenter_id: who.id || null,
+          commenter_lvl: who.lvl !== undefined ? who.lvl : null,
           when: c.created_at || c.date || c.createdAt || '',
           text: c.text || c.content || c.body || '',
           raw: c,
@@ -278,6 +367,14 @@
       });
 
       // recursive renderer
+      // count descendants (replies to replies) for collapse decisions
+      const countDescendants = (node) => {
+        if(!node || !node.children || !node.children.length) return 0;
+        let cnt = node.children.length;
+        node.children.forEach(c => { cnt += countDescendants(c); });
+        return cnt;
+      };
+
       const renderNode = (node) => {
         const div = document.createElement('div');
         div.className = 'comment';
@@ -295,8 +392,6 @@
           img.style.borderRadius = '50%';
           img.style.marginRight = '8px';
           img.style.objectFit = 'cover';
-          // fallback if avatar path 404s
-          img.onerror = () => { img.onerror = null; img.src = '/static/images/no pp.jpg'; };
           header.appendChild(img);
         }
         const whoLink = document.createElement('a');
@@ -317,11 +412,7 @@
         // small timestamp + optional parent link (showing only clickable parent username)
         const meta = document.createElement('div');
         meta.style.marginLeft = '8px';
-        const small = document.createElement('small');
-        small.style.color = 'var(--muted)';
-        // display friendly formatted timestamp, keep raw value in title for details
-        small.textContent = formatTimestamp(node.when) || node.when || '';
-        small.title = node.when || '';
+        const small = document.createElement('small'); small.style.color = 'var(--muted)'; small.textContent = formatTimestamp(node.when);
         meta.appendChild(small);
         if(node.parent_id && map[node.parent_id]){
           const parent = map[node.parent_id];
@@ -343,75 +434,217 @@
 
         // actions
         const actions = document.createElement('div'); actions.style.marginTop='6px';
-        const replyBtn = document.createElement('button'); replyBtn.textContent='Rispondi';
-        replyBtn.addEventListener('click', ()=> {
-          const ta = el('comment-text');
-          const parentInput = el('comment-parent-id');
-          // set parent id so server knows it's a reply
-          if (parentInput) parentInput.value = node.id;
-          // prefill mention only if a real username exists
-          const prof = node.username;
-          ta.value = prof ? `@${prof} ` : `${node.display_name} `;
-          ta.focus();
-        });
-        const reportBtn = document.createElement('button'); reportBtn.textContent='Segnala'; reportBtn.style.marginLeft='8px';
-        reportBtn.addEventListener('click', async ()=> {
-          const reason = prompt('Motivo della segnalazione (opzionale):') || '';
-          if(!confirm('Segnalare questo commento?')) return;
-          if(!node.id) return alert('Commento non valido');
-          await fetch('/show/comment/report', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ comment_id: node.id, reason }) });
-          alert('Segnalazione inviata');
-        });
-        actions.appendChild(replyBtn); actions.appendChild(reportBtn);
+
+        // determine permissions for this node
+        const loggedId = LOGGED && LOGGED.id !== undefined && LOGGED.id !== null ? String(LOGGED.id) : null;
+        const publisherId = SERVER_PUBLISHER && SERVER_PUBLISHER.id ? String(SERVER_PUBLISHER.id) : (media.user_id ? String(media.user_id) : null);
+        const commenterId = node.commenter_id !== null ? String(node.commenter_id) : null;
+        const commenterLvl = node.commenter_lvl !== null ? Number(node.commenter_lvl) : null;
+
+        // styling: prefer server-provided node.type, fallback to legacy checks
+        let ctype = node.type || null;
+        if (!ctype) {
+          if (commenterId && publisherId && commenterId === publisherId) ctype = 'publisher';
+          else if (commenterLvl !== null && commenterLvl < 3) ctype = 'admin';
+          else if (commenterLvl === 2) ctype = 'mod';
+          else ctype = 'regular';
+        }
+        div.classList.add(ctype);
+        if (ctype === 'admin') div.style.position = 'relative';
+        // attach a visible badge to the header (so child comments keep their own badge)
+        const typeBadge = document.createElement('span');
+        typeBadge.className = 'comment-badge ' + ctype + '-badge';
+        typeBadge.textContent = ctype.toUpperCase();
+        typeBadge.style.marginLeft = '8px';
+        header.appendChild(typeBadge);
+
+        // REPLY button (only if allowed)
+        if (canReply()){
+          const replyBtn = document.createElement('button'); replyBtn.textContent='Rispondi';
+          replyBtn.addEventListener('click', ()=> {
+            const ta = el('comment-text');
+            // prefill mention only if a real username exists
+            const prof = node.username;
+            ta.value = prof ? `@${prof} ` : `${node.display_name} `;
+            ta.focus();
+            // set active reply id and show context (both in-memory and in hidden input)
+            replyToCommentId = node.id;
+            const hidden = el('parent-comment-id');
+            if (hidden) hidden.value = String(node.id);
+            const ctx = el('reply-context');
+            if (ctx) {
+              ctx.style.display = 'block';
+              el('reply-to-name').textContent = prof ? `@${prof}` : node.display_name;
+            }
+            // expose the commenter info for external integrations / forms
+            try {
+              window.COMMENTER = { id: node.raw && node.raw.user && node.raw.user.id ? node.raw.user.id : node.username ? node.username : null, username: node.username || null, lvl: node.raw && node.raw.user && node.raw.user.lvl !== undefined ? Number(node.raw.user.lvl) : (node.commenter_lvl !== undefined ? Number(node.commenter_lvl) : null) };
+            } catch(e){ window.COMMENTER = { id: null, username: node.username || null, lvl: null }; }
+          });
+          actions.appendChild(replyBtn);
+        }
+
+        // EDIT button (own comment or any if canEditAny)
+        const canEditThis = (loggedId && commenterId && loggedId === commenterId) || canEditAny();
+        if (canEditThis){
+          const editBtn = document.createElement('button'); editBtn.textContent='Edit'; editBtn.style.marginLeft='8px';
+          editBtn.addEventListener('click', ()=>{
+            // inline edit UI
+            const ta = document.createElement('textarea'); ta.value = node.text; ta.style.width='100%'; ta.style.marginTop='8px';
+            const save = document.createElement('button'); save.textContent='Save'; save.style.marginLeft='6px';
+            const cancel = document.createElement('button'); cancel.textContent='Cancel'; cancel.style.marginLeft='6px';
+            div.appendChild(ta); div.appendChild(save); div.appendChild(cancel);
+            save.addEventListener('click', async ()=>{
+              const newText = ta.value.trim(); if(!newText) return alert('Text vuoto');
+              try{
+                const r = await fetch('/show/comment/edit', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ comment_id: node.id, new_text: newText }) });
+                const j = await r.json().catch(()=>({}));
+                if(r.ok && j.status === 'OK') { await loadComments(); } else { alert('Edit failed'); }
+              } catch(e){ console.error(e); alert('Network error'); }
+            });
+            cancel.addEventListener('click', ()=>{ ta.remove(); save.remove(); cancel.remove(); });
+          });
+          actions.appendChild(editBtn);
+        }
+
+        // DELETE button (own comment or allowed by admin/publisher)
+        const canDeleteThis = (loggedId && commenterId && loggedId === commenterId) || canDeleteAny();
+        if (canDeleteThis){
+          const deleteBtn = document.createElement('button'); deleteBtn.textContent='Delete'; deleteBtn.style.marginLeft='8px'; deleteBtn.style.background='#c33'; deleteBtn.style.color='#fff';
+          deleteBtn.addEventListener('click', async ()=>{
+            if(!confirm('Sei sicuro di voler eliminare questo commento?')) return;
+            try{
+              const r = await fetch('/show/comment/delete', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ comment_id: node.id }) });
+              const j = await r.json().catch(()=>({}));
+              if(r.ok && j.status === 'OK') { await loadComments(); } else { alert('Delete failed'); }
+            } catch(e){ console.error(e); alert('Network error'); }
+          });
+          actions.appendChild(deleteBtn);
+        }
 
         div.appendChild(header); div.appendChild(body); div.appendChild(actions);
 
-        // children
+        // children: collapse large threads and use a "see more" loader (counts replies including nested replies)
         if(node.children && node.children.length){
+          const totalReplies = countDescendants(node);
           const wrap = document.createElement('div');
           wrap.className = 'children';
-          node.children.forEach(child => wrap.appendChild(renderNode(child)));
-          div.appendChild(wrap);
+
+          if(totalReplies > 3){
+            const btn = document.createElement('button');
+            btn.className = 'see-more-btn';
+            btn.textContent = `Mostra altre ${totalReplies} risposte`;
+            btn.addEventListener('click', ()=>{
+              // prevent double-click
+              btn.disabled = true; btn.textContent = 'Caricamento...';
+              // render all children (preserves original order and nested replies)
+              node.children.forEach(child => wrap.appendChild(renderNode(child)));
+              btn.remove();
+            });
+            div.appendChild(btn);
+            // do not render replies yet (they will be appended to wrap when button clicked)
+            div.appendChild(wrap);
+          } else {
+            // small threads: render directly
+            node.children.forEach(child => wrap.appendChild(renderNode(child)));
+            div.appendChild(wrap);
+          }
         }
         return div;
       };
 
       // append roots
-      roots.forEach(r => list.appendChild(renderNode(r)));
+      // Sort roots (most recent first) and children recursively
+      const parseDate = s => { const d = new Date(String(s)); return isNaN(d) ? 0 : d.getTime(); };
+      const sortRecursive = node => {
+        if(node.children && node.children.length){
+          node.children.sort((a,b)=> parseDate(b.when) - parseDate(a.when));
+          node.children.forEach(sortRecursive);
+        }
+      };
+      roots.sort((a,b)=> parseDate(b.when) - parseDate(a.when));
+      roots.forEach(sortRecursive);
+
+      // Lazy render roots in batches of 10 (most recent on top)
+      const BATCH = 10;
+      let rendered = 0;
+      list.innerHTML = '';
+      const sentinel = document.createElement('div'); sentinel.id = 'comments-sentinel';
+      sentinel.style.padding = '12px'; sentinel.style.textAlign = 'center'; sentinel.style.color = 'var(--muted)'; sentinel.textContent = 'Caricamento...';
+
+      const renderNext = () => {
+        const slice = roots.slice(rendered, rendered + BATCH);
+        slice.forEach(r => list.appendChild(renderNode(r)));
+        rendered += slice.length;
+        if(rendered >= roots.length){
+          // all rendered
+          if (sentinel.parentNode) sentinel.remove();
+          if(rendered === 0) list.textContent = 'Nessun commento';
+        } else {
+          if (!sentinel.parentNode) list.appendChild(sentinel);
+        }
+      };
+
+      // IntersectionObserver to trigger more renders
+      const io = new IntersectionObserver(entries => { if(entries[0].isIntersecting) renderNext(); }, { rootMargin: '200px', threshold: 0.01 });
+      // start
+      renderNext();
+      if (roots.length > rendered) io.observe(sentinel);
+      else if (sentinel.parentNode) sentinel.remove();
     } catch(e){
       console.error('[comments] loadComments error:', e);
       console.error(e); el('comments-list').textContent = 'Errore nel caricamento commenti';
     }
    }
 
-  el('comment-send').addEventListener('click', async ()=>{
+  // hide send UI if user is restricted/banned
+  const _sendBtn = el('comment-send'); const _commentInput = el('comment-text');
+  if(!canComment()){
+    if(_sendBtn) _sendBtn.style.display = 'none';
+    if(_commentInput){ _commentInput.setAttribute('disabled','true'); _commentInput.setAttribute('placeholder','Non puoi commentare'); }
+  } else {
+    if(_sendBtn) _sendBtn.style.display = '';
+    if(_commentInput) _commentInput.removeAttribute('disabled');
+  }
+
+  if(_sendBtn){ _sendBtn.addEventListener('click', async ()=>{
     const text = el('comment-text').value.trim();
     if(!text) return alert('Commento vuoto');
-    const parentId = (el('comment-parent-id') && el('comment-parent-id').value) ? el('comment-parent-id').value : null;
-    console.debug('[comments] sending comment for media_id=', mediaId, 'text=', text, 'parent=', parentId);
+    console.debug('[comments] sending comment for media_id=', mediaId, 'text=', text);
     try {
-      const body = { media_id: mediaId, text: text };
-      if (parentId) body.parent_comment_id = parentId;
-      const r = await fetch('/show/comment', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const payload = { media_id: mediaId, text };
+      // always check hidden parent field first, fallback to replyToCommentId
+      const parentValEl = el('parent-comment-id');
+      const parentVal = (parentValEl && parentValEl.value) ? parentValEl.value : replyToCommentId;
+      if (parentVal !== null && parentVal !== undefined && String(parentVal).trim() !== '') {
+        const pid = Number(parentVal);
+        if (!isNaN(pid)) {
+          payload.parent_comment_id = pid;
+          payload.parent_id = pid;
+          payload.parent = pid;
+        }
+      }
+      const r = await fetch('/show/comment', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
       console.debug('[comments] post returned status=', r.status, 'ok=', r.ok);
       let jr = null;
       try { jr = await r.clone().json(); console.debug('[comments] post returned json=', jr); } catch(e){ console.debug('[comments] post returned non-json'); }
-      // success only when server responded OK and didn't return an error payload
-      if (r.ok && (!jr || (jr && jr.status && String(jr.status).toUpperCase() === 'OK') || (jr && !jr.status))) {
-        el('comment-text').value = '';
-        if (el('comment-parent-id')) el('comment-parent-id').value = '';
-        await loadComments();
-      } else {
-        alert('Errore durante l\'invio del commento: ' + (jr && jr.error_msg ? jr.error_msg : 'Server error'));
-      }
+      if(r.ok){ el('comment-text').value = ''; await loadComments(); } else { alert('Errore durante l\'invio del commento'); }
+      // clear reply context after send attempt
+      clearReply();
     } catch(e){ console.error(e); alert('Errore di rete'); }
-  });
+  }); }
+
 
   // ---------- LOAD MEDIA ----------
   try {
     // prefer server-injected object if available to avoid extra round-trip
     let media = window.INITIAL_MEDIA || null;
-    let loggedUser = window.SERVER_USER || null;
+    // prefer the concise server-injected object when available
+    let loggedUser = window.LOGGED || window.SERVER_USER || null;
+    // also expose server-provided publisher/commenter shortcuts
+    const serverPublisher = window.PUBLISHER || null;
+    const serverCommenter = window.COMMENTER || null;
+
     if(!media){
       const res = await fetch(`/show/data?media_id=${encodeURIComponent(mediaId)}`);
       const j = await res.json();
@@ -465,9 +698,49 @@
     const downloadUrl = getDownloadUrl(media);
     const filename = media.filename || (media.stored_at ? media.stored_at.split('/').pop() : (media.file || '-'));
 
+    // ---------- OPEN WITH UI ----------
+    (function(){
+      const openWrap = el('open-with-buttons');
+      if(!openWrap) return;
+      openWrap.innerHTML = '';
+      const apps = [
+        {id:'default', label:'Default app'},
+        {id:'vlc', label:'VLC'},
+        {id:'music', label:'Music'},
+        {id:'quicktime', label:'QuickTime'},
+        {id:'wmp', label:'Windows Media Player'}
+      ];
+      const sel = document.createElement('select'); sel.id = 'open-with-select';
+      apps.forEach(a=>{ const opt = document.createElement('option'); opt.value = a.id; opt.textContent = a.label; sel.appendChild(opt); });
+      const otherInput = document.createElement('input'); otherInput.placeholder = 'Or enter app id (e.g. vlc)'; otherInput.style.marginLeft = '8px'; otherInput.id = 'open-with-other';
+
+      const btn = document.createElement('button'); btn.textContent = 'Open'; btn.style.marginLeft = '8px';
+      btn.addEventListener('click', async ()=>{
+        const app_id = (otherInput.value || '').trim() || sel.value;
+        try{
+          btn.disabled = true; btn.textContent = 'Opening...';
+          const resp = await fetch('/show/open_with', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({media_id: mediaId, app_id})});
+          if(resp.ok){
+            const j = await resp.json().catch(()=>({status:'OK'}));
+            if(j && j.status === 'OK'){
+              alert(`Opened with ${app_id}`);
+            } else {
+              alert(j && j.error_msg ? `Error: ${j.error_msg}` : 'Opened (no details)');
+            }
+          } else {
+            const j = await resp.json().catch(()=>null);
+            alert(j && j.error_msg ? `Error: ${j.error_msg}` : 'Failed to open with chosen app');
+          }
+        }catch(e){ console.error(e); alert('Error during open request'); }
+        finally{ btn.disabled=false; btn.textContent='Open'; }
+      });
+
+      openWrap.appendChild(sel); openWrap.appendChild(otherInput); openWrap.appendChild(btn);
+    })();
+
     // display media element
     const setDurationFromElement = (elMedia) => {
-      if(!elMedia) return;
+      if(!elMedia) return; 
       const onLoaded = () => {
         const d = elMedia.duration || 0;
         const disp = formatTime(d);
@@ -542,6 +815,34 @@
       container.appendChild(stitle); container.appendChild(slist);
     }
 
+    // linked media (if any)
+    (function(){
+      let lm = media.linked_media || [];
+      if(typeof lm === 'string'){
+        try{ lm = JSON.parse(lm); }catch(e){ lm = []; }
+      }
+      if(!Array.isArray(lm) || !lm.length) return;
+      const ltitle = document.createElement('div'); ltitle.className='list-title'; ltitle.textContent='Linked media';
+      const llist = document.createElement('div'); llist.className='linked-media-list';
+      lm.forEach(it=>{
+        const item = document.createElement('div'); item.className='linked-media-item';
+        const typ = (it.type || it.media_type || '').toLowerCase();
+        const fname = it.filename || (it.stored_at ? it.stored_at.split('/').pop() : '');
+        const display = it.title || fname || (it.name||'file');
+        let href = '#';
+        if(it.id){ href = `${window.location.pathname}?media_id=${encodeURIComponent(it.id)}`; }
+        else if(fname && typ){ href = `/show/file?file_type=${encodeURIComponent(typ)}&filename=${encodeURIComponent(fname)}`; }
+        const a = document.createElement('a'); a.href = href; a.textContent = display; a.style.marginRight='12px';
+        item.appendChild(a);
+        // small actions for song/video
+        if(typ==='song' && href.startsWith('/show/')) {
+          const play = document.createElement('button'); play.className='play'; play.textContent='Play'; play.addEventListener('click', async (ev)=>{ ev.preventDefault(); try{ const resp = await fetch(href, {credentials:'same-origin'}); if(!resp.ok){ alert('Unable to fetch audio'); return; } const blob = await resp.blob(); const url = URL.createObjectURL(blob); const audio = new Audio(url); audio.play(); setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){console.error(e);alert('Playback error')}}); item.appendChild(play);
+        }
+        llist.appendChild(item);
+      });
+      container.appendChild(ltitle); container.appendChild(llist);
+    })();
+
     // download (direct)
     if(downloadUrl){
       const dl = document.createElement('a'); dl.id='download-btn'; dl.href = downloadUrl; dl.textContent='Download'; dl.style.marginTop='12px'; dl.style.display='inline-block'; dl.style.marginRight='8px';
@@ -561,9 +862,6 @@
       container.appendChild(dl);
     }
 
-    // OPEN-WITH buttons (same as before)
-    // ... keep existing open with logic if needed (omitted for brevity) ...
-
     // ---------- ADMIN ACTIONS (edit/delete) ----------
     (function createAdminActions(){
       const adminWrap = document.getElementById('admin-actions');
@@ -574,8 +872,10 @@
       const currentUser = loggedUser || null;
       const currentLvl = currentUser && (currentUser.lvl !== undefined) ? Number(currentUser.lvl) : null;
       const currentUserId = currentUser && (currentUser.id || currentUser.user_id) ? String(currentUser.id || currentUser.user_id) : null;
-      const publisherId = media.user_id ? String(media.user_id) : null;
-      const publisherUsername = media.username ? String(media.username) : null;
+      // prefer explicit server-supplied publisher info when available
+      const publisherId = (serverPublisher && serverPublisher.id) ? String(serverPublisher.id) : (media.user_id ? String(media.user_id) : null);
+      const publisherUsername = (serverPublisher && serverPublisher.username) ? String(serverPublisher.username) : (media.username ? String(media.username) : null);
+      const publisherLvl = (serverPublisher && serverPublisher.lvl !== undefined) ? Number(serverPublisher.lvl) : (media.publisher_lvl !== undefined ? Number(media.publisher_lvl) : null);
 
       const isAdminLevel = [0,1,2].includes(Number(currentLvl));
       const isPublisher = (currentUserId && publisherId && currentUserId === publisherId) || (currentUser && currentUser.username && publisherUsername && currentUser.username === publisherUsername);
@@ -692,9 +992,9 @@
      await loadComments();
  
    } catch(err){
-     console.error(err); el('media-title').textContent = "Errore di rete";
-   }
- })();
+    console.error(err); el('media-title').textContent = "Errore di rete";
+  }
+})();
 </script>
 </body>
 </html>

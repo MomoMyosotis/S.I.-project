@@ -42,7 +42,7 @@ def _probe_media_duration(path: str) -> Optional[float]:
     try:
         proc = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            "-of", "default=noprint_wrappers=1:nokey=1", path],
             capture_output=True, text=True, timeout=6
         )
         out = proc.stdout.strip()
@@ -133,7 +133,7 @@ class Media(ABC):
         title: Optional[str] = None,
         year: Optional[int] = None,
         description: Optional[str] = None,
-        link: Optional[str] = None,
+        linked_media: Optional[str] = None,
         duration: Optional[int] = None,
         location: Optional[str] = None,
         additional_info: Optional[str] = None,
@@ -158,7 +158,7 @@ class Media(ABC):
         self.user_id = user_id
         self.year = year
         self.description = description
-        self.link = link
+        self.linked_media = linked_media
         self.duration = duration
         self.location = location
         self.additional_info = additional_info
@@ -505,11 +505,12 @@ class Media(ABC):
             "user_id": self.user_id,
             "year": self.year,
             "description": self.description,
-            "link": self.link,
+            "linked_media": self.linked_media,
             "duration": self.duration,
             "pages": getattr(self, "pages", None),
             "location": self.location,
             "additional_info": self.additional_info,
+            "file_format": getattr(self, "file_format", None),
             "stored_at": self.stored_at,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "genres": self.genres,

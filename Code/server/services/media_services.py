@@ -6,6 +6,8 @@ from server.objects.media.document import Document
 from server.objects.media.video import Video
 from server.objects.media.media import Media
 from server.utils.media_utils import fetch_dict_entry, create_dict_entry
+# helper DB lookup
+from server.db.db_crud import get_user_id_by_username
 
 # =========================
 # GENERIC CREATION (optional, CLI/debug)
@@ -214,31 +216,161 @@ def get_song_services(user_obj, song_id: int):
     print(f"[DEBUG][get_song_services] song_id={song_id}")
     return get_object(Song, song_id)
 
-def create_song_services(user_obj, data: dict):
+def create_song_services(user_obj, data: dict = None, **kwargs):
+    # Accept either a single data dict or keyword args (dispatcher may unpack)
+    if data is None:
+        data = {}
+    if isinstance(data, dict) and kwargs:
+        data = {**data, **kwargs}
+    elif not isinstance(data, dict) and kwargs:
+        # unexpected shapes: treat kwargs as the payload
+        data = dict(kwargs)
+
     print(f"[DEBUG][create_song_services] user_obj={user_obj}, data={data}")
 
+    # normalize alternate keys and aliases
+    if 'i_am_author' in data and 'is_author' not in data:
+        data['is_author'] = bool(data.pop('i_am_author'))
+    if 'i_am_performer' in data and 'is_performer' not in data:
+        data['is_performer'] = bool(data.pop('i_am_performer'))
+    if 'is_composer' in data and 'is_author' not in data:
+        data['is_author'] = bool(data.get('is_composer'))
+
+    # year aliases
+    if 'publication_year' in data and 'year' not in data:
+        try:
+            data['year'] = int(data.get('publication_year')) if data.get('publication_year') else None
+        except Exception:
+            data['year'] = None
+    if 'composition_year' in data and 'year' not in data:
+        try:
+            data['year'] = int(data.get('composition_year')) if data.get('composition_year') else None
+        except Exception:
+            pass
+
+    # single-string genre -> list
+    if 'genre' in data and 'genres' not in data:
+        g = data.get('genre')
+        if isinstance(g, str):
+            data['genres'] = [s.strip() for s in g.split(',') if s.strip()]
+        elif isinstance(g, (list, tuple)):
+            data['genres'] = list(g)
+
+    # support publish-on-behalf: map on_behalf_of -> user_id if present
+    if 'on_behalf_of' in data:
+        try:
+            ob = str(data.get('on_behalf_of')).strip()
+            if ob:
+                uid = get_user_id_by_username(ob)
+                if uid:
+                    data['user_id'] = uid
+                else:
+                    print(f"[create_song_services] on_behalf_of username '{ob}' not found")
+        except Exception as e:
+            print(f"[create_song_services] error resolving on_behalf_of: {e}")
+
     data["type"] = "song"
-    if user_obj:
+    # only set creator from actor if not explicitly publishing on behalf of someone
+    if data.get("user_id") is None and user_obj:
         uid = user_obj.get("id") if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
         if uid:
             data["user_id"] = uid
     if data.get("stored_at") is None:
         data["stored_at"] = "server/storage/songs"
+
+    # handle automatic metadata (duration/format)
+    def _parse_duration(d):
+        import re
+        if d is None:
+            return None
+        if isinstance(d, (int, float)):
+            return int(round(float(d)))
+        s = str(d).strip()
+        if ':' in s:
+            try:
+                parts = [int(p) for p in s.split(':')]
+            except Exception:
+                parts = []
+            if len(parts) == 2:
+                return parts[0] * 60 + parts[1]
+            if len(parts) == 3:
+                return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        import re
+        m = re.search(r"([0-9]+(?:\.[0-9]+)?)", s)
+        if m:
+            try:
+                return int(round(float(m.group(1))))
+            except Exception:
+                return None
+        return None
+
+    auto = data.get("automatic")
+    if isinstance(auto, dict):
+        if data.get("duration") is None and auto.get("duration") is not None:
+            dur = _parse_duration(auto.get("duration"))
+            if dur is not None:
+                data["duration"] = dur
+        if auto.get("format") is not None:
+            data["file_format"] = auto.get("format")
+            try:
+                import json as _json
+                info = {"detected_format": auto.get("format")}
+                if data.get("additional_info"):
+                    try:
+                        existing = _json.loads(data.get("additional_info"))
+                        if isinstance(existing, dict):
+                            existing.update(info)
+                            data["additional_info"] = _json.dumps(existing)
+                        else:
+                            data["additional_info"] = _json.dumps(info)
+                    except Exception:
+                        data["additional_info"] = _json.dumps(info)
+                else:
+                    data["additional_info"] = _json.dumps(info)
+            except Exception:
+                data["additional_info"] = f"format:{auto.get('format')}"
+
     if "performers" in data:
         # normalize performers to list of ids (db expects ids)
-        data["performers"] = prepare_performers(data["performers"])
+        try:
+            perf_ids = prepare_performers(data["performers"])
+        except Exception as e:
+            return {"status": "ERROR", "error_msg": f"performers normalization failed: {e}"}
+        # validate/repair performer ids: ensure we have performer rows for each
+        from server.db.db_crud import fetch_one, get_or_create_performer_for_user
+        final_pids = []
+        seen = set()
+        for pid in perf_ids:
+            row = fetch_one("SELECT id FROM performers WHERE id=%s", (pid,))
+            if row:
+                nid = int(row['id'])
+            else:
+                # pid may be a user id: try to create a performer for that user
+                urow = fetch_one("SELECT id, username FROM users WHERE id=%s", (pid,))
+                if urow and urow.get('id'):
+                    creator_uid = urow['id']
+                    pname = urow.get('username') or str(creator_uid)
+                    nid = get_or_create_performer_for_user(creator_uid, pname)
+                    if nid is None:
+                        return {"status": "ERROR", "error_msg": f"Unable to create performer entry for user id {creator_uid}"}
+                else:
+                    return {"status": "ERROR", "error_msg": f"Performer id {pid} does not exist"}
+            if nid not in seen:
+                seen.add(nid)
+                final_pids.append(nid)
+        data["performers"] = final_pids
 
     # Costruisci oggetto (non salva ancora relazioni M:N)
     song = Song.from_dict(data)
 
-    # Associa l'utente creatore (redundant if set above but safe)
-    if user_obj:
-        uid = user_obj.get("id") if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
-        if uid:
-            song.user_id = uid
+    # Ensure the song's owner matches the requested owner (on_behalf or actor)
+    if data.get('user_id') is not None:
+        song.user_id = data.get('user_id')
 
     # Salva nel DB
-    song.save()
+    created_id = song.save()
+    if not created_id:
+        return {"status": "ERROR", "error_msg": "Failed to persist song"}
     return song
 
 def update_song_services(user_obj, song_id: int, updates: dict):
@@ -260,7 +392,43 @@ def delete_song_services(user_obj, song_id: int):
 # =========================
 # DOCUMENT SERVICES
 # =========================
-def create_document_services(user_obj, data: dict):
+def create_document_services(user_obj, data: dict = None, **kwargs):
+    if data is None:
+        data = {}
+    if isinstance(data, dict) and kwargs:
+        data = {**data, **kwargs}
+    elif not isinstance(data, dict) and kwargs:
+        data = dict(kwargs)
+
+    # map automatic into document fields
+    auto = data.get("automatic")
+    if isinstance(auto, dict):
+        if auto.get("format") and not data.get("format"):
+            data["format"] = auto.get("format")
+        if auto.get("pages") and not data.get("pages"):
+            try:
+                data["pages"] = int(auto.get("pages"))
+            except Exception:
+                pass
+
+    # if linked_to is present, inherit owner from the linked media
+    if data.get('linked_to'):
+        try:
+            from server.db.db_crud import fetch_one
+            lm = fetch_one("SELECT user_id FROM media WHERE id=%s", (data.get('linked_to'),))
+            if lm and lm.get('user_id'):
+                data['user_id'] = lm['user_id']
+        except Exception as e:
+            print(f"[create_document_services] unable to inherit owner from linked media: {e}")
+
+    # normalize single-string genre alias
+    if 'genre' in data and 'genres' not in data:
+        g = data.get('genre')
+        if isinstance(g, str):
+            data['genres'] = [s.strip() for s in g.split(',') if s.strip()]
+        elif isinstance(g, (list, tuple)):
+            data['genres'] = list(g)
+
     data["type"] = "document"
     if data.get("stored_at") is None:
         data["stored_at"] = "server/storage/documents"
@@ -285,7 +453,23 @@ def delete_document_services(user_obj, doc_id: int):
 # =========================
 # VIDEO SERVICES
 # =========================
-def create_video_services(user_obj, data: dict):
+def create_video_services(user_obj, data: dict = None, **kwargs):
+    if data is None:
+        data = {}
+    if isinstance(data, dict) and kwargs:
+        data = {**data, **kwargs}
+    elif not isinstance(data, dict) and kwargs:
+        data = dict(kwargs)
+
+    # handle automatic metadata
+    auto = data.get("automatic")
+    if isinstance(auto, dict):
+        if data.get("duration") is None and auto.get("duration") is not None:
+            try:
+                data["duration"] = int(round(float(auto.get("duration"))))
+            except Exception:
+                pass
+
     data["type"] = "video"
     if data.get("stored_at") is None:
         data["stored_at"] = "server/storage/videos"
@@ -310,22 +494,115 @@ def delete_video_services(user_obj, video_id: int):
 # SUPPORT
 # =========================
 def prepare_performers(performers: list) -> list:
+    """Normalize performers into a list of performer IDs.
+    Accepts several shapes:
+      - list of dicts: {type:'user', id: <int>} or {type:'external', name: '...'}
+      - list of ints: treated as performer ids
+      - list of strings: treated as usernames (try resolve to user id) or external names
+    """
     result_ids = []
-    for p in performers:
-        if p["type"] == "user":
-            result_ids.append(int(p["id"]))
-        elif p["type"] == "external":
-            existing = fetch_dict_entry("performers", p["name"])
-            if existing:
-                pid = existing["id"]
+    # handle comma-separated single string
+    items = []
+    if isinstance(performers, str):
+        items = [s.strip() for s in performers.split(",") if s.strip()]
+    elif isinstance(performers, (list, tuple)):
+        items = list(performers)
+    else:
+        raise ValueError("Unsupported performers container")
+
+    from server.db.db_crud import get_or_create_performer_for_user
+    for p in items:
+        # handle dict entries (existing behavior)
+        if isinstance(p, dict):
+            if p.get("type") == "user":
+                if "id" in p:
+                    uid = int(p["id"])
+                    # ensure performer entry exists for user
+                    pid = get_or_create_performer_for_user(uid, p.get("username") or str(uid))
+                    if pid is None:
+                        raise ValueError(f"Unable to map user performer id {uid} to performer entry")
+                    result_ids.append(pid)
+                elif "username" in p:
+                    # try to resolve username
+                    uname = p["username"].strip()
+                    uid = get_user_id_by_username(uname)
+                    if uid:
+                        pid = get_or_create_performer_for_user(uid, uname)
+                        if pid is None:
+                            raise ValueError(f"Unable to create/fetch performer for user '{uname}'")
+                        result_ids.append(pid)
+                    else:
+                        raise ValueError(f"Unable to resolve user performer '{uname}'")
+            elif p.get("type") == "external":
+                name = p.get("name")
+                existing = fetch_dict_entry("performers", name)
+                if existing:
+                    pid = existing["id"]
+                else:
+                    pid = create_dict_entry("performers", name)
+                if pid is None:
+                    raise ValueError(f"Unable to create/fetch external performer '{name}'")
+                result_ids.append(pid)
             else:
-                pid = create_dict_entry("performers", p["name"])
-            if pid is None:
-                raise ValueError(f"Unable to create/fetch external performer '{p['name']}'")
-            result_ids.append(pid)
+                raise ValueError(f"Tipo performer non valido: {p.get('type')}")
+
+        # handle integers (assume performer id)
+        elif isinstance(p, int):
+            result_ids.append(int(p))
+
+        # handle strings: try username -> user id -> performer, otherwise treat as external name
+        elif isinstance(p, str):
+            pstr = p.strip()
+            if not pstr:
+                continue
+            # comma separated list in a single string
+            if "," in pstr:
+                for sub in [s.strip() for s in pstr.split(',') if s.strip()]:
+                    uid = get_user_id_by_username(sub)
+                    if uid:
+                        pid = get_or_create_performer_for_user(uid, sub)
+                        if pid is None:
+                            raise ValueError(f"Unable to create/fetch performer for user '{sub}'")
+                        result_ids.append(pid)
+                    else:
+                        existing = fetch_dict_entry("performers", sub)
+                        if existing:
+                            result_ids.append(existing["id"])
+                        else:
+                            pid = create_dict_entry("performers", sub)
+                            if pid is None:
+                                raise ValueError(f"Unable to create/fetch external performer '{sub}'")
+                            result_ids.append(pid)
+                continue
+
+            uid = get_user_id_by_username(pstr)
+            if uid:
+                pid = get_or_create_performer_for_user(uid, pstr)
+                if pid is None:
+                    raise ValueError(f"Unable to create/fetch performer for user '{pstr}'")
+                result_ids.append(pid)
+            else:
+                # external performer fallback
+                existing = fetch_dict_entry("performers", pstr)
+                if existing:
+                    pid = existing["id"]
+                else:
+                    pid = create_dict_entry("performers", pstr)
+                if pid is None:
+                    raise ValueError(f"Unable to create/fetch external performer '{pstr}'")
+                result_ids.append(pid)
+
         else:
-            raise ValueError(f"Tipo performer non valido: {p['type']}")
-    return result_ids
+            raise ValueError("Unsupported performer format")
+
+    # dedupe while preserving order
+    seen = set()
+    final = []
+    for i in result_ids:
+        if i not in seen:
+            seen.add(i)
+            final.append(i)
+    return final
 
 def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset: int = 0, limit: int = 10):
     print(f"[DEBUG] feed request received offset={offset}, limit={limit}, search='{search}', filter_by='{filter_by}'")
@@ -412,7 +689,7 @@ def get_user_publications_services(user_obj, username: str, offset: int = 0, lim
                 if t in ("video","movie"): return "video"
                 if t in ("document","doc","pdf"): return "document"
                 return t
-            stored = (row.get("stored_at") or row.get("location") or row.get("link") or "").lower()
+            stored = (row.get("stored_at") ).lower()
             if any(stored.endswith(ext) for ext in (".mp3",".wav",".m4a",".ogg",".flac")) or "/songs" in stored or "/audio" in stored:
                 return "song"
             if any(stored.endswith(ext) for ext in (".mp4",".mov",".webm",".avi",".mkv")) or "/videos" in stored:

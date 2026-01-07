@@ -359,7 +359,7 @@
     // Follow / Unfollow only when viewing other user's profile and viewer is logged
     if (!isSelf && viewerId) {
       const isFollowing = Boolean(targetUser?.is_followed ?? targetUser?.is_following ?? false);
-      const btnText = isFollowing ? "Unfollow" : "Segui";
+      const btnText = isFollowing ? "Unfollow" : "Follow";
       container.insertAdjacentHTML("beforeend",
         `<button id="follow-btn" class="follow-btn">${btnText}</button>`);
       const btn = document.getElementById("follow-btn");
@@ -504,7 +504,7 @@
       const username = viewedUsername || targetIdentifier;
       if (!username) return;
       const followBtn = document.getElementById("follow-btn");
-      const action = followBtn && followBtn.textContent.trim().toLowerCase() === "segui" ? "follow" : "unfollow";
+      const action = followBtn && followBtn.textContent.trim().toLowerCase() === "follow" ? "follow" : "unfollow";
       const res = await fetch(`/profile/${action}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -514,7 +514,7 @@
       const j = await res.json();
       // toggle label on success (backend should return success flag)
       if (j && (j.status === "OK" || j.success === true)) {
-        if (followBtn) followBtn.textContent = action === "follow" ? "Unfollow" : "Segui";
+        if (followBtn) followBtn.textContent = action === "follow" ? "Unfollow" : "Follow";
         // update followers counter if present
         const followersEl = document.getElementById("followers-count");
         if (followersEl) {

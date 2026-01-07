@@ -48,7 +48,7 @@ CREATE TABLE media (
     title VARCHAR(255) NOT NULL,
     year INT,
     description TEXT,
-    link VARCHAR(255),
+    linked_media TEXT,
     duration INT,
     recording_date DATE,
     location VARCHAR(100),
@@ -112,7 +112,8 @@ CREATE TABLE media_performances (
     id SERIAL PRIMARY KEY,
     media_id INT REFERENCES media(id) ON DELETE CASCADE,
     performer_id INT REFERENCES performers(id) ON DELETE CASCADE,
-    additional_info TEXT
+    additional_info TEXT,
+    CONSTRAINT media_perf_unique UNIQUE (media_id, performer_id)
 );
 
 CREATE TABLE performance_instruments (

@@ -68,6 +68,8 @@ def feed_data():
 
             m = Media.from_server(it)
             md = m.to_dict()
+            # preserve server-side created_at so client-side date filters work
+            md["created_at"] = it.get("created_at") or it.get("createdAt") or md.get("created_at")
             username = it.get("username") or it.get("owner") or it.get("uploader") or md.get("uploader_id")
             tags = it.get("tags") or md.get("tags") or it.get("genre") or []
             thumbnail = it.get("thumbnail") or it.get("thumb") or "/static/images/unknown.jpg"
@@ -78,6 +80,7 @@ def feed_data():
                 "thumbnail": thumbnail,
                 "tags": tags,
                 "type": md.get("type") or it.get("type") or it.get("media_type") or it.get("file_type") or "unknown",
+                "created_at": md.get("created_at"),
                 "raw": md
             })
         except Exception as e:
@@ -96,31 +99,97 @@ def feed_data():
     def matches(item, term, f):
         if not term:
             return True
-        t = term.lower()
-        def contains(val):
-            return bool(val) and t in str(val).lower()
+        # support comma-separated multi-terms
+        terms = [p.strip() for p in str(term).split(',') if p.strip()]
+        def contains_any(val, ts):
+            if not val:
+                return False
+            s = str(val).lower()
+            return any(t.lower() in s for t in ts)
+        def contains_all_in_tags(tags_list, ts):
+            # each search token must match at least one tag
+            if not tags_list:
+                return False
+            lowered = [str(t).lower() for t in tags_list]
+            for t in ts:
+                found = False
+                for tag in lowered:
+                    if t.lower() in tag:
+                        found = True
+                        break
+                if not found:
+                    return False
+            return True
+
         tags = item.get("tags") or []
+
+        # Broad 'all' behaviour: check title, username, author, file and tags
         if f in ("all",):
-            if contains(item.get("title")) or contains(item.get("username")) or contains(item.get("author")):
+            if contains_any(item.get("title"), terms) or contains_any(item.get("username"), terms) or contains_any(item.get("author"), terms):
                 return True
-            if contains(item.get("file")) or contains(item.get("filename")) or contains(item.get("link")):
+            if contains_any(item.get("file"), terms) or contains_any(item.get("filename"), terms) or contains_any(item.get("link"), terms):
                 return True
-            for tag in tags:
-                if contains(tag):
-                    return True
+            # for tags: if user provided multiple terms, require all present; otherwise any
+            if len(terms) > 1:
+                return contains_all_in_tags(tags, terms)
+            else:
+                for tag in tags:
+                    if contains_any(tag, terms):
+                        return True
             return False
-        if f == "user" or f == "author":
-            return contains(item.get("username")) or contains(item.get("author"))
+
+        # User filter: only match user-type feed items (avoid showing user's media)
+        if f == "user":
+            if item.get("type") != "user":
+                return False
+            # multiple usernames -> return user matches for ANY of them (show both users)
+            return contains_any(item.get("username"), terms)
+
+        # Author filter: match author fields in media or username
+        if f == "author":
+            # multiple author terms -> all must be present (match both authors)
+            if len(terms) > 1:
+                for t in terms:
+                    if not (contains_any(item.get("author"), [t]) or contains_any(item.get("username"), [t])):
+                        return False
+                return True
+            return contains_any(item.get("author"), terms) or contains_any(item.get("username"), terms)
+
+        # Title filter
         if f == "title":
-            return contains(item.get("title"))
+            return contains_any(item.get("title"), terms)
+
+        # Tag filter
         if f == "tag":
+            # require ALL provided tag terms to be present in the item's tags
+            if len(terms) > 1:
+                return contains_all_in_tags(tags, terms)
             for tag in tags:
-                if contains(tag):
+                if contains_any(tag, terms):
                     return True
             return False
+
+        # File filter
         if f == "file":
-            return contains(item.get("file")) or contains(item.get("filename")) or contains(item.get("link"))
-        return contains(item.get("title")) or contains(item.get("username"))
+            return contains_any(item.get("file"), terms) or contains_any(item.get("filename"), terms) or contains_any(item.get("link"), terms)
+
+        # Publisher filter: match uploader/publisher username or id
+        if f == "publisher":
+            # if any username matches, accept
+            if contains_any(item.get("username"), terms):
+                return True
+            raw = item.get("raw") or {}
+            return contains_any(raw.get("user_id"), terms) or contains_any(raw.get("username"), terms) or contains_any(raw.get("uploader"), terms)
+
+        # Date filter: match published/created date string (accept YYYY or YYYY-MM or full date)
+        if f == "date":
+            raw = item.get("raw") or {}
+            created = raw.get("created_at") or item.get("created_at")
+            # if multiple date terms passed, accept any of them (match any provided date)
+            return contains_any(created, terms)
+
+        # Fallback: match title or username
+        return contains_any(item.get("title"), terms) or contains_any(item.get("username"), terms)
 
     accumulated = []
     for it in normalized_batch:

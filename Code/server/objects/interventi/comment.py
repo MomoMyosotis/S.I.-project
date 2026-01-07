@@ -114,8 +114,26 @@ class Comment:
         if not comment:
             return False
         owner_id = comment[0]["user_id"]
-        if not Root.can_manage_content(user_id, owner_id):
+
+        # allow edit if caller can manage content (admin/root) or caller is media owner (publisher)
+        media = None
+        if comment[0].get("media_id"):
+            media = fetch_media_db(comment[0]["media_id"])
+            print(f"[DEBUG update_comment] fetched media: {media}")
+        media_owner_id = media["user_id"] if media else None
+
+        # debug: log permission checks
+        try:
+            can_manage = Root.can_manage_content(user_id, owner_id)
+            is_adm = Root.is_admin(user_id)
+        except Exception as _e:
+            can_manage = None
+            is_adm = None
+        print(f"[DEBUG update_comment] permission check: user_id={user_id} (type={type(user_id)}), owner_id={owner_id} (type={type(owner_id)}), media_owner_id={media_owner_id} (type={type(media_owner_id)}), can_manage={can_manage}, is_admin={is_adm}")
+
+        if not Root.can_manage_content(user_id, owner_id) and user_id != media_owner_id:
             raise PermissionError("Non hai i permessi per modificare questo commento")
+
         result = update_comment_db(comment_id, "text", new_text)
         print(f"[DEBUG update_comment] update_comment_db result: {result}")
         return result
