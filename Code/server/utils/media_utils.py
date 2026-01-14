@@ -57,23 +57,39 @@ def set_execution_details(media_id: int, duration_sec: int = None,
 
 def create_concert_video(media_data: Dict[str, Any]) -> Optional[int]:
     media_data["type"] = "concert"
-    return Media.create_media(media_data, child_table="videos", child_fields=("duration_sec","linked_media"))
+    print(f"[DEBUG][create_concert_video] media_data={media_data}")
+    try:
+        from server.services.media_services import create_concert_services
+        obj = create_concert_services(None, media_data)
+        print(f"[DEBUG][create_concert_video] created object: {obj!r}")
+        # return media id if object created
+        return getattr(obj, "id", None) if obj else None
+    except Exception as e:
+        print(f"[DEBUG][create_concert_video] failed: {e}")
+        return None
 
 def add_concert_segment(concert_media_id: int, start_time: float, end_time: float,
                         song_title: str, song_id: Optional[int]=None,
                         performers: List[int]=None, instruments: List[int]=None) -> Optional[int]:
-    fields = ("concert_id","start_time","end_time","song_id","song_title")
-    values = (concert_media_id, start_time, end_time, song_id, song_title)
-    seg_id = create_relation("concert_segments", fields, values)
-    if performers:
-        for pid in performers:
-            create_relation("segment_performers", ("segment_id","performer_id"), (seg_id, pid))
-    if instruments:
-        for iid in instruments:
-            create_relation("segment_instruments", ("segment_id","instrument_id"), (seg_id, iid))
-    return seg_id
+    print(f"[DEBUG][add_concert_segment] concert_media_id={concert_media_id}, start={start_time}, end={end_time}, song_title={song_title}, song_id={song_id}, performers={performers}, instruments={instruments}")
+    try:
+        from server.db.db_crud import create_concert_segment_db
+        seg_id = create_concert_segment_db(concert_media_id, song_id, song_title, start_time, end_time, None, performers, instruments)
+        print(f"[DEBUG][add_concert_segment] created seg_id={seg_id}")
+        return seg_id
+    except Exception as e:
+        print(f"[DEBUG][add_concert_segment] failed: {e}")
+        return None
 
 def fetch_concert_segments(concert_media_id: int) -> List[Dict[str, Any]]:
-    return fetch_relations("concert_segments", "concert_id", concert_media_id)
+    print(f"[DEBUG][fetch_concert_segments] concert_media_id={concert_media_id}")
+    try:
+        from server.db.db_crud import fetch_concert_segments_db
+        res = fetch_concert_segments_db(concert_media_id)
+        print(f"[DEBUG][fetch_concert_segments] returned {len(res) if isinstance(res, list) else 'unknown'} items")
+        return res
+    except Exception as e:
+        print(f"[DEBUG][fetch_concert_segments] fallback fetch_relations due to: {e}")
+        return fetch_relations("concert_segments", "concert_id", concert_media_id)
 
 # last line

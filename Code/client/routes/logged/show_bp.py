@@ -41,7 +41,7 @@ def show_page():
                 media_obj = Media.from_server(candidate)
                 media_dict = media_obj.to_dict()
                 # copy some legacy fields if present
-                for k in ("username","tags","author_names","authors","performers","segments","subtracks","duration_display","duration_seconds","filename","file","link","description"):
+                for k in ("username","tags","author_names","authors","performers","segments","subtracks","duration_display","duration_seconds","filename","file","link","description","embed_url","embed_ok","embed_error"):
                     if k in candidate and k not in media_dict:
                         media_dict[k] = candidate[k]
                 initial_media = media_dict
@@ -131,9 +131,13 @@ def show_data():
             media_dict = media_obj.to_dict()
             if isinstance(candidate.get("username"), str):
                 media_dict["username"] = candidate.get("username")
-            for k in ("tags","author_names","authors","performers","segments","subtracks","duration_display","duration_seconds","filename","file","link","description"):
+            for k in ("tags","author_names","authors","performers","segments","subtracks","duration_display","duration_seconds","filename","file","link","description","embed_url","embed_ok","embed_error"):
                 if k in candidate and k not in media_dict:
                     media_dict[k] = candidate[k]
+
+            # concert detection debug
+            if media_dict.get('type') == 'concert' or (media_dict.get('link') and 'youtube' in str(media_dict.get('link')).lower()):
+                current_app.logger.debug(f"[DEBUG][show_data] Detected concert media_id={media_id}, type={media_dict.get('type')}, link={media_dict.get('link')}")
 
             # try to include current viewer info for convenience
             viewer = None
@@ -195,25 +199,95 @@ def show_file():
         return ("", 400)
 
     res = http_client.send_request("FETCH_FILE", [file_type, filename], require_auth=True)
-    if res.get("status") not in (None, "OK"):
+    if not isinstance(res, dict) or res.get("status") not in (None, "OK"):
         return ("", 404)
 
-    b64 = res.get("response") or res.get("data") or res.get("file") or None
-    if isinstance(b64, dict) and "response" in b64:
-        b64 = b64["response"]
+    # Unwrap possible nested envelopes and extract base64 payload
+    b64 = None
+    if isinstance(res, dict):
+        b64 = res.get("response") or res.get("data") or res.get("file") or None
+        if isinstance(b64, dict) and "response" in b64:
+            b64 = b64.get("response")
+
     if not b64:
+        current_app.logger.debug(f"[show_file] no file data returned for {file_type}/{filename}: {res!r}")
         return ("", 404)
 
     try:
-        import base64
-        import io
+        import base64, io, mimetypes
         content = base64.b64decode(b64)
     except Exception:
+        current_app.logger.exception("Failed to decode file content")
         return ("", 500)
-    import mimetypes
+
     mt, _ = mimetypes.guess_type(filename)
     mimetype = mt or "application/octet-stream"
-    return send_file(io.BytesIO(content), mimetype=mimetype, download_name=filename)
+    return send_file(io.BytesIO(content), mimetype=mimetype, download_name=filename) 
+
+# --------------------
+# CONCERT SEGMENTS (proxy endpoints for client-side JS)
+# --------------------
+@show_bp.route('/segments', methods=['GET'])
+def list_segments():
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+    media_id = request.args.get('media_id') or request.args.get('video_id')
+    if not media_id:
+        return jsonify({'error': 'missing media_id'}), 400
+    try:
+        current_app.logger.debug(f"[DEBUG][list_segments] media_id={media_id}")
+        res = ShowService.get_concert_segments(media_id)
+        current_app.logger.debug(f"[DEBUG][list_segments] result: {res!r}")
+        return jsonify(res)
+    except Exception as e:
+        current_app.logger.exception('Failed to fetch concert segments')
+        return jsonify({'error': str(e)}), 500
+
+@show_bp.route('/segments', methods=['POST'])
+def create_segment():
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+    payload = request.get_json(silent=True) or {}
+    video_id = payload.get('video_id') or payload.get('media_id')
+    segment = payload.get('segment') or {}
+    if not video_id or not isinstance(segment, dict):
+        return jsonify({'error': 'missing video_id or segment'}), 400
+    try:
+        current_app.logger.debug(f"[DEBUG][create_segment] video_id={video_id}, segment={segment}")
+        res = ShowService.add_concert_segment(video_id, segment)
+        current_app.logger.debug(f"[DEBUG][create_segment] result: {res!r}")
+        return jsonify(res)
+    except Exception as e:
+        current_app.logger.exception('Failed to add segment')
+        return jsonify({'error': str(e)}), 500
+
+@show_bp.route('/segments/<int:segment_id>', methods=['PUT'])
+def update_segment(segment_id):
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+    updates = request.get_json(silent=True) or {}
+    try:
+        current_app.logger.debug(f"[DEBUG][update_segment] segment_id={segment_id}, updates={updates}")
+        res = ShowService.update_concert_segment(segment_id, updates)
+        current_app.logger.debug(f"[DEBUG][update_segment] result: {res!r}")
+        return jsonify(res)
+    except Exception as e:
+        current_app.logger.exception('Failed to update segment')
+        return jsonify({'error': str(e)}), 500
+
+@show_bp.route('/segments/<int:segment_id>', methods=['DELETE'])
+def delete_segment(segment_id):
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+    try:
+        current_app.logger.debug(f"[DEBUG][delete_segment] segment_id={segment_id}")
+        res = ShowService.delete_concert_segment(segment_id)
+        current_app.logger.debug(f"[DEBUG][delete_segment] result: {res!r}")
+        return jsonify(res)
+    except Exception as e:
+        current_app.logger.exception('Failed to delete segment')
+        return jsonify({'error': str(e)}), 500
+
 
 @show_bp.route("/delete", methods=["POST"])
 def delete_media():
@@ -331,8 +405,53 @@ def edit_media():
         else:
             sanitized[k] = v
 
+    # If updating a link, sanitize and validate YouTube links when applicable
+    if 'link' in sanitized and sanitized.get('link'):
+        raw_link = str(sanitized.get('link'))
+        cleaned = raw_link.strip().strip('"').strip("'")
+        if cleaned and not cleaned.startswith(("http://","https://")):
+            cleaned = "https://" + cleaned
+        # If it looks like YouTube, ensure we can extract a valid 11-char id
+        try:
+            import re
+            if re.search(r"youtube\.com|youtu\.be", cleaned, flags=re.I):
+                ytm = re.search(r"(?:v=|/embed/|youtu\.be/)([A-Za-z0-9_-]{11})", cleaned)
+                if not ytm:
+                    ytm = re.search(r"youtube\.com/watch\?[^#]*v=([A-Za-z0-9_-]{11})", cleaned)
+                if not ytm:
+                    return jsonify({"status":"ERROR","error_msg":"Invalid YouTube link"}), 400
+        except Exception:
+            return jsonify({"status":"ERROR","error_msg":"Invalid link"}), 400
+        sanitized['link'] = cleaned
+
     res = ShowService.edit_media(media_id, media_type or media_dict.get("type"), sanitized)
     return jsonify(res or {"status":"ERROR","error_msg":"no response from backend"})
+
+@show_bp.route('/validate_youtube', methods=['POST'])
+def validate_youtube():
+    """Validate a YouTube URL and return a canonical video id + embed url.
+    Accepts JSON { url: '...' } and returns { status:'OK', video_id:'...', embed_url:'...' } or a 400 with error.
+    """
+    data = request.get_json(silent=True) or {}
+    url = (data.get('url') or '').strip()
+    if not url:
+        return jsonify({'status':'ERROR','error_msg':'missing url'}), 400
+    cleaned = url.strip().strip('"').strip("'")
+    if cleaned and not cleaned.startswith(("http://","https://")):
+        cleaned = "https://" + cleaned
+    try:
+        import re
+        ytm = re.search(r"(?:v=|/embed/|youtu\.be/)([A-Za-z0-9_-]{11})", cleaned)
+        if not ytm:
+            ytm = re.search(r"youtube\.com/watch\?[^#]*v=([A-Za-z0-9_-]{11})", cleaned)
+        if not ytm:
+            return jsonify({'status':'ERROR','error_msg':'invalid youtube url'}), 400
+        vid = ytm.group(1)
+        current_app.logger.debug(f"[DEBUG][validate_youtube] cleaned={cleaned}, vid={vid}")
+        return jsonify({'status':'OK','video_id':vid,'embed_url':f'https://www.youtube.com/embed/{vid}?rel=0','cleaned':cleaned})
+    except Exception as e:
+        return jsonify({'status':'ERROR','error_msg':str(e)}), 400
+
 
 @show_bp.route("/comments", methods=["GET"])
 def get_comments():

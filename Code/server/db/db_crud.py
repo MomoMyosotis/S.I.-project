@@ -325,6 +325,46 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 ))
                 debug(f"[DB][DOC] document for media_id={media_id}")
 
+            # --- CONCERTI (sottoclasse di video) ---
+            if data.get("type") == "concert":
+                try:
+                    cur.execute("""
+                        INSERT INTO concerts (video_id, link, title, description)
+                        VALUES (%s,%s,%s,%s)
+                        ON CONFLICT (video_id) DO UPDATE SET link=EXCLUDED.link, title=EXCLUDED.title, description=EXCLUDED.description;
+                    """, (
+                        media_id,
+                        data.get("link"),
+                        data.get("title"),
+                        data.get("description"),
+                    ))
+                    debug(f"[DB][CONCERT] concert for video_id={media_id}")
+                except Exception as e:
+                    debug(f"[DB][CONCERT] insert failed for video_id={media_id}: {e}")
+
+                # If a link was provided, make sure media.linked_media includes a matching external link entry
+                try:
+                    link = data.get("link")
+                    if link:
+                        # read current linked_media
+                        cur.execute("SELECT linked_media FROM media WHERE id=%s", (media_id,))
+                        row = cur.fetchone()
+                        existing = row[0] if row and row[0] else None
+                        try:
+                            lm = json.loads(existing) if existing else []
+                        except Exception:
+                            lm = []
+                        if not isinstance(lm, list):
+                            lm = [lm]
+                        entry = {"type": "link", "source": ("youtube" if "youtube" in link.lower() else "external"), "url": link, "title": data.get("title")}
+                        # avoid duplicates by url
+                        if not any(isinstance(i, dict) and i.get("url") == link for i in lm):
+                            lm.append(entry)
+                            cur.execute("UPDATE media SET linked_media=%s WHERE id=%s", (json.dumps(lm), media_id))
+                            debug(f"[DB][CONCERT] updated media.linked_media for media_id={media_id}")
+                except Exception as e:
+                    debug(f"[DB][CONCERT] updating linked_media failed: {e}")
+
             conn.commit()
             return {"id": media_id}
 
@@ -604,12 +644,14 @@ def update_media_db(media_id: int, updates: Dict[str, Any]) -> bool:
             except Exception:
                 updates['linked_media'] = str(updates['linked_media'])
 
+        debug(f"[DB][update_media_db] id={media_id}, updates={updates}")
         conn = connection.connect()
         with conn.cursor() as cur:
             set_clause = ", ".join(f"{k}=%s" for k in updates.keys())
             params = list(updates.values()) + [media_id]
             cur.execute(f"UPDATE media SET {set_clause} WHERE id=%s;", params)
         conn.commit()
+        debug(f"[DB][update_media_db] success id={media_id}")
         return True
     except Exception as e:
         if conn:
@@ -989,6 +1031,153 @@ def get_commented_medias_db(user_id: int) -> List[Dict[str, Any]]:
         ORDER BY m.created_at DESC
     """
     return fetch_all(query, (user_id,))
+
+# =====================
+# CONCERTS & SEGMENTS CRUD
+# =====================
+
+def create_concert_db(media_id: int, link: Optional[str] = None, title: Optional[str] = None, description: Optional[str] = None) -> bool:
+    """Insert a row in concerts referencing the provided media_id (video)."""
+    if not media_id:
+        return False
+    return execute("""
+        INSERT INTO concerts (video_id, link, title, description)
+        VALUES (%s,%s,%s,%s)
+        ON CONFLICT (video_id) DO UPDATE SET link=EXCLUDED.link, title=EXCLUDED.title, description=EXCLUDED.description;
+    """, (media_id, link, title, description))
+
+
+def fetch_concert_by_video_id(video_id: int) -> Optional[Dict[str, Any]]:
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM concerts WHERE video_id=%s", (video_id,))
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+            return None
+    except Exception as e:
+        debug(f"[ERROR][fetch_concert_by_video_id] {e}")
+        return None
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+
+def create_concert_segment_db(concert_id: int, media_id: Optional[int] = None, song_title: Optional[str] = None,
+                              start_time: Optional[float] = None, end_time: Optional[float] = None,
+                              comment: Optional[str] = None, performers: Optional[list] = None,
+                              instruments: Optional[list] = None) -> Optional[int]:
+    """Create a concert segment and optionally link performers/instruments. Returns segment_id."""
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO concert_segments (concert_id, media_id, song_title, start_time, end_time, comment)
+                VALUES (%s,%s,%s,%s,%s,%s) RETURNING id
+            """, (concert_id, media_id, song_title, start_time, end_time, comment))
+            row = cur.fetchone()
+            seg_id = row[0] if row else None
+            if not seg_id:
+                conn.commit()
+                return None
+
+            # performers
+            if performers:
+                for pid in performers:
+                    try:
+                        cur.execute("INSERT INTO concert_segment_performers (segment_id, performer_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (seg_id, pid))
+                    except Exception as e:
+                        debug(f"[DB][create_concert_segment] performer link failed: {e}")
+
+            # instruments
+            if instruments:
+                for iid in instruments:
+                    try:
+                        cur.execute("INSERT INTO concert_segment_instruments (segment_id, instrument_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (seg_id, iid))
+                    except Exception as e:
+                        debug(f"[DB][create_concert_segment] instrument link failed: {e}")
+
+            conn.commit()
+            return seg_id
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        debug(f"[ERROR][create_concert_segment_db] {e}")
+        return None
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+
+def fetch_concert_segments_db(concert_id: int) -> List[Dict[str, Any]]:
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM concert_segments WHERE concert_id=%s ORDER BY start_time NULLS FIRST", (concert_id,))
+            rows = cur.fetchall()
+            result = []
+            for r in rows:
+                seg = dict(r)
+                # performers with names
+                cur.execute("SELECT p.id as performer_id, p.name FROM concert_segment_performers csp JOIN performers p ON p.id = csp.performer_id WHERE csp.segment_id=%s", (seg['id'],))
+                seg['performers'] = [dict(r) for r in cur.fetchall()]
+                # instruments with names
+                cur.execute("SELECT i.id as instrument_id, i.name FROM concert_segment_instruments csi JOIN instruments i ON i.id = csi.instrument_id WHERE csi.segment_id=%s", (seg['id'],))
+                seg['instruments'] = [dict(r) for r in cur.fetchall()]
+                result.append(seg)
+            return result
+    except Exception as e:
+        debug(f"[ERROR][fetch_concert_segments_db] {e}")
+        return []
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+
+def update_concert_segment_db(segment_id: int, updates: Dict[str, Any]) -> bool:
+    if not updates:
+        return True
+    # allowed keys
+    allowed = {'media_id', 'song_title', 'start_time', 'end_time', 'comment'}
+    set_items = {k: v for k, v in updates.items() if k in allowed}
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            if set_items:
+                set_clause = ", ".join(f"{k}=%s" for k in set_items.keys())
+                params = list(set_items.values()) + [segment_id]
+                cur.execute(f"UPDATE concert_segments SET {set_clause} WHERE id=%s", tuple(params))
+
+            # update performers/instruments if provided
+            if 'performers' in updates:
+                cur.execute("DELETE FROM concert_segment_performers WHERE segment_id=%s", (segment_id,))
+                for pid in updates['performers'] or []:
+                    cur.execute("INSERT INTO concert_segment_performers (segment_id, performer_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (segment_id, pid))
+            if 'instruments' in updates:
+                cur.execute("DELETE FROM concert_segment_instruments WHERE segment_id=%s", (segment_id,))
+                for iid in updates['instruments'] or []:
+                    cur.execute("INSERT INTO concert_segment_instruments (segment_id, instrument_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (segment_id, iid))
+
+            conn.commit()
+            return True
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        debug(f"[ERROR][update_concert_segment_db] {e}")
+        return False
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+
+def delete_concert_segment_db(segment_id: int) -> bool:
+    return execute("DELETE FROM concert_segments WHERE id=%s", (segment_id,))
+
 
 # =====================
 # FOLLOWERS

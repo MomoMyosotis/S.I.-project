@@ -79,6 +79,11 @@ class Media:
                 mtype = MediaType.CONCERT
             else:
                 mtype = MediaType.UNKNOWN
+        # Debug: report detected type and stored value
+        try:
+            print(f"[DEBUG][Media.from_server] mid={mid}, mtype={mtype}, stored={stored}")
+        except Exception:
+            pass
 
         tags = raw.get("tags") or raw.get("genre") or raw.get("genres") or []
         if isinstance(tags, str):

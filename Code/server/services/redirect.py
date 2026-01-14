@@ -116,6 +116,12 @@ COMMAND_MAP = {
     "delete_video": media_services.delete_video_services,
     "get_feed": media_services.get_feed_services,
     "get_user_publications": media_services.get_user_publications_services,
+    "create_concert": media_services.create_concert_services,
+    "get_concert": media_services.get_concert_services,
+    "add_concert_segment": media_services.add_concert_segment_services,
+    "get_concert_segments": media_services.get_concert_segments_services,
+    "update_concert_segment": media_services.update_concert_segment_services,
+    "delete_concert_segment": media_services.delete_concert_segment_services,
     # INTERVENTIONS
     "create_comment" : interventions_services.create_comment,
     "fetch_comment" : interventions_services.get_comments,

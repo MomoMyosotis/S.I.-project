@@ -154,6 +154,9 @@ def publish_content():
         concert_location = request.form.get("concert_location", "")
         link = request.form.get("link", "")
 
+        # optional helper: when publishing a concert we will build a linked_media entry for the YouTube link
+        link_entry = None
+
         duration = request.form.get("duration") or None
         file_format = request.form.get("file_format") or None
 
@@ -188,6 +191,36 @@ def publish_content():
         elif media_type == "concert":
             if not link:
                 return jsonify({"status":"ERROR","error_msg":"YouTube link required for concert"}), 400
+            # sanitize + validate YouTube link
+            try:
+                cleaned = link.strip().strip('"').strip("'")
+                current_app.logger.debug(f"[publish_content][concert] cleaned link (post trim): {cleaned!r}")
+                if cleaned and not cleaned.startswith(("http://","https://")):
+                    cleaned = "https://" + cleaned
+                    current_app.logger.debug(f"[publish_content][concert] prefixed scheme: {cleaned!r}")
+                import re
+                ytm = re.search(r"(?:v=|/embed/|youtu\.be/)([A-Za-z0-9_-]{11})", cleaned)
+                current_app.logger.debug(f"[publish_content][concert] primary regex match: {ytm}")
+                if not ytm:
+                    ytm = re.search(r"youtube\.com/watch\?[^#]*v=([A-Za-z0-9_-]{11})", cleaned)
+                    current_app.logger.debug(f"[publish_content][concert] secondary regex match: {ytm}")
+                if not ytm:
+                    return jsonify({"status":"ERROR","error_msg":"Invalid YouTube link"}), 400
+                # normalized link (server/backend will also sanitize); use cleaned
+                link = cleaned
+
+                # Extract video id and add an embed entry to linked_media so it gets persisted with the media record
+                try:
+                    vid = ytm.group(1)
+                    embed_url = f"https://www.youtube.com/embed/{vid}?rel=0"
+                    link_entry = {"type": "link", "source": "youtube", "url": link, "embed_url": embed_url, "youtube_id": vid, "title": event_title or title}
+                except Exception as e_inner:
+                    current_app.logger.debug(f"[publish_content][concert] failed to build link_entry: {e_inner}", exc_info=True)
+                    # non-fatal: leave link_entry as None
+                    link_entry = None
+            except Exception as e:
+                current_app.logger.debug(f"[publish_content][concert] error while validating youtube link: {e}", exc_info=True)
+                return jsonify({"status":"ERROR","error_msg":"Invalid YouTube link"}), 400
             # validate subtracks (if present) - each must have title
             for st in subtracks:
                 if not st.get("title"):
@@ -255,6 +288,12 @@ def publish_content():
                 stored_path = f"server/storage/{folder}/{filename}"
                 linked_media_entries.append({"filename": filename, "stored_at": stored_path, "type": file_type_for_save})
 
+        # Attach YouTube link entry (if any) so it persists under media.linked_media
+        if link_entry:
+            # Put link first so it's obvious client-side
+            linked_media_entries.insert(0, link_entry)
+            current_app.logger.debug(f"[publish_content][concert] inserted link_entry into linked_media_entries: {link_entry!r}; linked_media_entries now: {linked_media_entries!r}")
+
         # Build payload to forward to backend create command
         payload = {
             "title": title,
@@ -293,8 +332,15 @@ def publish_content():
             "concert": "CREATE_CONCERT"
         }
         cmd = cmd_map.get(media_type, "CREATE_SONG")
-
+        # debug for concert payload and linked_media
+        if media_type == 'concert':
+            try:
+                current_app.logger.debug(f"[publish_content][concert] CREATE payload keys: {list(payload.keys())}; linked_media: {payload.get('linked_media')!r}")
+            except Exception as e_log:
+                current_app.logger.debug(f"[publish_content][concert] failed logging payload: {e_log}")
+        current_app.logger.debug(f"[publish_content] sending CREATE command {cmd} for type={media_type}")
         res = http_client.send_request(cmd, [payload], require_auth=True)
+        current_app.logger.debug(f"[publish_content] CREATE {cmd} response: {res!r}")
 
         # if main creation failed, return error immediately
         if not isinstance(res, dict) or res.get('status') == 'ERROR':
@@ -355,6 +401,7 @@ def publish_content():
 
                 cmd_child = child_cmd_map.get(suggested, "CREATE_DOCUMENT")
                 child_res = http_client.send_request(cmd_child, [child_payload], require_auth=True)
+                current_app.logger.debug(f"[publish_content] child create ({filename}) response: {child_res!r}")
 
                 # try to extract created child id and attach to linked entries
                 try:
@@ -375,16 +422,66 @@ def publish_content():
         if isinstance(res, dict) and linked_children:
             res['linked_children'] = linked_children
 
+        # attempt to persist subtracks (concert segments) when publishing a concert
+        if main_id and subtracks and isinstance(subtracks, list) and media_type == 'concert':
+            created_segments = []
+            for st in subtracks:
+                seg_payload = {
+                    "song_title": st.get("title"),
+                    "start_time": float(st.get("start") or 0),
+                    "end_time": float(st.get("end") or 0),
+                    "performers": st.get("performers") or [],
+                    "instruments": st.get("instruments") or [],
+                    "comment": st.get("comments") or ''
+                }
+                try:
+                    seg_res = http_client.send_request("ADD_CONCERT_SEGMENT", [main_id, seg_payload], require_auth=True)
+                    created_segments.append(seg_res)
+                except Exception as e:
+                    current_app.logger.debug(f"[publish_content] failed creating concert subtrack: {e}")
+            if isinstance(res, dict):
+                res['subtracks_created'] = created_segments
+
         # ensure protagonist media record contains linked_media information (try update, non-fatal on failure)
         if main_id and linked_media_entries:
-            update_cmd_map = {"audio":"UPDATE_SONG", "video":"UPDATE_VIDEO", "document":"UPDATE_DOCUMENT", "concert":"UPDATE_CONCERT"}
+            # Concerts are stored as videos with a concert row; use UPDATE_VIDEO to update linked_media
+            update_cmd_map = {"audio":"UPDATE_SONG", "video":"UPDATE_VIDEO", "document":"UPDATE_DOCUMENT", "concert":"UPDATE_VIDEO"}
             update_cmd = update_cmd_map.get(media_type)
             if update_cmd:
                 try:
                     update_payload = {"linked_media": linked_media_entries}
+                    current_app.logger.debug(f"[publish_content] UPDATE {update_cmd} payload: {update_payload}")
                     upd_res = http_client.send_request(update_cmd, [main_id, update_payload], require_auth=True)
+                    current_app.logger.debug(f"[publish_content] UPDATE {update_cmd} response: {upd_res}")
                     if isinstance(res, dict):
                         res['linked_media_update'] = upd_res
+
+                    # verify persistence by re-fetching the protagonist
+                    try:
+                        get_cmd_map = {"audio":"GET_SONG", "video":"GET_VIDEO", "document":"GET_DOCUMENT", "concert":"GET_CONCERT"}
+                        get_cmd = get_cmd_map.get(media_type)
+                        if get_cmd:
+                            fetch_res = http_client.send_request(get_cmd, [main_id], require_auth=True)
+                            if isinstance(res, dict):
+                                res['post_update_main'] = fetch_res
+                            try:
+                                # inspect fetched media for linked_media presence
+                                inspected = None
+                                if isinstance(fetch_res, dict):
+                                    inspected = fetch_res.get('response') or fetch_res.get('media') or fetch_res
+                                if isinstance(inspected, dict):
+                                    lm = inspected.get('linked_media') if 'linked_media' in inspected else inspected.get('linked') if 'linked' in inspected else None
+                                    current_app.logger.debug(f"[publish_content] post-update fetched linked_media: {lm!r}")
+                                else:
+                                    current_app.logger.debug(f"[publish_content] post-update fetched non-dict: {inspected!r}")
+                            except Exception as e_fetch2:
+                                current_app.logger.debug(f"[publish_content] error inspecting post-update fetch: {e_fetch2}", exc_info=True)
+                    except Exception as e_fetch:
+                        current_app.logger.debug(f"[publish_content] failed to re-fetch protagonist after update: {e_fetch}")
+
+                    # log non-OK responses for easier debugging
+                    if isinstance(upd_res, dict) and upd_res.get('status') == 'ERROR':
+                        current_app.logger.debug(f"[publish_content] UPDATE {update_cmd} returned error: {upd_res}")
                 except Exception as e:
                     current_app.logger.debug(f"[publish_content] failed to attach linked_media to protagonist: {e}")
 

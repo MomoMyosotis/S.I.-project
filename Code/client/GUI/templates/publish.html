@@ -71,12 +71,13 @@
         <label>Title <input type="text" id="linkTitle" name="title" required /></label>
         <label>Description <textarea id="linkDesc" name="description" rows="3"></textarea></label>
         <label>URL <input type="url" id="linkUrl" name="url" required placeholder="https://..." /></label>
+        <div id="linkPreview" style="margin-top:8px"></div>
 
         <label><input type="checkbox" id="linkIAmAuthor" /> I am author</label>
         <label><input type="checkbox" id="linkIAmPerformer" /> I am performer</label>
 
         <label><input type="checkbox" id="linkIsLive" /> Is Live</label>
-        <div id="linkLiveInfo" class="hidden">
+        <div id="linkLiveInfo">
           <label>Recording date <input type="date" id="linkRecDate" /></label>
           <label>Recording location <input type="text" id="linkRecLoc" /></label>
         </div>
@@ -126,7 +127,7 @@
 
         <label><input type="checkbox" id="audioIsLive"
   /> Is Live</label>
-        <div id="audioLiveInfo" class="hidden">
+        <div id="audioLiveInfo">
           <label>Recording date <input type="date" id="audioRecDate" /></label>
           <label>Recording location <input type="text" id="audioRecLoc" /></label>
         </div>
@@ -159,7 +160,7 @@
         </div>
 
         <label><input type="checkbox" id="videoIsLive" /> Is Live</label>
-        <div id="videoLiveInfo" class="hidden">
+        <div id="videoLiveInfo">
           <label>Recording date <input type="date" id="videoRecDate" /></label>
           <label>Recording location <input type="text" id="videoRecLoc" /></label>
         </div>
@@ -167,19 +168,7 @@
         <div class="small">Automatic extracted: duration=<span id="videoDuration">-</span> format=<span id="videoFormat">-</span></div>
       </fieldset>
 
-      <!-- Segments -->
-      <fieldset>
-        <legend>Segments (annotations)</legend>
-        <div id="segments"></div>
-        <button type="button" id="addSegment" class="btn">Add segment</button>
-      </fieldset>
 
-      <!-- Subtracks (concert) -->
-      <fieldset>
-        <legend>Subtracks (concert / long video)</legend>
-        <div id="subtracks"></div>
-        <button type="button" id="addSubtrack" class="btn">Add subtrack</button>
-      </fieldset>
 
       <div style="margin-top:12px" class="flex-between">
         <div>
@@ -329,11 +318,6 @@
     const audioLinkMedia = document.getElementById('audioLinkMedia');
     const videoLinkMedia = document.getElementById('videoLinkMedia');
 
-    // segments/subtracks containers
-    const segmentsDiv = document.getElementById('segments');
-    const subtracksDiv = document.getElementById('subtracks');
-    const addSegmentBtn = document.getElementById('addSegment');
-    const addSubtrackBtn = document.getElementById('addSubtrack');
 
     // simple media id placeholder (in real app populate from server)
     const existingMedia = [101,102,203,304,405];
@@ -413,7 +397,8 @@
 
     // --- permission checks ---
     function canPublishClient(type, lvl){
-      if(type === 'link') return (lvl !== null) && (lvl >= 0 && lvl <= 4);
+      // Links (including concert links) are allowed to be created by users lvl 0..5 (banned=6 blocked)
+      if(type === 'link') return (lvl !== null) && (lvl >= 0 && lvl <= 5);
       if(['document','audio','video'].includes(type)) return (lvl !== null) && ([0,1,3].includes(lvl));
       return false;
     }
@@ -421,15 +406,25 @@
     function updateVisibility(){
       const t = mediaType.value;
       // show/hide relevant fieldsets
+      // show link fields only for link type
       linkFields.classList.toggle('hidden', t !== 'link');
       docFields.classList.toggle('hidden', t !== 'document');
       audioFields.classList.toggle('hidden', t !== 'audio');
       videoFields.classList.toggle('hidden', t !== 'video');
 
-      // update live info visibility (reset)
-      linkLiveInfo.classList.toggle('hidden', !document.getElementById('linkIsLive').checked);
-      audioLiveInfo.classList.toggle('hidden', !document.getElementById('audioIsLive').checked);
-      videoLiveInfo.classList.toggle('hidden', !document.getElementById('videoIsLive').checked);
+      // live info always visible; make date/location required only when 'is_live' is checked
+      const linkDateEl = document.getElementById('linkRecDate');
+      const linkLocEl = document.getElementById('linkRecLoc');
+      const audioDateEl = document.getElementById('audioRecDate');
+      const audioLocEl = document.getElementById('audioRecLoc');
+      const videoDateEl = document.getElementById('videoRecDate');
+      const videoLocEl = document.getElementById('videoRecLoc');
+      if(linkDateEl) linkDateEl.required = !!linkIsLive.checked;
+      if(linkLocEl) linkLocEl.required = !!linkIsLive.checked;
+      if(audioDateEl) audioDateEl.required = !!audioIsLive.checked;
+      if(audioLocEl) audioLocEl.required = !!audioIsLive.checked;
+      if(videoDateEl) videoDateEl.required = !!videoIsLive.checked;
+      if(videoLocEl) videoLocEl.required = !!videoIsLive.checked; 
 
       // performer blocks
       audioPerformerBlock.classList.toggle('hidden', !audioIAmPerformer.checked);
@@ -447,9 +442,24 @@
     }
 
     mediaType.addEventListener('change', updateVisibility);
-    linkIsLive.addEventListener('change', ()=> linkLiveInfo.classList.toggle('hidden', !linkIsLive.checked));
-    audioIsLive.addEventListener('change', ()=> audioLiveInfo.classList.toggle('hidden', !audioIsLive.checked));
-    videoIsLive.addEventListener('change', ()=> videoLiveInfo.classList.toggle('hidden', !videoIsLive.checked));
+    linkIsLive.addEventListener('change', ()=> {
+      const date = document.getElementById('linkRecDate');
+      const loc = document.getElementById('linkRecLoc');
+      if(date) date.required = linkIsLive.checked;
+      if(loc) loc.required = linkIsLive.checked;
+    });
+    audioIsLive.addEventListener('change', ()=> {
+      const date = document.getElementById('audioRecDate');
+      const loc = document.getElementById('audioRecLoc');
+      if(date) date.required = audioIsLive.checked;
+      if(loc) loc.required = audioIsLive.checked;
+    });
+    videoIsLive.addEventListener('change', ()=> {
+      const date = document.getElementById('videoRecDate');
+      const loc = document.getElementById('videoRecLoc');
+      if(date) date.required = videoIsLive.checked;
+      if(loc) loc.required = videoIsLive.checked;
+    });
     audioIAmPerformer.addEventListener('change', ()=> audioPerformerBlock.classList.toggle('hidden', !audioIAmPerformer.checked));
     videoIAmPerformer.addEventListener('change', ()=> videoPerformerBlock.classList.toggle('hidden', !videoIAmPerformer.checked));
 
@@ -468,86 +478,9 @@
     }
 
     // --- segments/subtracks dynamic UI ---
-    function makeSegment(item){
-      const wrapper = document.createElement('div');
-      wrapper.className = 'list';
-      wrapper.innerHTML = `
-        <div class="row">
-          <label>Start <input type="number" step="0.1" class="seg-start" /></label>
-          <label>End <input type="number" step="0.1" class="seg-end" /></label>
-          <label>Note <input type="text" class="seg-note" /></label>
-          <button type="button" class="remove btn danger">Remove</button>
-        </div>
-      `;
-      wrapper.querySelector('.remove').addEventListener('click', ()=> wrapper.remove());
-      if(item){
-        wrapper.querySelector('.seg-start').value = item.start ?? '';
-        wrapper.querySelector('.seg-end').value = item.end ?? '';
-        wrapper.querySelector('.seg-note').value = item.note ?? '';
-      }
-      return wrapper;
-    }
-    
-    function makeSubtrack(item){
-      const wrapper = document.createElement('div');
-      wrapper.className = 'list';
-      wrapper.innerHTML = `
-        <div class="row">
-          <label>Title <input type="text" class="st-title" required /></label>
-          <label>Start <input type="number" step="0.1" class="st-start" /></label>
-          <label>End <input type="number" step="0.1" class="st-end" /></label>
-          <label>Performers <input type="text" class="st-performers" placeholder="comma separated" /></label>
-          <label>Instruments <input type="text" class="st-instruments" placeholder="comma separated" /></label>
-          <label>Comments <input type="text" class="st-comments" /></label>
-          <button type="button" class="remove btn danger">Remove</button>
-        </div>
-      `;
-      wrapper.querySelector('.remove').addEventListener('click', ()=> wrapper.remove());
-      if(item){
-        wrapper.querySelector('.st-title').value = item.title ?? '';
-        wrapper.querySelector('.st-start').value = item.start ?? '';
-        wrapper.querySelector('.st-end').value = item.end ?? '';
-        wrapper.querySelector('.st-performers').value = (item.performers || []).join(', ');
-        wrapper.querySelector('.st-instruments').value = (item.instruments || []).join(', ');
-        wrapper.querySelector('.st-comments').value = item.comments ?? '';
-      }
-      return wrapper;
-    }
 
-    addSegmentBtn.addEventListener('click', ()=> segmentsDiv.appendChild(makeSegment()));
-    addSubtrackBtn.addEventListener('click', ()=> subtracksDiv.appendChild(makeSubtrack()));
 
-    function gatherSegments(){
-      const list = [];
-      segmentsDiv.querySelectorAll('.list').forEach(node=>{
-        const s = node.querySelector('.seg-start').value;
-        const e = node.querySelector('.seg-end').value;
-        const n = node.querySelector('.seg-note').value;
-        if(s || e || n) list.push({ start: parseFloat(s) || 0, end: parseFloat(e) || 0, note: n || '' });
-      });
-      return list;
-    }
-    function gatherSubtracks(){
-      const list = [];
-      subtracksDiv.querySelectorAll('.list').forEach(node=>{
-        const t = node.querySelector('.st-title').value;
-        if(!t) return; // title required
-        const s = node.querySelector('.st-start').value;
-        const e = node.querySelector('.st-end').value;
-        const p = node.querySelector('.st-performers').value;
-        const i = node.querySelector('.st-instruments').value;
-        const c = node.querySelector('.st-comments').value;
-        list.push({
-          title: t,
-          start: parseFloat(s) || 0,
-          end: parseFloat(e) || 0,
-          performers: splitListInput(p),
-          instruments: splitListInput(i),
-          comments: c || ''
-        });
-      });
-      return list;
-    }
+
 
     // --- automatic metadata extraction ---
 
@@ -713,6 +646,29 @@
       return {...base};
     }
 
+    // --- Link preview helpers (YouTube) ---
+    const extractYouTubeId = url => {
+      if(!url) return null;
+      try {
+        const s = String(url);
+        const m = s.match(/(?:v=|\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{11})/i) || s.match(/youtube\.com\/watch\?[^#]*v=([A-Za-z0-9_-]{11})/i);
+        return m ? m[1] : null;
+      } catch(e) { return null; }
+    };
+    const linkUrlInput = document.getElementById('linkUrl');
+    const linkPreviewContainer = document.getElementById('linkPreview');
+    const updateLinkPreview = () => {
+      if(!linkPreviewContainer) return;
+      const url = linkUrlInput ? (linkUrlInput.value || '').trim() : '';
+      const vid = extractYouTubeId(url);
+      if(vid){
+        linkPreviewContainer.innerHTML = `<iframe src="https://www.youtube.com/embed/${vid}?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;height:240px"></iframe>`;
+      } else if(url){
+        linkPreviewContainer.innerHTML = `<div style="color:#a00">Link non riconosciuto come YouTube</div>`;
+      } else { linkPreviewContainer.innerHTML = ''; }
+    };
+    if(linkUrlInput) linkUrlInput.addEventListener('input', updateLinkPreview);
+
     // --- Preview button ---
     previewBtn.addEventListener('click', (ev)=>{
       const p = buildPreviewPayload();
@@ -738,6 +694,11 @@
         const url = document.getElementById('linkUrl').value.trim();
         if(!title){ alert('Title required'); return; }
         if(!url){ alert('URL required'); return; }
+        // require a YouTube link when using link->concert flow
+        if(!extractYouTubeId(url)){
+          alert('Per il tipo "Link" è richiesto un URL YouTube valido (es. https://www.youtube.com/watch?v=VIDEOID)');
+          return;
+        }
         if(linkIsLive.checked){
           if(!document.getElementById('linkRecDate').value || !document.getElementById('linkRecLoc').value.trim()){
             alert('Recording date & location required for live link'); return;
@@ -806,11 +767,7 @@
         // performers (extra field)
         const performersArr = splitListInput(document.getElementById((isAudio?'audioPerformers':'videoPerformers')).value);
         if(performersArr.length) fd.append('performers', JSON.stringify(performersArr));
-        // segments & subtracks
-        const segments = gatherSegments();
-        if(segments.length) fd.append('segments', JSON.stringify(segments));
-        const subtracks = gatherSubtracks();
-        if(subtracks.length) fd.append('subtracks', JSON.stringify(subtracks));
+
       }
 
       // flags/checkboxes: is_composer, is_performer, is_live

@@ -21,6 +21,7 @@ class Note:
                 end_time: Optional[float] = None,
                 solos: Optional[str] = None,
                 rhythm: Optional[str] = None,
+                is_public: Optional[bool] = True,
                 note_type: Optional[str] = "regular",
                 content: Optional[str] = None):
         self.id = id
@@ -32,6 +33,7 @@ class Note:
         self.end_time = end_time
         self.solos = solos
         self.rhythm = rhythm
+        self.is_public = is_public
         self.note_type = note_type
         self.content = content
 
@@ -46,6 +48,7 @@ class Note:
             "end_time": self.end_time,
             "solos": self.solos,
             "rhythm": self.rhythm,
+            "is_public": self.is_public,
             "note_type": self.note_type,
             "content": self.content
         }
@@ -62,7 +65,7 @@ class Note:
             author, media_id, note_type,
             start_time=start_time, end_time=end_time,
             x_coord=x_coord, y_coord=y_coord,
-            solos=solos, rhythm=rhythm, content=content
+            is_public=True, solos=solos, rhythm=rhythm, content=content
         )
 
     @classmethod
@@ -70,15 +73,14 @@ class Note:
                             note_type: str = "regular",
                             start_time: float = None, end_time: float = None,
                             x_coord: float = None, y_coord: float = None,
-                            solos: str = None, rhythm: str = None, content: str = None,
+                            solos: str = None, is_public: bool = True, rhythm: str = None, content: str = None,
                             performers: List[int] = None, instruments: List[int] = None) -> Optional[int]:
         note_id = cls.create_note(
             author, media_id, note_type,
-            start_time, end_time, x_coord, y_coord, solos, rhythm, content
+            start_time, end_time, x_coord, y_coord, solos, is_public, rhythm, content
         )
 
         if performers or instruments:
-            # Inserisce tutte le combinazioni performer-instrument
             if performers and instruments:
                 for performer in performers:
                     for instrument in instruments:
@@ -150,6 +152,7 @@ class Note:
             start_time=data.get("start_time"),
             end_time=data.get("end_time"),
             solos=data.get("solos"),
+            is_public=data.get("is_public"),
             rhythm=data.get("rhythm"),
             note_type=data.get("note_type"),
             content=data.get("content")

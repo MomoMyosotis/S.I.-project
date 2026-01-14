@@ -43,7 +43,7 @@ CREATE TABLE role_permissions (
 -- ========================================
 CREATE TABLE media (
     id SERIAL PRIMARY KEY,
-    type VARCHAR(20) NOT NULL CHECK (type IN ('song','video','document')), -- identifica il tipo
+    type VARCHAR(20) NOT NULL CHECK (type IN ('song','video','document','concert')), -- identifica il tipo
     user_id INT REFERENCES users(id),
     title VARCHAR(255) NOT NULL,
     year INT,
@@ -157,6 +157,7 @@ CREATE TABLE media_references (
 CREATE TABLE notes (
     id SERIAL PRIMARY KEY,
     author INT REFERENCES users(id),
+    is_public BOOLEAN DEFAULT TRUE,
     media_id INT REFERENCES media(id) ON DELETE CASCADE,
     note_type VARCHAR(20) CHECK (note_type IN ('regular','graphic')),
     start_time NUMERIC(8,2),
@@ -194,8 +195,8 @@ CREATE TABLE comments (
 -- CONCERTI (sottoclasse di video)
 -- ========================================
 CREATE TABLE concerts (
-    id SERIAL PRIMARY KEY,
-    video_id INT REFERENCES media(id) ON DELETE CASCADE, -- tipo video
+    link VARCHAR(255),
+    video_id INT PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     created_at TIMESTAMP DEFAULT NOW()
@@ -205,6 +206,7 @@ CREATE TABLE concert_segments (
     id SERIAL PRIMARY KEY,
     concert_id INT REFERENCES concerts(id) ON DELETE CASCADE,
     media_id INT REFERENCES media(id) ON DELETE CASCADE, -- tipo song
+    song_title VARCHAR(255),
     start_time NUMERIC(8,2),
     end_time NUMERIC(8,2),
     comment TEXT

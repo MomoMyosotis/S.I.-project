@@ -37,7 +37,18 @@
         <iframe id="document-viewer" src="" frameborder="0"></iframe>
       </div>
       <div id="concert-box" class="hidden">
-        <iframe id="concert-iframe" src="" frameborder="0" allowfullscreen></iframe>
+        <iframe id="concert-iframe" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen title="Concert video"></iframe>
+
+        <!-- Thumbnail fallback (shown when embed is blocked/unavailable) -->
+        <div id="concert-thumb" class="concert-thumb hidden" aria-hidden="true">
+          <img id="concert-thumb-img" src="" alt="YouTube thumbnail">
+          <button id="concert-thumb-play" class="btn play-overlay" type="button" aria-label="Play on YouTube">▶</button>
+        </div>
+
+        <div id="concert-embed-fallback" style="margin-top:8px">
+          <a id="concert-open-link" href="#" target="_blank" rel="noopener" class="btn">Open on YouTube</a>
+          <div id="concert-error" style="color:var(--danger); display:none; margin-top:8px;"></div>
+        </div>
         <div id="concert-subtracks"></div>
       </div>
     </div>
@@ -62,6 +73,7 @@
           <label>Recording location<br><input id="edit-recording-location" style="width:100%"></label>
           <label>Location (stored_at)<br><input id="edit-stored-at" style="width:100%"></label>
           <label>Link<br><input id="edit-link" style="width:100%"></label>
+          <div id="edit-link-preview" style="margin-top:8px"></div>
           <label>Format / File format<br><input id="edit-format" style="width:100%"></label>
           <label>Pages (document)<br><input id="edit-pages" type="number" style="width:100%"></label>
           <label>Is author<br><input id="edit-is-author" type="checkbox"></label>
@@ -210,8 +222,12 @@
 
   const extractYouTubeId = url => {
     if(!url) return null;
-    const m = url.match(/(?:v=|\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
-    return m ? m[1] : null;
+    try {
+      const s = String(url);
+      // match common forms and require standard 11-char YouTube IDs
+      const m = s.match(/(?:v=|\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{11})/i) || s.match(/youtube\.com\/watch\?[^#]*v=([A-Za-z0-9_-]{11})/i);
+      return m ? m[1] : null;
+    } catch(e) { return null; }
   };
 
   const safeJoin = (arr, fallback='-') => {
@@ -230,6 +246,22 @@
     return fallback;
   };
 
+  // Edit-modal YouTube preview
+  try{
+    const editLinkInput = el('edit-link');
+    const updateEditLinkPreview = () => {
+      const container = el('edit-link-preview');
+      if(!container) return;
+      const url = editLinkInput ? (editLinkInput.value || '').trim() : '';
+      const vid = extractYouTubeId(url);
+      if(vid){
+        container.innerHTML = `<iframe src="https://www.youtube.com/embed/${vid}?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;height:200px"></iframe>`;
+      } else if(url){
+        container.innerHTML = `<div style="color:#a00">Link non riconosciuto come YouTube</div>`;
+      } else { container.innerHTML = ''; }
+    };
+    if(editLinkInput){ editLinkInput.addEventListener('input', updateEditLinkPreview); updateEditLinkPreview(); }
+  } catch(e){ console.error('edit link preview init failed', e); }
   // ---------- COMMENTS ----------
   async function loadComments(){
     try {
@@ -663,6 +695,9 @@
     media.user_id = media.user_id || media.uploader_id || media.owner_id || media.owner || media.uploader || media.publisher || null;
     media.username = media.username || media.uploader || media.owner || media.user || null;
 
+    // Debug: expose media type/link so we can see whether concert links are present
+    try{ console.debug('[show] media.type=', media.type, 'media.link=', media.link || media.url || media.stored_at); }catch(e){}
+
     el('media-title').textContent = media.title || media.name || media.filename || 'Untitled';
 
     const uploader = media.username || null;
@@ -756,8 +791,234 @@
       el('audio-box').classList.remove('hidden'); el('audio-source').src = downloadUrl || ''; el('audio-player').load(); setDurationFromElement(el('audio-player'));
     } else if(t==='document'){
       el('document-box').classList.remove('hidden'); el('document-viewer').src = downloadUrl || '';
-    } else if(t==='concert' || (media.link && /youtube\.com|youtu\.be/i.test(media.link))){
-      el('concert-box').classList.remove('hidden'); const vid = extractYouTubeId(media.link || ''); el('concert-iframe').src = vid ? `https://www.youtube.com/embed/${vid}?rel=0` : media.link || '';
+    } else if(t==='concert' || (media.link && /youtube\.com|youtu\.be/i.test(media.link)) || (media.stored_at && /youtube\.com|youtu\.be/i.test(media.stored_at)) || (media.filename && /watch\?v=|youtu\.be\//i.test(media.filename))){
+      console.debug('[show] rendering concert', {media: media, media_type: t, link: media.link, stored_at: media.stored_at, filename: media.filename});
+      el('concert-box').classList.remove('hidden');
+
+      // Prefer server-provided embed_url (sanitized); fall back to extracting a YouTube id from raw link
+      const iframe = el('concert-iframe');
+      const errorEl = el('concert-error');
+      const openAnchor = el('concert-open-link');
+
+      // compute preferred embed source (always normalize to an /embed/ URL when possible)
+      let embedSrc = null;
+      if(media.embed_url){
+        // try to extract an ID from server-provided embed_url and rebuild a canonical embed URL
+        const vidFromEmbed = extractYouTubeId(String(media.embed_url).trim());
+        if(vidFromEmbed){
+          embedSrc = `https://www.youtube.com/embed/${vidFromEmbed}?rel=0`;
+        } else if(/\/embed\//i.test(String(media.embed_url))){
+          // odd case: server gave an embed path already (keep it)
+          embedSrc = String(media.embed_url).trim();
+        } else {
+          // fallback to link/stored_at/filename when embed_url is not a valid embed/watch URL
+          let candidate = String(media.link || media.stored_at || media.filename || '').trim().replace(/^['\"]|['\"]$/g,'');
+          const vid = extractYouTubeId(candidate);
+          embedSrc = vid ? `https://www.youtube.com/embed/${vid}?rel=0` : (candidate || null);
+        }
+        // If server flagged an embed problem, show a non-blocking warning and still try to embed
+        if(media.embed_ok === false && errorEl){
+          errorEl.textContent = 'Video may not be embeddable: ' + (media.embed_error || 'Unknown') + ' — trying embed anyway.';
+          errorEl.style.display = 'block';
+        }
+      } else {
+        // Try link first, then stored_at, then filename for possible youtube ids
+        let candidate = (media.link || media.stored_at || media.filename || '');
+        const vid = extractYouTubeId(candidate.toString().replace(/^['\"]|['\"]$/g, ''));
+        embedSrc = vid ? `https://www.youtube.com/embed/${vid}?rel=0` : (candidate || null);
+      }
+
+      // Prepare thumbnail & watch URL helpers
+      const thumb = el('concert-thumb');
+      const thumbImg = el('concert-thumb-img');
+      const thumbPlay = el('concert-thumb-play');
+
+      // build a cleaned candidate and ensure full YouTube watch URLs when possible
+      let rawCandidate = String(media.embed_url || media.link || media.stored_at || media.filename || '').trim();
+      rawCandidate = rawCandidate.replace(/^['\"]|['\"]$/g,'');
+      // if candidate looks like 'watch?v=...' or '/watch?v=...' without scheme, prefix YouTube host
+      if(/^watch\?/i.test(rawCandidate) || /^\/watch\?/i.test(rawCandidate)) rawCandidate = 'https://www.youtube.com/' + rawCandidate.replace(/^\//, '');
+      // if candidate starts with 'youtu.be/' without scheme, prefix host
+      if(/^youtu\.be\//i.test(rawCandidate)) rawCandidate = 'https://www.' + rawCandidate;
+      // extract id (try cleaned candidate first to handle 'watch?v=...' cases)
+      const youtubeId = extractYouTubeId(rawCandidate) || extractYouTubeId(media.embed_url || media.link || media.stored_at || media.filename);
+      // prefer a proper watch URL for fallback (use candidate when it already contains host, else build watch URL from id)
+      const watchUrlCandidate = (rawCandidate && (rawCandidate.startsWith('http') || rawCandidate.includes('youtube.com') || rawCandidate.includes('youtu.be'))) ? rawCandidate : (youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : null);
+
+      console.debug('[show] youtube candidate:', rawCandidate, 'youtubeId:', youtubeId, 'media.embed_ok:', media.embed_ok, 'media.embed_url:', media.embed_url);
+
+      if(youtubeId && thumbImg){ thumbImg.src = `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`; thumbImg.alt = media.title ? `Thumbnail for ${media.title}` : 'YouTube thumbnail'; }
+      if(thumbPlay){ thumbPlay.addEventListener('click', ()=>{ if(watchUrlCandidate) window.open(watchUrlCandidate, '_blank', 'noopener'); else if(youtubeId) window.open(`https://www.youtube.com/watch?v=${youtubeId}`, '_blank', 'noopener'); }); }
+
+      // set iframe src and prefer embedding when allowed; otherwise show thumbnail as fallback
+      if(embedSrc && /\/embed\//i.test(embedSrc) && media.embed_ok !== false){
+        try{
+          iframe.src = embedSrc;
+          iframe.style.display = '';
+          if(thumb) thumb.classList.add('hidden');
+        }catch(e){
+          if(errorEl){ errorEl.textContent = 'Failed to set video source'; errorEl.style.display = 'block'; }
+        }
+        let loaded = false;
+        const loadTimeout = setTimeout(()=>{
+          if(!loaded){ if(errorEl){ errorEl.textContent = 'Video could not be loaded. Showing thumbnail fallback (embed may be blocked).'; errorEl.style.display = 'block'; } if(iframe) iframe.style.display='none'; if(thumb) thumb.classList.remove('hidden'); }
+        }, 8000);
+        iframe.addEventListener('load', ()=>{ loaded = true; clearTimeout(loadTimeout); if(errorEl) errorEl.style.display = 'none'; if(thumb) thumb.classList.add('hidden'); });
+        // onerror may not always fire for cross-origin iframe loads, but attach it for best-effort
+        iframe.addEventListener('error', ()=>{ loaded = false; clearTimeout(loadTimeout); if(errorEl){ errorEl.textContent = 'Video failed to load. Showing thumbnail fallback.'; errorEl.style.display = 'block'; } if(iframe) iframe.style.display='none'; if(thumb) thumb.classList.remove('hidden'); });
+      } else {
+        // not embeddable - show thumbnail and message
+        if(embedSrc && !/\/embed\//i.test(embedSrc)){
+          if(errorEl){ errorEl.textContent = 'No embeddable video found (only a YouTube page link is available). Use "Open on YouTube".'; errorEl.style.display = 'block'; }
+          console.debug('[show] embed fallback: non-embed URL provided', {embedSrc, media});
+        } else if (media.embed_ok === false) {
+          if(errorEl){ errorEl.textContent = 'Video is not embeddable (owner disabled embedding). Use "Open on YouTube".'; errorEl.style.display = 'block'; }
+          console.debug('[show] embed fallback: server reported embed_ok=false', {embedSrc, media});
+        } else {
+          if(errorEl){ errorEl.textContent = 'No playable video link available'; errorEl.style.display = 'block'; }
+          console.debug('[show] embed fallback: no candidate found', {embedSrc, media});
+        }
+        if(iframe) iframe.style.display = 'none';
+        if(thumb) thumb.classList.remove('hidden');
+      }
+
+      // set fallback open-on-youtube link + make the title link to YouTube
+      // prefer the canonical watch URL candidate computed earlier; fallback to deriving from embed_url
+      let cleaned = null;
+      if(typeof watchUrlCandidate === 'string' && watchUrlCandidate) cleaned = watchUrlCandidate;
+      else {
+        const rawLink = (media.link || '').toString().trim().replace(/^['\"]|['\"]$/g,'');
+        if(rawLink) cleaned = rawLink;
+        else if(media.embed_url){ const vidFromEmbed = extractYouTubeId(media.embed_url); if(vidFromEmbed) cleaned = `https://www.youtube.com/watch?v=${vidFromEmbed}`; }
+      }
+      console.debug('[show] open link (cleaned):', cleaned);
+      if(openAnchor){
+        if(cleaned){ openAnchor.href = cleaned; openAnchor.style.display = ''; } else { openAnchor.href = '#'; openAnchor.style.display = 'none'; }
+      }
+
+      // make the page title itself link to YouTube when a watch URL is available
+      const titleEl = el('media-title');
+      if(titleEl && cleaned){
+        try{
+          const a = document.createElement('a');
+          a.href = cleaned; a.target = '_blank'; a.rel = 'noopener noreferrer';
+          a.textContent = media.title || titleEl.textContent || 'Untitled';
+          a.style.color = 'inherit'; a.style.textDecoration = 'none';
+          titleEl.innerHTML = '';
+          titleEl.appendChild(a);
+        }catch(e){ console.error('failed to set title anchor', e); }
+      }
+
+      // Render concert subtracks / segments area and enable adding segments if permitted
+      const concertSubtracks = el('concert-subtracks');
+      if(concertSubtracks){
+        concertSubtracks.innerHTML = '<h3>Concert segments</h3><div id="concert-segment-list"></div>';
+        if(canComment()){
+          const addBtn = document.createElement('button'); addBtn.textContent = 'Add segment'; addBtn.className='btn'; addBtn.style.marginTop='8px';
+          addBtn.addEventListener('click', ()=> showAddSegmentForm(null));
+          concertSubtracks.appendChild(addBtn);
+        }
+      }
+
+      // fetch and render segments
+      async function fetchSegments(){
+        try{
+          const res = await fetch(`/show/segments?media_id=${encodeURIComponent(mediaId)}`);
+          if(!res.ok) return [];
+          const j = await res.json();
+          // server may return envelope {status:..., response: [...] } or raw list
+          let arr = [];
+          if(Array.isArray(j)) arr = j;
+          else if(Array.isArray(j.response)) arr = j.response;
+          else if(Array.isArray(j.result)) arr = j.result;
+          else if(Array.isArray(j.segments)) arr = j.segments;
+          else if(Array.isArray(j.media)) arr = j.media;
+          else if(j && typeof j === 'object' && Object.keys(j).length){ arr = j };
+          return Array.isArray(arr) ? arr : [];
+        }catch(e){ console.error('fetchSegments error', e); return []; }
+      }
+
+      function makeSegmentNode(s){
+        const div = document.createElement('div'); div.className='concert-segment';
+        const start = s.start_time || s.start || 0; const end = s.end_time || s.end || 0;
+        const times = `<strong>${formatTime(start)} — ${end ? formatTime(end) : ''}</strong>`;
+        const title = `<div style="margin-top:6px"><em>${s.song_title || s.title || ''}</em></div>`;
+        const perf = (s.performers && s.performers.length) ? `<div style="color:var(--muted)">Performers: ${safeJoin(s.performers)}</div>` : '';
+        const inst = (s.instruments && s.instruments.length) ? `<div style="color:var(--muted)">Instruments: ${s.instruments.map(x=>x.name||x).join(', ')}</div>` : '';
+        const comment = s.comment ? `<div style="margin-top:6px">${s.comment}</div>` : '';
+        div.innerHTML = `${times}${title}${perf}${inst}${comment}`;
+
+        if(canComment()){
+          const controls = document.createElement('div'); controls.style.marginTop='6px';
+          const editBtn = document.createElement('button'); editBtn.textContent='Edit'; editBtn.className='btn'; editBtn.style.marginRight='6px';
+          editBtn.addEventListener('click', ()=> showAddSegmentForm(s));
+          const delBtn = document.createElement('button'); delBtn.textContent='Delete'; delBtn.className='btn'; delBtn.style.background='#c33'; delBtn.style.color='#fff';
+          delBtn.addEventListener('click', async ()=>{
+            if(!confirm('Delete this segment?')) return; try{ const r = await fetch(`/show/segments/${encodeURIComponent(s.id)}`, {method:'DELETE', credentials:'same-origin'}); const jr = await r.json().catch(()=>null); if(r.ok && (!jr || jr.status==='OK')){ await renderSegments(); } else { alert((jr && jr.error) || (jr && jr.error_msg) || 'Failed to delete'); }}catch(e){console.error(e);alert('Delete error');}
+          });
+          controls.appendChild(editBtn); controls.appendChild(delBtn);
+          div.appendChild(controls);
+        }
+        return div;
+      }
+
+      async function renderSegments(){
+        const listWrap = el('concert-segment-list'); if(!listWrap) return; listWrap.innerHTML = 'Loading...';
+        const segs = await fetchSegments();
+        if(!segs || !segs.length){ listWrap.innerHTML = '<div class="muted">No segments yet</div>'; return; }
+        listWrap.innerHTML = '';
+        segs.forEach(s=>{ listWrap.appendChild(makeSegmentNode(s)); });
+      }
+
+      // show a small inline form to add/edit a segment. if seg is null -> add new, else edit
+      function showAddSegmentForm(seg){
+        const parent = el('concert-subtracks'); if(!parent) return;
+        // simple modal-like block
+        let form = document.getElementById('segment-form-inline');
+        if(form) form.remove();
+        form = document.createElement('div'); form.id='segment-form-inline'; form.style.border='1px solid var(--muted)'; form.style.padding='8px'; form.style.marginTop='8px';
+        form.innerHTML = `
+          <label>Start (sec) <input type="number" id="seg-start" step="0.01" /></label>
+          <label>End (sec) <input type="number" id="seg-end" step="0.01" /></label>
+          <label>Song title <input type="text" id="seg-title" /></label>
+          <label>Performers (comma) <input type="text" id="seg-perf" placeholder="comma separated"/></label>
+          <label>Instruments (comma) <input type="text" id="seg-inst" placeholder="comma separated"/></label>
+          <label>Comment <input type="text" id="seg-comment" /></label>
+        `;
+        const saveBtn = document.createElement('button'); saveBtn.textContent = seg ? 'Save' : 'Add'; saveBtn.className='btn'; saveBtn.style.marginRight='8px';
+        const cancelBtn = document.createElement('button'); cancelBtn.textContent='Cancel'; cancelBtn.className='btn';
+        form.appendChild(saveBtn); form.appendChild(cancelBtn);
+        parent.appendChild(form);
+
+        if(seg){ document.getElementById('seg-start').value = seg.start_time || seg.start || ''; document.getElementById('seg-end').value = seg.end_time || seg.end || ''; document.getElementById('seg-title').value = seg.song_title || seg.title || ''; document.getElementById('seg-perf').value = Array.isArray(seg.performers) ? seg.performers.map(p=>p.name||p.performer||p).join(', ') : ''; document.getElementById('seg-inst').value = Array.isArray(seg.instruments) ? seg.instruments.map(i=>i.name||i).join(', ') : ''; document.getElementById('seg-comment').value = seg.comment || seg.note_text || '' }
+
+        cancelBtn.addEventListener('click', ()=>{ form.remove(); });
+        saveBtn.addEventListener('click', async ()=>{
+          try{
+            const payload = {
+              start_time: Number(document.getElementById('seg-start').value) || 0,
+              end_time: Number(document.getElementById('seg-end').value) || 0,
+              song_title: (document.getElementById('seg-title').value || '').trim(),
+              performers: (document.getElementById('seg-perf').value || '').split(',').map(s=>s.trim()).filter(Boolean),
+              instruments: (document.getElementById('seg-inst').value || '').split(',').map(s=>s.trim()).filter(Boolean),
+              comment: (document.getElementById('seg-comment').value || '').trim()
+            };
+            let res;
+            if(seg && seg.id){ // update
+              const r = await fetch(`/show/segments/${encodeURIComponent(seg.id)}`, {method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+              res = await r.json().catch(()=>null);
+              if(!r.ok || (res && res.error)) throw new Error((res && res.error) || 'Update failed');
+            } else { // create
+              const r = await fetch('/show/segments', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({video_id: mediaId, segment: payload})});
+              res = await r.json().catch(()=>null);
+              if(!r.ok || (res && res.error)) throw new Error((res && res.error) || 'Create failed');
+            }
+            form.remove(); await renderSegments();
+          }catch(e){ console.error(e); alert('Failed to save segment: '+(e.message||e)); }
+        });
+      }
+
+      await renderSegments();
     }
 
     // ---------- DETAILS ----------

@@ -6,7 +6,8 @@ from server.objects.media.document import Document
 from server.objects.media.video import Video
 from server.objects.media.media import Media
 from server.utils.media_utils import fetch_dict_entry, create_dict_entry
-# helper DB lookup
+from server.objects.media.concert import Concert
+import json
 from server.db.db_crud import get_user_id_by_username
 
 # =========================
@@ -189,6 +190,39 @@ def update_object(obj: Media, updates: Dict[str, Any]):
         if media_updates:
             print(f"[DEBUG][update_object] Updating media table id={getattr(obj,'id',None)} with {media_updates}")
             update_media_db(getattr(obj, "id", None), media_updates)
+
+            # If updating a concert link, ensure the concerts row and media.linked_media are kept in sync
+            try:
+                if 'link' in media_updates:
+                    mid = getattr(obj, 'id', None)
+                    if mid is not None and getattr(obj, 'type', None) == 'concert':
+                        from server.db.db_crud import create_concert_db, fetch_one, update_media_db as _update_media_db
+                        # upsert concerts table so the latest link/title/description are stored
+                        try:
+                            create_concert_db(mid, media_updates.get('link'), media_updates.get('title') or getattr(obj, 'title', None), media_updates.get('description') or getattr(obj,'description',None))
+                        except Exception as e:
+                            print(f"[DEBUG][update_object] failed to upsert concerts table: {e}")
+
+                        # merge/update linked_media JSON in media table
+                        try:
+                            cur_row = fetch_one("SELECT linked_media FROM media WHERE id=%s", (mid,))
+                            existing = cur_row.get('linked_media') if cur_row else None
+                            try:
+                                lm = json.loads(existing) if existing else []
+                            except Exception:
+                                lm = []
+                            if not isinstance(lm, list):
+                                lm = [lm]
+                            link = media_updates.get('link')
+                            entry = {"type": "link", "source": ("youtube" if "youtube" in (link or "").lower() else "external"), "url": link, "title": media_updates.get('title') or getattr(obj, 'title', None)}
+                            # avoid duplicate by url
+                            if not any(isinstance(i, dict) and i.get('url') == link for i in lm):
+                                lm.append(entry)
+                                _update_media_db(mid, {'linked_media': json.dumps(lm)})
+                        except Exception as e:
+                            print(f"[DEBUG][update_object] failed to sync linked_media: {e}")
+            except Exception as e:
+                print(f"[DEBUG][update_object] concert link sync failed: {e}")
     except Exception as e:
         print(f"[ERROR][update_object] failed to update media table: {e}")
 
@@ -475,20 +509,173 @@ def create_video_services(user_obj, data: dict = None, **kwargs):
         data["stored_at"] = "server/storage/videos"
     return create_object(Video, user_obj, data)
 
+
+# =========================
+# CONCERT SERVICES
+# =========================
+from server.objects.media.concert import Concert
+from server.db.db_crud import create_concert_db, fetch_concert_by_video_id, create_concert_segment_db, fetch_concert_segments_db, update_concert_segment_db, delete_concert_segment_db
+
+
+def _extract_user_lvl(user_obj):
+    viewer_lvl_raw = user_obj.get("lvl") if isinstance(user_obj, dict) else getattr(user_obj, "lvl", None)
+    viewer_lvl = int(viewer_lvl_raw) if isinstance(viewer_lvl_raw, (int, float, str)) and str(viewer_lvl_raw).isdigit() else None
+    return viewer_lvl
+
+
+def create_concert_services(user_obj, data: dict = None, **kwargs):
+    if data is None:
+        data = {}
+    if isinstance(data, dict) and kwargs:
+        data = {**data, **kwargs}
+    elif not isinstance(data, dict) and kwargs:
+        data = dict(kwargs)
+
+    data["type"] = "concert"
+    if data.get("stored_at") is None:
+        data["stored_at"] = "server/storage/videos"
+    print(f"[DEBUG][create_concert_services] user={user_obj}, data={data}")
+
+    # disallow banned users (lvl 6) from creating concerts
+    lvl = _extract_user_lvl(user_obj) if user_obj else None
+    if lvl == 6:
+        return {"error": "Insufficient permissions to create concert"}
+
+    # create concert media and concerts row will be created inside create_media_db
+    concert = create_object(Concert, user_obj, data)
+    return concert
+
+
+def get_concert_services(user_obj, video_id: int):
+    print(f"[DEBUG][get_concert_services] user={user_obj}, video_id={video_id}")
+    return Concert.fetch_full_concert(video_id)
+
+
+def add_concert_segment_services(user_obj, video_id: int, segment_data: dict):
+    print(f"[DEBUG][add_concert_segment_services] user={user_obj}, video_id={video_id}, segment_data={segment_data}")
+    # user must not be RESTRICTED or BANNED (lvl 5 or 6)
+    lvl = _extract_user_lvl(user_obj) if user_obj else None
+    if lvl in (5, 6):
+        print(f"[DEBUG][add_concert_segment_services] permission denied for user lvl={lvl}")
+        return {"error": "Insufficient permissions to add concert metadata"}
+
+    concert = fetch_concert_by_video_id(video_id)
+    print(f"[DEBUG][add_concert_segment_services] fetched concert: {concert!r}")
+    if not concert:
+        print(f"[DEBUG][add_concert_segment_services] concert not found for video_id={video_id}")
+        return {"error": "Concert not found"}
+    concert_id = concert.get("video_id")
+    print(f"[DEBUG][add_concert_segment_services] concert_id={concert_id}")
+
+    # normalize performers -> ids
+    performers_in = segment_data.get("performers")
+    performers_ids = None
+    if performers_in:
+        try:
+            performers_ids = prepare_performers(performers_in)
+        except Exception:
+            performers_ids = None
+
+    # normalize instruments -> ids (create if needed)
+    instruments_in = segment_data.get("instruments")
+    instruments_ids = None
+    if instruments_in:
+        instruments_ids = []
+        for itm in (instruments_in if isinstance(instruments_in, (list, tuple)) else [instruments_in]):
+            try:
+                if isinstance(itm, int):
+                    instruments_ids.append(itm)
+                elif isinstance(itm, dict) and itm.get("id"):
+                    instruments_ids.append(int(itm.get("id")))
+                else:
+                    name = str(itm).strip()
+                    if not name:
+                        continue
+                    # attempt to find existing
+                    row = fetch_dict_entry("instruments", name)
+                    if row and row.get("id"):
+                        instruments_ids.append(row.get("id"))
+                    else:
+                        nid = create_dict_entry("instruments", name)
+                        if nid:
+                            instruments_ids.append(nid)
+            except Exception:
+                continue
+
+    print(f"[DEBUG][add_concert_segment_services] performers_ids={performers_ids}, instruments_ids={instruments_ids}")
+    seg_id = create_concert_segment_db(
+        concert_id=concert_id,
+        media_id=segment_data.get("media_id"),
+        song_title=segment_data.get("song_title"),
+        start_time=segment_data.get("start_time"),
+        end_time=segment_data.get("end_time"),
+        comment=segment_data.get("comment"),
+        performers=performers_ids,
+        instruments=instruments_ids,
+    )
+    if not seg_id:
+        print(f"[DEBUG][add_concert_segment_services] failed to create segment for concert_id={concert_id}")
+        return {"error": "Failed to create segment"}
+    print(f"[DEBUG][add_concert_segment_services] created segment_id={seg_id} for concert_id={concert_id}")
+    return {"segment_id": seg_id}
+
+
+def get_concert_segments_services(user_obj, video_id: int):
+    print(f"[DEBUG][get_concert_segments_services] user={user_obj}, video_id={video_id}")
+    concert = fetch_concert_by_video_id(video_id)
+    print(f"[DEBUG][get_concert_segments_services] fetched concert: {concert!r}")
+    if not concert:
+        print(f"[DEBUG][get_concert_segments_services] no concert found for video_id={video_id}")
+        return []
+    concert_id = concert.get("video_id")
+    res = fetch_concert_segments_db(concert_id)
+    print(f"[DEBUG][get_concert_segments_services] returning {len(res) if isinstance(res, list) else 'unknown'} segments for concert_id={concert_id}")
+    return res
+
+
+def update_concert_segment_services(user_obj, segment_id: int, updates: dict):
+    print(f"[DEBUG][update_concert_segment_services] user={user_obj}, segment_id={segment_id}, updates={updates}")
+    lvl = _extract_user_lvl(user_obj) if user_obj else None
+    if lvl in (5, 6):
+        print(f"[DEBUG][update_concert_segment_services] permission denied for user lvl={lvl}")
+        return {"error": "Insufficient permissions to update concert metadata"}
+    ok = update_concert_segment_db(segment_id, updates)
+    print(f"[DEBUG][update_concert_segment_services] update result for segment_id={segment_id}: {ok}")
+    return {"success": ok}
+
+
+def delete_concert_segment_services(user_obj, segment_id: int):
+    print(f"[DEBUG][delete_concert_segment_services] user={user_obj}, segment_id={segment_id}")
+    lvl = _extract_user_lvl(user_obj) if user_obj else None
+    if lvl in (5, 6):
+        print(f"[DEBUG][delete_concert_segment_services] permission denied for user lvl={lvl}")
+        return {"error": "Insufficient permissions to delete concert metadata"}
+    ok = delete_concert_segment_db(segment_id)
+    print(f"[DEBUG][delete_concert_segment_services] delete result for segment_id={segment_id}: {ok}")
+    return {"success": ok}
 def get_video_services(user_obj, video_id: int):
+    print(f"[DEBUG][get_video_services] user={user_obj}, video_id={video_id}")
     return get_object(Video, video_id)
 
 def update_video_services(user_obj, video_id: int, updates: dict):
+    print(f"[DEBUG][update_video_services] user={user_obj}, video_id={video_id}, updates={updates}")
     video = get_object(Video, video_id)
     if not video:
+        print(f"[DEBUG][update_video_services] video not found for id={video_id}")
         return {"error": "Video not found"}
-    return update_object(video, updates)
+    res = update_object(video, updates)
+    print(f"[DEBUG][update_video_services] update result for video_id={video_id}: {res}")
+    return res
 
 def delete_video_services(user_obj, video_id: int):
+    print(f"[DEBUG][delete_video_services] user={user_obj}, video_id={video_id}")
     video = get_object(Video, video_id)
     if not video:
+        print(f"[DEBUG][delete_video_services] video not found for id={video_id}")
         return {"error": "Video not found"}
-    return delete_object(video)
+    res = delete_object(video)
+    print(f"[DEBUG][delete_video_services] delete result for video_id={video_id}: {res}")
+    return res
 
 # ========================
 # SUPPORT
@@ -617,12 +804,13 @@ def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset
     songs = fetch_media(Song)
     videos = fetch_media(Video)
     documents = fetch_media(Document)
+    concerts = fetch_media(Concert)
 
     # Combina risultati and include created_at for global ordering
     from server.db.db_crud import get_user_username_by_id as duck
 
     combined = []
-    for m in songs + videos + documents:
+    for m in songs + videos + documents + concerts:
         d = m.to_dict()
         user_id = d.get("user_id")
         username = duck(user_id)
@@ -788,6 +976,109 @@ def get_media_services(user_obj, media_id: int):
         # published date: expose year as 'date' (client expects date)
         if m.get("year") is not None and not m.get("date"):
             m["date"] = str(m.get("year"))
+
+        # If this media is a concert, fetch the full concert row (link, segments)
+        try:
+            if (m.get("type") or "").lower() == "concert":
+                from server.objects.media.concert import Concert
+                full = Concert.fetch_full_concert(mid)
+                if full:
+                    full_map = full.to_dict()
+                    # merge concert-specific fields (link, segments) without removing already-computed fields
+                    for k, v in full_map.items():
+                        if v is not None:
+                            m[k] = v
+                # Concerts are external links; ensure no file metadata is exposed so clients don't try to fetch a file
+                if (m.get("type") or "").lower() == "concert":
+                    m["stored_at"] = None
+                    m["filename"] = None
+                    m["file_available"] = False
+
+                # sanitize link (strip surrounding quotes/whitespace) and add/embed_url when applicable
+                try:
+                    link = m.get("link")
+                    if isinstance(link, str) and link.strip():
+                        cleaned = link.strip().strip('"').strip("'")
+                        # normalize simple missing scheme
+                        if cleaned and not cleaned.startswith(("http://","https://")):
+                            cleaned = "https://" + cleaned
+                        m["link"] = cleaned
+                    else:
+                        # fallback: look at stored_at or filename for a youtube link/id
+                        cand = m.get("stored_at") or m.get("filename") or ""
+                        if isinstance(cand, str) and cand.strip():
+                            cc = cand.strip()
+                            # try to extract a youTube id or full watch URL
+                            import re
+                            ytm_c = re.search(r"(?:v=|/embed/|youtu\.be/)([A-Za-z0-9_-]{11})", cc)
+                            if ytm_c:
+                                vid_c = ytm_c.group(1)
+                                m["link"] = f"https://www.youtube.com/watch?v={vid_c}"
+                            elif "youtube.com" in cc or "youtu.be" in cc:
+                                # use candidate as-is
+                                m["link"] = cc
+                            else:
+                                m["link"] = None
+                        else:
+                            m["link"] = None
+
+                    # try to extract youtube id and add embed_url and verify availability via oEmbed
+                    import re
+                    cleaned_link = m.get("link") or ""
+                    ytm = re.search(r"(?:v=|/embed/|youtu\.be/)([A-Za-z0-9_-]{11})", cleaned_link)
+                    if not ytm and cleaned_link:
+                        ytm = re.search(r"youtube\.com/watch\?[^#]*v=([A-Za-z0-9_-]{11})", cleaned_link)
+
+                    if ytm:
+                        vid = ytm.group(1)
+                        embed_url = f"https://www.youtube.com/embed/{vid}?rel=0"
+                        # verify via YouTube oEmbed to check existence/embeddability
+                        try:
+                            import requests
+                            o = requests.get("https://www.youtube.com/oembed", params={"url": f"https://www.youtube.com/watch?v={vid}", "format": "json"}, timeout=5)
+                            if o.status_code == 200:
+                                m["embed_url"] = embed_url
+                                m["embed_ok"] = True
+                                m["embed_error"] = None
+                            else:
+                                m["embed_url"] = embed_url
+                                m["embed_ok"] = False
+                                m["embed_error"] = f"oembed status {o.status_code}"
+                        except Exception as e:
+                            m["embed_url"] = embed_url
+                            m["embed_ok"] = False
+                            m["embed_error"] = str(e)
+                    else:
+                        m["embed_url"] = None
+                        m["embed_ok"] = False
+                        m["embed_error"] = "no valid youtube id found"
+                except Exception as e:
+                    m["embed_url"] = None
+                    m["embed_ok"] = False
+                    m["embed_error"] = str(e)
+        except Exception:
+            pass
+
+        try:
+            if (m.get("type") or "").lower() == "concert" and m.get("link") and not m.get("linked_media"):
+                try:
+                    link = m.get("link")
+                    entry = {"type": "link", "source": ("youtube" if "youtube" in link.lower() else "external"), "url": link, "title": m.get("title")}
+                    from server.db.db_crud import update_media_db
+                    update_media_db(m.get("id") or m.get("media_id"), {"linked_media": json.dumps([entry])})
+                    m["linked_media"] = [entry]
+                    # debug(f"[CONCERT SYNC] persisted linked_media for media_id={m.get('id') or m.get('media_id')}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # Debug final concert link/embed state
+        try:
+            if (m.get("type") or "").lower() == "concert":
+                print(f"[DEBUG][get_media_services] final concert media (post-merge): link='{m.get('link')}', embed_url='{m.get('embed_url')}', stored_at={m.get('stored_at')}, filename={m.get('filename')}")
+        except Exception:
+            pass
 
         return {"status": "OK", "response": m}
     except Exception as e:

@@ -158,7 +158,17 @@ class Media(ABC):
         self.user_id = user_id
         self.year = year
         self.description = description
-        self.linked_media = linked_media
+        # Normalize linked_media: stored as JSON string in DB but expose as Python list/dict in object
+        try:
+            if isinstance(linked_media, str):
+                try:
+                    self.linked_media = json.loads(linked_media)
+                except Exception:
+                    self.linked_media = linked_media
+            else:
+                self.linked_media = linked_media
+        except Exception:
+            self.linked_media = linked_media
         self.duration = duration
         self.location = location
         self.additional_info = additional_info
@@ -536,6 +546,9 @@ class Media(ABC):
         elif data['type'] == 'document':
             from .document import Document
             obj = Document(**data)
+        elif data['type'] == 'concert':
+            from .concert import Concert
+            obj = Concert(**data)
         else:
             raise ValueError (f"invalid media type: {data['type']}")
         #print(f"[DEBUG][Media.from_dict] Built object={obj}")
