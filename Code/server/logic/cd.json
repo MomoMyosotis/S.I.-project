@@ -5,5 +5,12 @@
     "TIMEOUT": 999999999,
     "BLACKLIST" : [
         "a@b.c"
-    ]
+    ],
+    "MAIL_SERVER": "smtp.gmail.com",
+    "MAIL_PORT": 587,
+    "MAIL_USE_TLS": true,
+    "MAIL_USERNAME": "u3084640928@gmail.com",
+    "MAIL_PASSWORD": "mack nfss tdxl mthl",
+    "MAIL_DEFAULT_SENDER": "u3084640928@gmail.com",
+    "ADMIN_EMAIL": "u3084640928@gmail.com"
 }

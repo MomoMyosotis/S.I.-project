@@ -19,8 +19,9 @@ from server.db.db_crud import (
     advanced_document_search_db,
     advanced_video_search_db,
     advanced_song_search_db,
-    db_get_followers,
-    db_get_following
+    db_count_followers,
+    db_count_following,
+    debug
 )
 
 class UserLevel(Enum):
@@ -48,8 +49,6 @@ class Root:
         self.birthday = birthday
         self.bio = bio
         self.profile_pic = profile_pic
-        self.followers: List[int] = []
-        self.followed: List[int] = []
         self.lvl = lvl
 
     # =====================
@@ -162,14 +161,24 @@ class Root:
     # ISTANZA / UTILI
     # =====================
     def to_dict_public(self) -> Dict[str, Any]:
+        """Return public profile dict (counts are added separately in GET_PROFILE from DB)."""
         return {
             "id": self.id,
             "username": self.username,
             "birthday": self.birthday.isoformat() if isinstance(self.birthday, date) else self.birthday,
             "bio": self.bio,
             "profile_pic": self.profile_pic,
-            "followers_count": len(self.followers),
-            "followed_count": len(self.followed),
+            "lvl": self.lvl.value
+        }
+
+    def to_dict_internal(self) -> Dict[str, Any]:
+        """Return internal dict (counts are always recalculated from DB in service layer)."""
+        return {
+            "id": self.id,
+            "username": self.username,
+            "birthday": self.birthday.isoformat() if isinstance(self.birthday, date) else self.birthday,
+            "bio": self.bio,
+            "profile_pic": self.profile_pic,
             "lvl": self.lvl.value
         }
 
@@ -238,36 +247,80 @@ class Root:
 
     @classmethod
     def follow_user(cls, follower_id: int, followee_id: int, user_obj: Optional[Dict] = None):
-        if follower_id == followee_id:
-            return {"status": "ERROR", "error_msg": "Cannot follow yourself"}
+        try:
+            # Ensure IDs are integers, not objects
+            if not isinstance(follower_id, int):
+                follower_id = int(follower_id) if hasattr(follower_id, '__int__') else follower_id.id
+            if not isinstance(followee_id, int):
+                followee_id = int(followee_id) if hasattr(followee_id, '__int__') else followee_id.id
 
-        if not cls.get_user(user_id=follower_id) or not cls.get_user(user_id=followee_id):
-            return {"status": "ERROR", "error_msg": "User not found"}
+            if follower_id == followee_id:
+                return {"status": "ERROR", "error_msg": "Cannot follow yourself"}
 
-        if not db_add_follow(follower_id, followee_id):
-            return {"status": "ERROR", "error_msg": "Follow failed"}
+            if not cls.get_user(user_id=follower_id) or not cls.get_user(user_id=followee_id):
+                return {"status": "ERROR", "error_msg": "User not found"}
 
-        if user_obj:
-            user_obj["followed_count"] = len(db_get_following(follower_id))
-            user_obj["followers_count"] = len(db_get_followers(follower_id))
+            if not db_add_follow(follower_id, followee_id):
+                return {"status": "ERROR", "error_msg": "Follow failed - database operation returned false"}
 
-        return {"status": "OK", "response": "FOLLOWED"}
+            # Get actual counts from database
+            follower_followed_count = db_count_following(follower_id)
+            follower_followers_count = db_count_followers(follower_id)
+            followee_followers_count = db_count_followers(followee_id)
+            
+            if user_obj and isinstance(user_obj, dict):
+                user_obj["followed_count"] = follower_followed_count
+                user_obj["followers_count"] = follower_followers_count
+
+            return {
+                "status": "OK", 
+                "response": "FOLLOWED",
+                "follower_id": follower_id,
+                "follower_followed_count": follower_followed_count,
+                "followee_id": followee_id,
+                "followee_followers_count": followee_followers_count
+            }
+        except Exception as e:
+            debug(f"[follow_user] ERROR: {str(e)}")
+            return {"status": "ERROR", "error_msg": f"Follow operation failed: {str(e)}"}
 
     @classmethod
     def unfollow_user(cls, follower_id: int, followee_id: int, user_obj: Optional[Dict] = None):
-        if follower_id == followee_id:
-            return {"status": "ERROR", "error_msg": "User not found"}
-        if not cls.get_user(user_id=follower_id) or not cls.get_user(user_id=followee_id):
-            return {"status": "ERROR", "error_msg": "User not found"}
+        try:
+            # Ensure IDs are integers, not objects
+            if not isinstance(follower_id, int):
+                follower_id = int(follower_id) if hasattr(follower_id, '__int__') else follower_id.id
+            if not isinstance(followee_id, int):
+                followee_id = int(followee_id) if hasattr(followee_id, '__int__') else followee_id.id
 
-        if not db_remove_follow(follower_id, followee_id):
-            return {"status": "ERROR", "error_msg": "Unfollow failed"}
+            if follower_id == followee_id:
+                return {"status": "ERROR", "error_msg": "User not found"}
+            if not cls.get_user(user_id=follower_id) or not cls.get_user(user_id=followee_id):
+                return {"status": "ERROR", "error_msg": "User not found"}
 
-        if user_obj:
-            user_obj["followed_count"] = len(db_get_following(follower_id))
-            user_obj["followers_count"] = len(db_get_followers(follower_id))
+            if not db_remove_follow(follower_id, followee_id):
+                return {"status": "ERROR", "error_msg": "Unfollow failed - database operation returned false"}
 
-        return {"status": "OK", "response": "UNFOLLOWED"}
+            # Get actual counts from database
+            follower_followed_count = db_count_following(follower_id)
+            follower_followers_count = db_count_followers(follower_id)
+            followee_followers_count = db_count_followers(followee_id)
+            
+            if user_obj and isinstance(user_obj, dict):
+                user_obj["followed_count"] = follower_followed_count
+                user_obj["followers_count"] = follower_followers_count
+
+            return {
+                "status": "OK", 
+                "response": "UNFOLLOWED",
+                "follower_id": follower_id,
+                "follower_followed_count": follower_followed_count,
+                "followee_id": followee_id,
+                "followee_followers_count": followee_followers_count
+            }
+        except Exception as e:
+            debug(f"[unfollow_user] ERROR: {str(e)}")
+            return {"status": "ERROR", "error_msg": f"Unfollow operation failed: {str(e)}"}
 
     # =====================
     # PERMESSI / UTILI

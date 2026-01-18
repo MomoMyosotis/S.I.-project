@@ -1,7 +1,7 @@
 # first line
 
 import os, uuid, shutil
-from server.db.db_crud import get_commented_medias_db
+from server.db.db_crud import get_commented_medias_db, fetch_all
 from typing import List, Dict, Any
 
 STORAGE = "server/storage"
@@ -39,6 +39,29 @@ def get_commented_medias(user_id: int):
         return medias
     except Exception as e:
         print(f"[ERROR][generic_utils.get_commented_medias] Exception: {e}")
+        return []
+
+def get_media_by_users(user_ids: List[int]) -> List[Dict[str, Any]]:
+    """Fetch all media published by a list of users."""
+    print(f"[DEBUG][generic_utils.get_media_by_users] user_ids: {user_ids}")
+    
+    if not user_ids:
+        print(f"[DEBUG][generic_utils.get_media_by_users] No user IDs provided")
+        return []
+    
+    try:
+        placeholders = ','.join(['%s'] * len(user_ids))
+        query = f"""
+            SELECT m.*
+            FROM media m
+            WHERE m.user_id IN ({placeholders})
+            ORDER BY m.created_at DESC
+        """
+        medias = fetch_all(query, tuple(user_ids))
+        print(f"[DEBUG][generic_utils.get_media_by_users] fetched {len(medias)} medias from {len(user_ids)} users")
+        return medias
+    except Exception as e:
+        print(f"[ERROR][generic_utils.get_media_by_users] Exception: {e}")
         return []
 
 # last line

@@ -31,12 +31,6 @@
 <div class="loading" id="loading">Caricamento...</div>
 <div id="feed-sentinel"></div>
 
-<div class="bottom-nav-box">
-  <a href="{{ url_for('home.homepage', form_type='profile') }}" class="nav-item">Profile</a>
-  <a href="{{ url_for('home.homepage', form_type='feed') }}" class="nav-item">Feed</a>
-  <a href="{{ url_for('home.homepage', form_type='libraries') }}" class="nav-item">Libraries</a>
-</div>
-
 <script>
   let currentIndex = 0;
   const batchSize = 10;
@@ -118,7 +112,7 @@
     const h3 = el('h3');
     const a = el('a');
     const userId = item.username || item.id || '';
-    a.href = `/home/?form_type=profile&username=${encodeURIComponent(userId)}`;
+    a.href = `/home?form_type=profile&username=${encodeURIComponent(userId)}`;
     a.textContent = item.title || item.username || userId;
     h3.appendChild(a);
 
@@ -150,7 +144,7 @@
     const by = el('p');
     if (item.username) {
       const u = el('a', null, item.username);
-      u.href = `/home/?form_type=profile&username=${encodeURIComponent(item.username)}`;
+      u.href = `/home?form_type=profile&username=${encodeURIComponent(item.username)}`;
       by.append('By: ', u);
     } else {
       by.textContent = 'By: Sconosciuto';

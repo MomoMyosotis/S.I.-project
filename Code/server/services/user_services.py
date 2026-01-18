@@ -1,11 +1,24 @@
 # first line
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 import secrets
 from server.objects.users.root import Root, UserLevel
-from server.db.db_crud import verify_password, db_get_followers, db_get_following
+from server.db.db_crud import verify_password, db_get_followers, db_get_following, db_count_followers, db_count_following, db_count_user_publications
 from server.utils import user_utils as utils
+
+# =====================
+# HELPER: Convert internal dict to public (remove sensitive fields for client)
+# =====================
+def _to_public_dict(internal_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove internal fields (followed, followers lists) before sending to client."""
+    if not isinstance(internal_dict, dict):
+        return internal_dict
+    public = internal_dict.copy()
+    # Remove internal fields that client shouldn't see
+    public.pop("followed", None)
+    public.pop("followers", None)
+    return public
 
 # =====================
 # COSTRUTTORE DI OGGETTI ROOT
@@ -45,16 +58,10 @@ def _build_user_obj(user_data: Dict[str, Any]) -> Optional[Root]:
         profile_pic=user_data.get("profile_pic"),
         lvl=level
     )
-    # populate follower/following lists so to_dict_public returns correct counts
-    try:
-        if user.id is not None:
-            followers = db_get_followers(user.id) or []
-            following = db_get_following(user.id) or []
-            # store as lists of ids (keeps memory small) — other code only needs counts or id checks
-            user.followers = [r.get("id") for r in followers if r.get("id") is not None]
-            user.followed = [r.get("id") for r in following if r.get("id") is not None]
-    except Exception as e:
-        print(f"[DEBUG][_build_user_obj] could not load follow lists: {e}")
+    # Don't load follower/following lists - counts will be recalculated on demand
+    # Initialize empty lists to avoid None checks
+    user.followers = []
+    user.followed = []
     return user
 
 # =====================
@@ -148,29 +155,59 @@ def register_user(mail: str, username: str, password: str, birthday_str: str) ->
 # PROFILO / SOCIAL
 # =====================
 def get_profile(user_obj: Root, target_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Get profile of a target user (or self if target_name is None).
+    Returns unified profile_payload with all counts fresh from database.
+    Response structure: {"user": profile_payload} or {"self": profile_payload + is_self flag}
+    """
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
 
-    # safe extraction while you migrate to full Root everywhere
-    username = user_obj["username"] if isinstance(user_obj, dict) else getattr(user_obj, "username", None)
-    target_name = target_name or username
-
-    target_data = Root.get_user_by_username(target_name)
+    # Safe extraction while migrating to full Root everywhere
+    viewer_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+    viewer_username = user_obj["username"] if isinstance(user_obj, dict) else getattr(user_obj, "username", None)
+    
+    # If no target specified, default to viewer's own profile using viewer_id
+    if target_name:
+        target_data = Root.get_user_by_username(target_name)
+    else:
+        # Use viewer_id if no target_name provided
+        target_data = Root.get_user(user_id=viewer_id)
+    
     if not target_data:
         return None
+    
     target_obj = _build_user_obj(target_data)
     if not target_obj:
         return None
-    public = target_obj.to_dict_public()
-    # if viewer is logged, add is_followed flag
-    try:
-        viewer_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
-        if viewer_id:
-            following = db_get_following(viewer_id) or []
-            public["is_followed"] = any(f.get("id") == target_obj.id for f in following)
-    except Exception:
-        public["is_followed"] = False
-    return public
+    
+    # Build unified profile_payload with all counts fresh from database
+    profile_payload = {
+        "id": target_obj.id,
+        "username": target_obj.username,
+        "profile_pic": target_obj.profile_pic,
+        "followers_count": db_count_followers(target_obj.id),
+        "following_count": db_count_following(target_obj.id),
+        "publications_count": db_count_user_publications(target_obj.id),
+        "bio": target_obj.bio,
+        "lvl": target_obj.lvl.value
+    }
+    
+    # Return unified structure: always use "user" key, is_self goes in separate "self" metadata
+    is_self = viewer_id == target_obj.id
+    
+    return {
+        "status": "OK",
+        "user": profile_payload,
+        "self": {"is_self": is_self}
+    }
+
+def get_viewer_profile(user_obj: Root) -> Optional[Dict[str, Any]]:
+    """
+    Alias for get_profile() with no target - returns the logged-in viewer's own profile.
+    For backward compatibility with client code.
+    """
+    return get_profile(user_obj, target_name=None)
 
 def edit_profile(user_obj: Root, username=None, bio=None, profile_pic=None) -> str:
     if not is_logged(user_obj):
@@ -307,27 +344,111 @@ def change_lvl(user_obj: Root, *args) -> dict:
     except Exception as e:
         return {"status": "ERROR", "error_msg": str(e)}
 
-def follow_user(user_obj: Any, target_name: str) -> str:
+def follow_user(user_obj: Any, target_name: str) -> dict:
+    # updates both the followed and the follower's data
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
-    follower_id = user_obj["id"] if isinstance(user_obj, dict) else user_obj.id
+    
+    # user_obj should already be a dict from redirect.py
+    follower_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+    
     target = Root.get_user_by_username(target_name)
     if not target:
-        return "ERROR: User not found"
-    result = Root.follow_user(follower_id, target["id"], user_obj if isinstance(user_obj, dict) else None)
-    return result["response"] if result["status"] == "OK" else f"ERROR: {result['error_msg']}"
+        return {"status": "ERROR", "error_msg": "User not found"}
 
-def unfollow_user(user_obj: Any, target_name: str) -> str:
+    result = Root.follow_user(follower_id, target["id"], user_obj)
+    
+    if result["status"] == "OK":
+        # Return full updated user data including new follow counts
+        # Filter internal fields before sending to client
+        public_user = _to_public_dict(user_obj)
+        return {
+            "status": "OK",
+            "response": result["response"],
+            "follower_followed_count": result.get("follower_followed_count"),
+            "followee_followers_count": result.get("followee_followers_count"),
+            "user_obj": public_user
+        }
+    else:
+        return {"status": "ERROR", "error_msg": result.get("error_msg", "Follow failed")}
+
+def unfollow_user(user_obj: Any, target_name: str) -> dict:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
-    follower_id = user_obj["id"] if isinstance(user_obj, dict) else user_obj.id
+    
+    # user_obj should already be a dict from redirect.py
+    follower_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+    
     target = Root.get_user_by_username(target_name)
     if not target:
-        return "ERROR: User not found"
-    result = Root.unfollow_user(follower_id, target["id"], user_obj if isinstance(user_obj, dict) else None)
-    return result["response"] if result["status"] == "OK" else f"ERROR: {result['error_msg']}"
+        return {"status": "ERROR", "error_msg": "User not found"}
+    result = Root.unfollow_user(follower_id, target["id"], user_obj)
+    
+    if result["status"] == "OK":
+        # Return full updated user data including new follow counts
+        # Filter internal fields before sending to client
+        public_user = _to_public_dict(user_obj)
+        return {
+            "status": "OK",
+            "response": result["response"],
+            "follower_followed_count": result.get("follower_followed_count"),
+            "followee_followers_count": result.get("followee_followers_count"),
+            "user_obj": public_user
+        }
+    else:
+        return {"status": "ERROR", "error_msg": result.get("error_msg", "Unfollow failed")}
 
-def get_followers(user_obj: dict) -> list[dict]:
+def get_followers(user_obj: Any, target_name: str) -> dict:
+    """Get followers of a target user (or self if target_name is empty)."""
+    if not is_logged(user_obj):
+        return {"status": "ERROR", "error_msg": "NOT_LOGGED_IN"}
+    
+    # If no target specified, use the current user
+    if not target_name:
+        target_name = user_obj["username"] if isinstance(user_obj, dict) else getattr(user_obj, "username", None)
+    
+    # Fetch target user to get their id
+    target_data = Root.get_user_by_username(target_name)
+    if not target_data:
+        return {"status": "ERROR", "error_msg": "User not found"}
+    
+    target_id = target_data.get("id")
+    followers = db_get_followers(target_id)
+    
+    # Extract usernames from follower objects
+    follower_usernames = []
+    for f in followers:
+        if isinstance(f, dict) and "username" in f:
+            follower_usernames.append(f["username"])
+    
+    return {"status": "OK", "response": follower_usernames}
+
+def get_following(user_obj: Any, target_name: str) -> dict:
+    """Get users that a target user is following (or self if target_name is empty)."""
+    if not is_logged(user_obj):
+        return {"status": "ERROR", "error_msg": "NOT_LOGGED_IN"}
+    
+    # If no target specified, use the current user
+    if not target_name:
+        target_name = user_obj["username"] if isinstance(user_obj, dict) else getattr(user_obj, "username", None)
+    
+    # Fetch target user to get their id
+    target_data = Root.get_user_by_username(target_name)
+    if not target_data:
+        return {"status": "ERROR", "error_msg": "User not found"}
+    
+    target_id = target_data.get("id")
+    following = db_get_following(target_id)
+    
+    # Extract usernames from following objects
+    following_usernames = []
+    for f in following:
+        if isinstance(f, dict) and "username" in f:
+            following_usernames.append(f["username"])
+    
+    return {"status": "OK", "response": following_usernames}
+
+def get_followers_old(user_obj: dict) -> list[dict]:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
     return utils.get_followers(user_obj["id"])
@@ -338,16 +459,177 @@ def get_followed(user_obj: dict) -> list[dict]:
     return utils.get_followed(user_obj["id"])
 
 # =====================
-# RECUPERO / ASSISTENZA (placeholders 4 now)
+# RECUPERO / ASSISTENZA (Email Functionality)
 # =====================
-def recover(email: str) -> Dict[str, Any]:
-    # placeholder
-    return {"status": "ok", "error_msg": None}
+def recover(identifier: str) -> Dict[str, Any]:
+    """
+    Handle password recovery request.
+    Sends a recovery email to the provided email address if user exists.
+    Accepts either username or email as identifier.
+    """
+    try:
+        from server.services.email_service import send_recovery_email
+        
+        # Determine if identifier is email or username
+        if "@" in identifier:
+            user_data = Root.get_user(mail=identifier)
+            email = identifier
+        else:
+            user_data = Root.get_user(username=identifier)
+            email = user_data.get("mail") if user_data else None
+        
+        if not user_data:
+            # Don't leak whether user exists, return success anyway for security
+            print(f"[DEBUG][recover] User not found for identifier: {identifier}")
+            return {
+                "status": "OK",
+                "error_msg": None,
+                "message": "If an account exists with this identifier, a recovery link has been sent"
+            }
+        
+        username = user_data.get("username", "User")
+        
+        # Send recovery email
+        result = send_recovery_email(email, username)
+        
+        if result.get("status") == "OK":
+            return {
+                "status": "OK",
+                "error_msg": None,
+                "message": f"Recovery email sent to {email}"
+            }
+        else:
+            print(f"[ERROR][recover] Failed to send recovery email: {result.get('error_msg')}")
+            return {
+                "status": "ERROR",
+                "error_msg": result.get("error_msg", "Failed to send recovery email")
+            }
+    
+    except Exception as e:
+        print(f"[ERROR][recover] Exception: {str(e)}")
+        return {
+            "status": "ERROR",
+            "error_msg": f"Recovery process failed: {str(e)}"
+        }
 
-def assistance(username: str, message: str) -> Dict[str, Any]:
-    # placeholder
-    print(f"[DEBUG] Assistance request from {username}: {message}")
-    return {"status": "ok", "error_msg": None}
+def assistance(identifier: str, message: str) -> Dict[str, Any]:
+    """
+    Handle user assistance/support request.
+    Sends a confirmation email to the user and notifies admin.
+    Accepts either username or email as identifier.
+    """
+    try:
+        from server.services.email_service import send_assistance_email
+        from server.logic.config_loader import load_config
+        
+        # Determine if identifier is email or username
+        if "@" in identifier:
+            user_data = Root.get_user(mail=identifier)
+        else:
+            user_data = Root.get_user_by_username(identifier)
+        
+        if not user_data:
+            print(f"[DEBUG][assistance] User not found: {identifier}")
+            return {
+                "status": "ERROR",
+                "error_msg": f"User '{identifier}' not found"
+            }
+        
+        user_email = user_data.get("mail")
+        username = user_data.get("username", "User")
+        if not user_email:
+            print(f"[DEBUG][assistance] No email for user: {identifier}")
+            return {
+                "status": "ERROR",
+                "error_msg": "User email not found"
+            }
+        
+        # Load config to get admin email
+        try:
+            config = load_config()
+            admin_email = config.get("ADMIN_EMAIL")
+        except Exception as e:
+            print(f"[WARNING][assistance] Failed to load config for admin email: {str(e)}")
+            admin_email = None
+        
+        # Send assistance emails
+        result = send_assistance_email(user_email, username, message, admin_email)
+        
+        if result.get("status") == "OK":
+            print(f"[DEBUG][assistance] Assistance email sent to {user_email}")
+            return {
+                "status": "OK",
+                "error_msg": None,
+                "message": f"Assistance request received. Confirmation sent to {user_email}"
+            }
+        else:
+            print(f"[ERROR][assistance] Failed to send assistance email: {result.get('error_msg')}")
+            return {
+                "status": "ERROR",
+                "error_msg": result.get("error_msg", "Failed to send assistance email")
+            }
+    
+    except Exception as e:
+        print(f"[ERROR][assistance] Exception: {str(e)}")
+        return {
+            "status": "ERROR",
+            "error_msg": f"Assistance process failed: {str(e)}"
+        }
+
+def reset_password(reset_token: str) -> Dict[str, Any]:
+    """
+    Handle password reset using a reset token.
+    Validates the token and resets the password to a default password.
+    """
+    try:
+        from server.services.email_service import consume_reset_token, DEFAULT_RESET_PASSWORD
+        
+        # Validate and consume the token
+        email = consume_reset_token(reset_token)
+        if not email:
+            return {
+                "status": "ERROR",
+                "error_msg": "Invalid or expired reset token"
+            }
+        
+        # Fetch user by email
+        user_data = Root.get_user(mail=email)
+        if not user_data:
+            print(f"[DEBUG][reset_password] User not found for email: {email}")
+            return {
+                "status": "ERROR",
+                "error_msg": "User not found"
+            }
+        
+        user_id = user_data.get("id")
+        
+        # Update password to default
+        from server.db.db_crud import hash_pswd, update_user_db
+        new_password_hash = hash_pswd(DEFAULT_RESET_PASSWORD)
+        
+        success = update_user_db(user_id, {"password_hash": new_password_hash})
+        
+        if success:
+            print(f"[DEBUG][reset_password] Password reset successfully for {email}")
+            return {
+                "status": "OK",
+                "error_msg": None,
+                "message": f"Password reset successful. Your new password is: {DEFAULT_RESET_PASSWORD}",
+                "new_password": DEFAULT_RESET_PASSWORD
+            }
+        else:
+            print(f"[ERROR][reset_password] Failed to update password for {email}")
+            return {
+                "status": "ERROR",
+                "error_msg": "Failed to reset password"
+            }
+    
+    except Exception as e:
+        print(f"[ERROR][reset_password] Exception: {str(e)}")
+        return {
+            "status": "ERROR",
+            "error_msg": f"Password reset failed: {str(e)}"
+        }
 
 # has to pass maybe from server.utils.user_utils that then calls server.db.db_crud
 def search_users(user_obj: Any, term: str = "", offset: int = 0, limit: int = 20):

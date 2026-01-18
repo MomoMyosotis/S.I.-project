@@ -24,8 +24,8 @@ class AuthService:
         ])
 
     @staticmethod
-    def recover(username):
-        return http_client.send_request("RECOVER", [username])
+    def recover(identifier):
+        return http_client.send_request("RECOVER", [identifier])
 
     @staticmethod
     def assistance(username, problem):

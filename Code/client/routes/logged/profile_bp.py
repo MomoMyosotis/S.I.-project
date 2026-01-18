@@ -1,11 +1,11 @@
 # first line
 
 from flask import send_file, Blueprint, jsonify, request, session, render_template
+from werkzeug.utils import secure_filename
 from client.services.http_helper import http_client
 from client.services.profile_service import ProfileService
 from client.models.media import Media
 from client.models.user import User
-from werkzeug.utils import secure_filename
 import base64
 import time
 import io
@@ -27,8 +27,17 @@ def profile_data():
 
     if response.get("status") == "OK":
         # ProfileService already returns { "user": ..., "self": ..., "recent_publications": ... }
+        user_data = response.get("user")
+        
+        # VALIDATION: Reject if no user data or user is empty
+        if not user_data or not isinstance(user_data, dict) or not user_data.get("id"):
+            err = response.get("error_msg", "Server returned invalid profile")
+            print(f"[ERROR][profile_bp.profile_data] Invalid user data: {user_data}")
+            return jsonify({"status": "ERROR", "error": err}), 400
+        
         payload = {
-            "user": response.get("user", {}),
+            "status": "OK",
+            "user": user_data,
             "self": response.get("self", {"is_self": False}),
             "recent_publications": response.get("recent_publications", [])
         }
@@ -36,7 +45,8 @@ def profile_data():
         return jsonify(payload)
     else:
         err = response.get("error_msg", "Unknown error")
-        return jsonify({"error": err}), 400
+        print(f"[ERROR][profile_bp.profile_data] Service error: {err}")
+        return jsonify({"status": "ERROR", "error": err}), 400
 
 @profile_bp.route("/publications", methods=["GET"])
 def get_publications():
@@ -356,6 +366,87 @@ def downgrade_user(username):
         return set_user_level(username, new_lvl)
     except Exception as e:
         return jsonify({"status": "ERROR", "error_msg": str(e)}), 500
+
+# ----------------------
+# Followers / Following endpoints
+# ----------------------
+@profile_bp.route("/followers", methods=["GET"])
+def get_followers_list():
+    if http_client.token is None:
+        http_client.token = session.get("session_token")
+
+    username = request.args.get("username")
+    if not username:
+        return jsonify({"status": "ERROR", "error_msg": "Missing username"}), 400
+
+    response = ProfileService.get_followers(username)
+    
+    # Extract followers list robustly from nested response structure
+    followers = []
+    if isinstance(response, dict) and response.get("status") in (None, "OK"):
+        # Server returns: {'response': {'response': [...], 'status': 'OK'}, 'status': 'OK'}
+        # First unwrap the outer response
+        inner_response = response.get("response")
+        if isinstance(inner_response, dict):
+            # Now extract from the inner response
+            data = inner_response.get("response") or inner_response.get("data") or inner_response.get("followers") or []
+            if isinstance(data, list):
+                followers = data
+        elif isinstance(inner_response, list):
+            followers = inner_response
+    elif isinstance(response, list):
+        followers = response
+    
+    # Normalize to list of username strings
+    normalized = []
+    for f in followers:
+        if isinstance(f, dict):
+            username_val = f.get("username") or f.get("user") or f.get("name")
+            if username_val:
+                normalized.append(username_val)
+        elif isinstance(f, str):
+            normalized.append(f)
+    
+    return jsonify({"status": "OK", "followers": normalized})
+
+@profile_bp.route("/following", methods=["GET"])
+def get_following_list():
+    if http_client.token is None:
+        http_client.token = session.get("session_token")
+
+    username = request.args.get("username")
+    if not username:
+        return jsonify({"status": "ERROR", "error_msg": "Missing username"}), 400
+
+    response = ProfileService.get_following(username)
+    
+    # Extract following list robustly from nested response structure
+    following = []
+    if isinstance(response, dict) and response.get("status") in (None, "OK"):
+        # Server returns: {'response': {'response': [...], 'status': 'OK'}, 'status': 'OK'}
+        # First unwrap the outer response
+        inner_response = response.get("response")
+        if isinstance(inner_response, dict):
+            # Now extract from the inner response
+            data = inner_response.get("response") or inner_response.get("data") or inner_response.get("following") or []
+            if isinstance(data, list):
+                following = data
+        elif isinstance(inner_response, list):
+            following = inner_response
+    elif isinstance(response, list):
+        following = response
+    
+    # Normalize to list of username strings
+    normalized = []
+    for f in following:
+        if isinstance(f, dict):
+            username_val = f.get("username") or f.get("user") or f.get("name")
+            if username_val:
+                normalized.append(username_val)
+        elif isinstance(f, str):
+            normalized.append(f)
+    
+    return jsonify({"status": "OK", "following": normalized})
 
 @profile_bp.route("/", methods=["GET"])
 @profile_bp.route("", methods=["GET"])

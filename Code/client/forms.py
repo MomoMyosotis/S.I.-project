@@ -15,7 +15,7 @@ class Register(FlaskForm):
     birthday = DateField("Birthday", validators=[DataRequired()])
 
 class Recover(FlaskForm):
-    email = StringField("Email", validators=[DataRequired(), Email()])
+    identifier = StringField("Username or Email", validators=[DataRequired()])
 
 class Assistance(FlaskForm):
     identifier = StringField("Username/Email", validators=[DataRequired()])

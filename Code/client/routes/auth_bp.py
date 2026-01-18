@@ -1,6 +1,6 @@
 # first line
 
-from flask import Blueprint, render_template, redirect, url_for, flash, session
+from flask import Blueprint, render_template, redirect, url_for, flash, session, request
 from client.forms import Login, Register, Recover, Assistance
 from client.services.http_helper import http_client
 from client.services.auth_service import AuthService
@@ -97,7 +97,7 @@ def register():
 def recover():
     form = Recover()
     if form.validate_on_submit():
-        response = AuthService.recover(form.email.data)
+        response = AuthService.recover(form.identifier.data)
         print("[DEBUG][recover] Response:", repr(response))
 
         if isinstance(response, dict):
@@ -140,4 +140,36 @@ def assistance():
 
     return render_template("auth.html", form_type="assistance", form=form)
 
+@auth_bp.route("/index", methods=["GET"])
+def index():
+    return render_template("unified.html")  # No content_template, shows login
+
 # last line
+# =====================
+# PASSWORD RESET
+# =====================
+@auth_bp.route("/reset", methods=["GET"])
+def reset_password():
+    """Handle password reset via token from email link."""
+    # User clicked link from email
+    reset_token = request.args.get("token")
+    if not reset_token:
+        flash("Invalid password reset link.", "danger")
+        return redirect(url_for("auth.login"))
+    
+    # Call server to validate and reset password
+    response = http_client.send_request("RESET_PASSWORD", [reset_token])
+    print(f"[DEBUG][reset_password] Response: {repr(response)}")
+    
+    if isinstance(response, dict):
+        status = response.get("status", "").lower()
+        if status == "ok":
+            new_password = response.get("new_password", "Check your email")
+            flash(f"Password reset successful! Your new password is: {new_password}", "success")
+            return redirect(url_for("auth.login"))
+        else:
+            flash(f"Error: {response.get('error_msg', 'Password reset failed')}", "danger")
+            return redirect(url_for("auth.login"))
+    else:
+        flash(f"Error: {response}", "danger")
+        return redirect(url_for("auth.login"))

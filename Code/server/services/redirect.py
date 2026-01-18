@@ -15,8 +15,22 @@ import json
 # ENCODER JSON
 # =====================
 def default_encoder(obj):
+    from datetime import datetime, date
+    from decimal import Decimal
+    
+    # Handle datetime objects
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    # Handle date objects
+    if isinstance(obj, date):
+        return obj.isoformat()
+    # Handle Decimal objects
+    if isinstance(obj, Decimal):
+        return float(obj)
+    # Handle objects with to_dict method
     if hasattr(obj, "to_dict"):
         return obj.to_dict()
+    
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 # =====================
@@ -89,12 +103,15 @@ COMMAND_MAP = {
     "login": user_services.login_user,
     "register": user_services.register_user,
     "recover": user_services.recover,
+    "reset_password": user_services.reset_password,
     "assistance": user_services.assistance,
     "get_profile": user_services.get_profile,
+    "get_viewer_profile": user_services.get_viewer_profile,
     "edit_profile": user_services.edit_profile,
     "follow_user": user_services.follow_user,
     "unfollow_user": user_services.unfollow_user,
     "get_followers": user_services.get_followers,
+    "get_following": user_services.get_following,
     "get_followed": user_services.get_followed,
     "search_users": user_services.search_users,
     "change_lvl": user_services.change_lvl,
@@ -139,6 +156,8 @@ COMMAND_MAP = {
     "remove_entry": interventions_services.remove_entry,
     "get_entries": interventions_services.get_entries,
     "get_commented_medias": interventions_services.get_commented_medias,
+    "get_commented_media": interventions_services.get_commented_media_paginated,
+    "get_followed_media": interventions_services.get_followed_media_paginated,
     # FILE MANAGER
     "save_file" : dispatch_save_file,
     "fetch_file" : dispatch_fetch_file,
@@ -160,10 +179,12 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
         elif uname:
             full = Root.get_user(username=uname)
         if full:
-            user_obj = user_services._build_user_obj(full)
+            # Build Root object to load follow lists from DB, use internal dict with follow lists for server-side tracking
+            root_obj = user_services._build_user_obj(full)
+            user_obj = root_obj.to_dict_internal() if root_obj else user_obj
 
     # allow some public commands without authentication (feed browsing, user search, etc.)
-    if user_obj is None and command not in ["login", "register", "recover", "assistance", "get_feed", "search_users"]:
+    if user_obj is None and command not in ["login", "register", "recover", "reset_password", "assistance", "get_feed", "search_users"]:
         return json.dumps({"error_msg": "User is not logged in. Please log in to proceed.", "status": "error"}), None, None, "ERROR"
 
     func = COMMAND_MAP.get(command)
@@ -172,7 +193,7 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
 
     try:
         # support functions that expect named params by accepting a single dict arg
-        if command in ["login", "register", "recover", "assistance"]:
+        if command in ["login", "register", "recover", "reset_password", "assistance"]:
             result = func(*args)
         else:
             # if client passed a single dict, try to unpack it as kwargs
@@ -200,7 +221,8 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
                         full = Root.get_user(user_id=uid)
                     elif uname:
                         full = Root.get_user(username=uname)
-                    user_obj = user_services._build_user_obj(full) if full else public
+                    root_obj = user_services._build_user_obj(full) if full else None
+                    user_obj = root_obj.to_dict_internal() if root_obj else public
 
         serialized = json.dumps(result, default=default_encoder)
 

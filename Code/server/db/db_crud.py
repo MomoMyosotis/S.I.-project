@@ -1210,6 +1210,7 @@ def db_remove_follow(follower_id: int, followee_id: int) -> bool:
     )
 
 def db_get_following(user_id: int) -> List[Dict[str, Any]]:
+    """Get list of users that user_id is following."""
     sql = """
         SELECT u.id, u.username, u.mail
         FROM users u
@@ -1219,6 +1220,7 @@ def db_get_following(user_id: int) -> List[Dict[str, Any]]:
     return fetch_all(sql, (user_id,))
 
 def db_get_followers(user_id: int) -> List[Dict[str, Any]]:
+    """Get list of users who are following user_id."""
     sql = """
         SELECT u.id, u.username, u.mail
         FROM users u
@@ -1226,5 +1228,20 @@ def db_get_followers(user_id: int) -> List[Dict[str, Any]]:
         WHERE uf.followed_id = %s
     """
     return fetch_all(sql, (user_id,))
+
+def db_count_followers(user_id: int) -> int:
+    """Count how many users are following this user (followers_count)."""
+    row = fetch_one("SELECT COUNT(*) as cnt FROM user_follow WHERE followed_id = %s", (user_id,))
+    return row['cnt'] if row else 0
+
+def db_count_following(user_id: int) -> int:
+    """Count how many users this user is following (followed_count)."""
+    row = fetch_one("SELECT COUNT(*) as cnt FROM user_follow WHERE follower_id = %s", (user_id,))
+    return row['cnt'] if row else 0
+
+def db_count_user_publications(user_id: int) -> int:
+    """Count how many media (publications) a user has created."""
+    row = fetch_one("SELECT COUNT(*) as cnt FROM media WHERE user_id = %s", (user_id,))
+    return row['cnt'] if row else 0
 
 # last line

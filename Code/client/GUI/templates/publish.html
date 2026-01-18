@@ -231,7 +231,7 @@
     if (btnProfile){
       btnProfile.addEventListener('click', (ev) => {
         const target = resolvedTargetUsername();
-        const url = target ? `/home/?form_type=profile&username=${encodeURIComponent(target)}` : `/home/?form_type=profile`;
+        const url = target ? `/home?form_type=profile&username=${encodeURIComponent(target)}` : `/home?form_type=profile`;
         window.location.href = url;
       });
     }
@@ -239,7 +239,7 @@
     if (btnFeed){
       btnFeed.addEventListener('click', (ev) => {
         const target = resolvedTargetUsername();
-        const url = target ? `/home/?form_type=feed&username=${encodeURIComponent(target)}` : `/home/?form_type=feed`;
+        const url = target ? `/home?form_type=feed&username=${encodeURIComponent(target)}` : `/home?form_type=feed`;
         window.location.href = url;
       });
     }
@@ -374,14 +374,6 @@
       targetInput.value = '';
     }
     whoamiEl.textContent = (loggedUsername || 'anonymous') + (loggedLvl !== null ? ` (lvl ${loggedLvl})` : '');
-
-    // --- Navigation buttons ---
-    btnProfile.addEventListener('click', ()=> {
-      const profileUser = onBehalfToggle.checked && targetInput.value.trim() ? targetInput.value.trim() : usernameInput.value || 'me';
-      // redirect to route your server exposes: /profile?username=...
-      window.location.href = `/profile?username=${encodeURIComponent(profileUser)}`;
-    });
-    btnFeed.addEventListener('click', ()=> window.location.href = '/home/?form_type=feed');
 
     // --- Toggle on-behalf ---
     onBehalfToggle.addEventListener('change', (ev)=>{

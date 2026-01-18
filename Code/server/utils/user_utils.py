@@ -10,25 +10,7 @@ from server.db.db_crud import (
     create_dict_entry,
     delete_dict_entry,
     fetch_all_dict_entries,
-    db_get_following,
-    db_get_followers,
 )
-
-# =====================
-# FOLLOWERS / FOLLOWED
-# =====================
-
-def get_followers(user_id: int) -> list[dict]:
-    print(f"[DEBUG] get_followers called with user_id={user_id} (type={type(user_id)})")
-    followers = db_get_followers(user_id)
-    print(f"[DEBUG] raw followers: {followers}")
-    return followers
-
-def get_followed(user_id: int) -> list[dict]:
-    print(f"[DEBUG] get_followed called with user_id={user_id} (type={type(user_id)})")
-    followed = db_get_following(user_id)
-    print(f"[DEBUG] raw followed: {followed}")
-    return followed
 
 # =====================
 # MEDIA

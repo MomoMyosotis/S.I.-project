@@ -112,12 +112,4 @@ class FeedService:
 
         return {"status": "OK", "results": media_list, "count": len(media_list)}
 
-    @staticmethod
-    def report_post(content):
-        return http_client.send_request("REPORT_POST", [content], require_auth=True)
-
-    @staticmethod
-    def delete_post(post_id):
-        return http_client.send_request("DELETE_POST", [post_id], require_auth=True)
-
 # last line

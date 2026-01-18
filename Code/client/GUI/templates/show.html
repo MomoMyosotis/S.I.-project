@@ -1240,7 +1240,7 @@
            const j = await r.json();
            if (r.ok && (j.status === 'OK' || j.status === undefined)) {
              alert('Deleted');
-             window.location.href = '/home/?form_type=feed';
+             window.location.href = '/home?form_type=feed';
            } else {
              alert('Delete failed: ' + (j.error_msg || JSON.stringify(j)));
              showModal('confirmationDialog', false);

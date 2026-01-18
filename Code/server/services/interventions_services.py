@@ -3,7 +3,7 @@ from server.objects.interventi.comment import Comment
 from server.utils.media_utils import (create_dict_entry,
                                 fetch_all_dict_entries,
                                 delete_dict_entry)
-from server.utils.generic_utils import get_commented_medias as fetch_commented_medias
+from server.utils.generic_utils import get_commented_medias as fetch_commented_medias, get_media_by_users
 from server.objects.interventi.notes import Note
 from typing import List, Optional, Dict, Any
 from server.objects.media.media import Media
@@ -235,6 +235,89 @@ def get_commented_medias(user_obj: Any) -> List[Dict[str, Any]]:
         return medias
     except Exception as e:
         logger.exception("Exception occurred while fetching commented medias")
+        return {"status": "ERROR", "error_msg": str(e)}
+
+def get_commented_media_paginated(user_obj: Any, offset: int = 0, limit: int = 10) -> Dict[str, Any]:
+    """
+    Fetch media items that the user has commented on, with pagination support.
+    """
+    user_id = get_user_id(user_obj)
+    logger.debug("[get_commented_media_paginated] START - user_id=%s, offset=%s, limit=%s", user_id, offset, limit)
+
+    if not user_id:
+        return {"status": "ERROR", "error_msg": "INVALID_USER"}
+
+    try:
+        # Fetch all commented media for the user
+        all_medias = fetch_commented_medias(user_id)
+        
+        # Handle both list and dict responses
+        if isinstance(all_medias, dict):
+            if all_medias.get("status") and str(all_medias.get("status")).lower() not in ("ok", "true"):
+                return all_medias
+            medias = all_medias.get("results", all_medias.get("response", []))
+        else:
+            medias = all_medias if isinstance(all_medias, list) else []
+        
+        # Apply pagination
+        total = len(medias)
+        paginated = medias[offset:offset + limit]
+        
+        logger.debug("[get_commented_media_paginated] returning %d medias (total=%d)", len(paginated), total)
+        return {
+            "status": "OK",
+            "results": paginated,
+            "count": len(paginated),
+            "total": total,
+            "offset": offset,
+            "limit": limit
+        }
+    except Exception as e:
+        logger.exception("Exception occurred while fetching commented media paginated")
+        return {"status": "ERROR", "error_msg": str(e)}
+
+def get_followed_media_paginated(user_obj: Any, offset: int = 0, limit: int = 10) -> Dict[str, Any]:
+    """
+    Fetch media items from users that the user follows, with pagination support.
+    """
+    user_id = get_user_id(user_obj)
+    logger.debug("[get_followed_media_paginated] START - user_id=%s, offset=%s, limit=%s", user_id, offset, limit)
+
+    if not user_id:
+        return {"status": "ERROR", "error_msg": "INVALID_USER"}
+
+    try:
+        # Get list of followed users
+        from server.db.db_crud import db_get_following
+        followed_users = db_get_following(user_id)
+        followed_ids = [u.get("id") if isinstance(u, dict) else getattr(u, "id", None) for u in followed_users]
+        
+        logger.debug("[get_followed_media_paginated] user follows %d users: %s", len(followed_ids), followed_ids)
+        
+        if not followed_ids:
+            logger.debug("[get_followed_media_paginated] No followed users")
+            return {"status": "OK", "results": [], "count": 0, "total": 0, "offset": offset, "limit": limit}
+        
+        # Fetch all media from followed users using utility function
+        all_medias = get_media_by_users(followed_ids)
+        
+        logger.debug("[get_followed_media_paginated] fetched %d total medias from followed users", len(all_medias))
+        
+        # Apply pagination
+        total = len(all_medias)
+        paginated = all_medias[offset:offset + limit]
+        
+        logger.debug("[get_followed_media_paginated] returning %d medias (total=%d)", len(paginated), total)
+        return {
+            "status": "OK",
+            "results": paginated,
+            "count": len(paginated),
+            "total": total,
+            "offset": offset,
+            "limit": limit
+        }
+    except Exception as e:
+        logger.exception("Exception occurred while fetching followed media paginated")
         return {"status": "ERROR", "error_msg": str(e)}
 
 # ====================

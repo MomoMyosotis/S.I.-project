@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Profilo Utente</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='profile_style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='homepage_style.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
 <body>
 
@@ -56,6 +58,20 @@
   <section id="profile-actions" class="profile-actions" aria-label="Azioni profilo" role="region">
   </section>
 
+  <!-- Modal popup for followers/following -->
+  <div id="users-modal" class="users-modal" style="display:none;">
+    <div class="users-modal-content">
+      <div class="users-modal-header">
+        <h2 id="users-modal-title">Followers</h2>
+        <button class="users-modal-close" onclick="closeUsersModal()">&times;</button>
+      </div>
+      <div class="users-modal-body">
+        <ul id="users-list" class="users-list"></ul>
+        <p id="no-users-msg" style="display:none; text-align:center; color:#666;">Nessun utente trovato.</p>
+      </div>
+    </div>
+  </div>
+
   <!-- Elenco Pubblicazioni -->
   <section class="profile-recent" aria-label="Pubblicazioni recenti" role="region">
     <h2 tabindex="0">Pubblicazioni</h2>
@@ -94,9 +110,17 @@
   const pageLimit = 5;
   let totalPublications = null;
   let loading = false;
+  let isLoadingProfile = false; // Flag to prevent concurrent profile loads
 
   async function loadProfile() {
+    // Block concurrent calls
+    if (isLoadingProfile) {
+      console.warn("[DEBUG][loadProfile] Already loading, skipping duplicate request");
+      return;
+    }
+
     try {
+      isLoadingProfile = true;
       showSkeleton(true);
       const url = viewedUsername
         ? `/profile/data?username=${encodeURIComponent(viewedUsername)}`
@@ -106,33 +130,20 @@
       if (!res.ok) throw new Error("Response non OK");
 
       const data = await res.json();
+      
+      // Validate response contains user data
+      if (!data.user || data.status !== "OK") {
+        throw new Error("Invalid profile response: " + (data.error_msg || "unknown error"));
+      }
+
       updateUI(data.user);
       // pass both viewer (data.self) and the target user (data.user)
       updateActions(data.self, data.user);
       attachBioToggle();
 
-      // fetch a detailed publications chunk (so we get 'type', 'stored_at', etc).
-      // fallback to data.recent_publications if the detailed request fails.
+      // Use publications data from profile response (avoid redundant fetch)
       let initial = data.recent_publications || [];
-      try {
-        const usernameParam = viewedUsername ? `&username=${encodeURIComponent(viewedUsername)}` : "";
-        const pubsRes = await fetch(`/profile/publications?offset=0&limit=${pageLimit}${usernameParam}`);
-        if (pubsRes.ok) {
-          const pubsData = await pubsRes.json();
-          initial = pubsData.publications || initial;
-          if (typeof pubsData.count === 'number') {
-            totalPublications = pubsData.count;
-          } else {
-            totalPublications = data.user?.publications_count ?? null;
-          }
-        } else {
-          // non-ok -> fall back
-          totalPublications = data.user?.publications_count ?? null;
-        }
-      } catch (e) {
-        console.warn("[DEBUG][loadProfile] detailed publications fetch failed:", e);
-        totalPublications = data.user?.publications_count ?? null;
-      }
+      totalPublications = data.user?.publications_count ?? null;
 
       // render the initial publications and paging state
       updatePublications(initial, true);
@@ -143,10 +154,12 @@
         try { animateCounters(); } catch (e) { console.warn("[DEBUG] animateCounters failed:", e); }
       }
     } catch (err) {
-      console.error("[DEBUG][loadProfile] Errore:", err);
-      // don't overwrite username on recoverable errors; keep existing UI or show a mild message
-      // document.getElementById("username").textContent = "@error";
+      console.error("[DEBUG][loadProfile] Error:", err);
+      // Display error to user
+      const userEl = document.getElementById("username");
+      if (userEl) userEl.textContent = "@error: " + err.message;
     } finally {
+      isLoadingProfile = false;
       showSkeleton(false);
     }
   }
@@ -317,13 +330,93 @@
       followersEl.textContent = user.followers_count ?? user.followers ?? 0;
       followersEl.classList.add("stat-counter");
       followersEl.dataset.target = followersEl.textContent;
+      // Add click handler to show followers modal
+      followersEl.addEventListener("click", () => showFollowersModal(user.username));
+      followersEl.style.cursor = "pointer";
     }
     if (followingEl) {
       followingEl.textContent = user.following_count ?? user.followed ?? 0;
       followingEl.classList.add("stat-counter");
       followingEl.dataset.target = followingEl.textContent;
+      // Add click handler to followers/following counts
+      followingEl.addEventListener("click", () => showFollowingModal(user.username));
+      followingEl.style.cursor = "pointer";
     }
   }
+
+  // Modal functions for followers/following
+  async function showFollowersModal(username) {
+    try {
+      const res = await fetch(`/profile/followers?username=${encodeURIComponent(username)}`);
+      if (!res.ok) throw new Error("Failed to fetch followers");
+      const data = await res.json();
+      const followers = data.followers || [];
+      
+      document.getElementById("users-modal-title").textContent = `Followers di @${escapeHtml(username)}`;
+      populateUsersModal(followers);
+      document.getElementById("users-modal").style.display = "block";
+    } catch (err) {
+      console.error("[DEBUG][showFollowersModal] Error:", err);
+      alert("Errore nel caricamento dei followers");
+    }
+  }
+
+  async function showFollowingModal(username) {
+    try {
+      const res = await fetch(`/profile/following?username=${encodeURIComponent(username)}`);
+      if (!res.ok) throw new Error("Failed to fetch following");
+      const data = await res.json();
+      const following = data.following || [];
+      
+      document.getElementById("users-modal-title").textContent = `Following di @${escapeHtml(username)}`;
+      populateUsersModal(following);
+      document.getElementById("users-modal").style.display = "block";
+    } catch (err) {
+      console.error("[DEBUG][showFollowingModal] Error:", err);
+      alert("Errore nel caricamento degli utenti seguiti");
+    }
+  }
+
+  function populateUsersModal(users) {
+    const list = document.getElementById("users-list");
+    const noMsg = document.getElementById("no-users-msg");
+    
+    list.innerHTML = "";
+    
+    if (!users || users.length === 0) {
+      noMsg.style.display = "block";
+      list.style.display = "none";
+      return;
+    }
+    
+    noMsg.style.display = "none";
+    list.style.display = "block";
+    
+    users.forEach(username => {
+      const li = document.createElement("li");
+      li.className = "user-item";
+      li.innerHTML = `<a href="/profile?username=${encodeURIComponent(username)}" class="user-link">@${escapeHtml(username)}</a>`;
+      list.appendChild(li);
+    });
+  }
+
+  function closeUsersModal() {
+    document.getElementById("users-modal").style.display = "none";
+  }
+
+  // Close modal when clicking outside of it
+  window.addEventListener("click", function(event) {
+    const modal = document.getElementById("users-modal");
+    if (event.target === modal) {
+      closeUsersModal();
+    }
+  });
+
+  // Expose modal functions to global scope for onclick handlers
+  window.showFollowersModal = showFollowersModal;
+  window.showFollowingModal = showFollowingModal;
+  window.closeUsersModal = closeUsersModal;
+  window.toggleFollow = toggleFollow;
 
   // render action buttons depending on ownership
   function updateActions(viewer = {is_self:false}, targetUser = {}) {
@@ -529,9 +622,11 @@
       console.error("[DEBUG][toggleFollow] Errore:", err);
     }
   }
-  window.toggleFollow = toggleFollow;
   loadProfile();
+
 </script>
+
+
 
 </body>
 </html>

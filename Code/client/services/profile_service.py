@@ -14,8 +14,8 @@ class ProfileService:
         def extract_user_dict(resp):
             if not isinstance(resp, dict):
                 return None
-            # common envelope keys
-            for k in ("response", "result", "user", "user_obj"):
+            # common envelope keys (including "self" for own profile)
+            for k in ("response", "result", "user", "user_obj", "self"):
                 v = resp.get(k)
                 if isinstance(v, dict):
                     return v
@@ -33,34 +33,38 @@ class ProfileService:
         # create User instance and serialize for client
         user_obj = User.from_server(inner if isinstance(inner, dict) else {})
         user_dict = user_obj.to_dict()
+        
+        # VALIDATION: Reject empty profiles - server must return valid id and username
+        if user_dict.get("id") is None or user_dict.get("username") is None:
+            error_msg = f"Server returned invalid profile: id={user_dict.get('id')}, username={user_dict.get('username')}"
+            return {"status": "ERROR", "error_msg": error_msg}
+        
         # expose a client URL for the profile picture (proxy)
         profile_pic_id = user_dict.get("profile_pic")
         if profile_pic_id:
             user_dict["profile_picture_url"] = f"/profile/picture/{profile_pic_id}"
 
-        # Determine the username to fetch publications for (prefer explicit param, then returned user)
-        target_username = username or user_dict.get("username") or getattr(user_obj, "username", None)
+        # Determine the username to fetch publications for (use the validated one from server)
+        target_username = user_dict.get("username")
         pubs_res = None
         try:
-            if target_username:
-                pubs_res = http_client.send_request("GET_USER_PUBLICATIONS", [target_username, 0, 100], require_auth=True)
-            else:
-                pubs_res = {"status": "OK", "response": []}
-            # print(f"[DEBUG][ProfileService.get_profile] pubs_res: {pubs_res}")
+            # target_username is guaranteed to be non-None by validation above
+            pubs_res = http_client.send_request("GET_USER_PUBLICATIONS", [target_username, 0, 100], require_auth=True)
         except Exception as e:
-            print(f"[DEBUG][ProfileService.get_profile] pubs fetch failed: {e}")
-            pubs_res = {"status": "OK", "response": []}
+            # Log but don't fail - publications are optional
+            print(f"[DEBUG][ProfileService.get_profile] publications fetch failed: {e}")
+            pubs_res = None
 
         # normalize publications response into a list
         raw_pubs = []
-        if isinstance(pubs_res, dict) and pubs_res.get("status") in (None, "OK"):
+        if pubs_res is not None and isinstance(pubs_res, dict) and pubs_res.get("status") in (None, "OK"):
             if "response" in pubs_res and isinstance(pubs_res["response"], list):
                 raw_pubs = pubs_res["response"]
             elif "results" in pubs_res and isinstance(pubs_res["results"], list):
                 raw_pubs = pubs_res["results"]
             elif isinstance(pubs_res.get("response"), dict) and "results" in pubs_res.get("response"):
                 raw_pubs = pubs_res["response"]["results"]
-        elif isinstance(pubs_res, list):
+        elif pubs_res is not None and isinstance(pubs_res, list):
             raw_pubs = pubs_res
 
         # normalize items so template can read title/description/date_published reliably
@@ -78,41 +82,22 @@ class ProfileService:
                 "file_type": p.get("type") or p.get("media_type") or p.get("file_type") or "unknown",
             })
 
-        # determine publications count: prefer server 'count' if provided, else fallback
+        # determine publications count: prefer server 'count' if provided, else use list length
         total_count = None
-        if isinstance(pubs_res, dict) and "count" in pubs_res:
+        if pubs_res is not None and isinstance(pubs_res, dict) and "count" in pubs_res:
             try:
                 total_count = int(pubs_res["count"])
-            except Exception:
+            except (ValueError, TypeError):
                 total_count = None
 
-        try:
-            current_count = int(user_dict.get("publications_count", 0) or 0)
-        except (ValueError, TypeError):
-            current_count = 0
-
+        # Fallback: use actual count from fetched publications
         if total_count is None:
-            total_count = max(current_count, len(normalized_pubs))
+            total_count = len(normalized_pubs)
         user_dict["publications_count"] = total_count
 
-        # build 'self' (viewer) object with useful fields when available
-        viewer_info = {"is_self": False}
-        try:
-            if http_client.token:
-                viewer_res = http_client.send_request("GET_PROFILE", [], require_auth=True)
-                v_inner = extract_user_dict(viewer_res)
-                if v_inner:
-                    v_user = User.from_server(v_inner if isinstance(v_inner, dict) else {})
-                    v_dict = v_user.to_dict()
-                    viewer_info.update({
-                        "id": v_dict.get("id"),
-                        "username": v_dict.get("username"),
-                        "lvl": int(v_dict.get("lvl")) if isinstance(v_dict.get("lvl"), int) else (getattr(v_dict.get("lvl"), "value", v_dict.get("lvl")) if v_dict.get("lvl") is not None else None)
-                    })
-                    viewer_info["is_self"] = (username is None) or (v_dict.get("username") == user_dict.get("username"))
-        except Exception as e:
-            print(f"[DEBUG][ProfileService.get_profile] viewer lookup failed: {e}")
-
+        # build 'self' (viewer) object with validated fields
+        viewer_info = {"is_self": (username is None)}  # Only True if viewing own profile
+        
         return {"status": "OK", "user": user_dict, "self": viewer_info, "recent_publications": normalized_pubs}
 
     @staticmethod
@@ -221,4 +206,20 @@ class ProfileService:
     def restrict_user(username):
         # convenience wrapper to set level to RESTRICTED (5)
         return ProfileService.change_level(username, 5)
+
+    @staticmethod
+    def get_followers(username):
+        args = [username]
+        print(f"[DEBUG][ProfileService.get_followers] sending GET_FOLLOWERS with args={args}")
+        res = http_client.send_request("GET_FOLLOWERS", args, require_auth=True)
+        print(f"[DEBUG][ProfileService.get_followers] response: {res}")
+        return res
+
+    @staticmethod
+    def get_following(username):
+        args = [username]
+        print(f"[DEBUG][ProfileService.get_following] sending GET_FOLLOWING with args={args}")
+        res = http_client.send_request("GET_FOLLOWING", args, require_auth=True)
+        print(f"[DEBUG][ProfileService.get_following] response: {res}")
+        return res
 # last line

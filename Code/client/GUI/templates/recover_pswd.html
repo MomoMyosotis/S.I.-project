@@ -23,8 +23,8 @@
         </h2>
 
         <!-- Campo WTForms -->
-        {{ form.email(class_="input", placeholder="Username or Email") }}
-        {% for error in form.email.errors %}
+        {{ form.identifier(class_="input", placeholder="Username or Email") }}
+        {% for error in form.identifier.errors %}
           <p class="error">{{ error }}</p>
         {% endfor %}
 
