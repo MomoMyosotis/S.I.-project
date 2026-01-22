@@ -63,6 +63,12 @@
     return e;
   };
 
+  function truncateTitle(title, maxLength = 20) {
+    if (!title) return 'Untitled';
+    const str = String(title).trim();
+    return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
+  }
+
   function getMediaIcon(type) {
     return mediaIcons[type] || mediaIcons.default;
   }
@@ -138,7 +144,7 @@
     const mediaId = item.id || item.media_id || item._id || item.link || '';
     a.href = `/show?media_id=${encodeURIComponent(mediaId)}`;
     a.target = '_blank';
-    a.textContent = item.title || 'Untitled';
+    a.textContent = truncateTitle(item.title);
     h3.appendChild(a);
 
     const by = el('p');

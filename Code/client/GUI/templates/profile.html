@@ -137,8 +137,8 @@
       }
 
       updateUI(data.user);
-      // pass both viewer (data.self) and the target user (data.user)
-      updateActions(data.self, data.user);
+      // pass both viewer (data.viewer) and the target user (data.user)
+      updateActions(data.viewer || data.self, data.user);
       attachBioToggle();
 
       // Use publications data from profile response (avoid redundant fetch)
@@ -282,7 +282,7 @@
             <img src="${iconSrc}" alt="${escapeHtml(mediaType)} thumbnail">
           </div>
           <div class="card-body">
-            <strong class="card-title">${escapeHtml(pub.title)}</strong>
+            <strong class="card-title">${escapeHtml(truncateTitle(pub.title))}</strong>
             <p class="card-desc">${escapeHtml(pub.description)}</p>
             <div class="card-meta">${escapeHtml(pub.date_published)}</div>
           </div>
@@ -294,6 +294,12 @@
 
   function escapeHtml(str = "") {
     return String(str || "").replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function truncateTitle(title, maxLength = 20) {
+    if (!title) return 'Untitled';
+    const str = String(title).trim();
+    return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
   }
 
   // populate header, stats and bio
@@ -555,7 +561,7 @@
 
     // Restricted users (5) see only a "View" hint, banned (6) see nothing
     if ((viewerLvl === 5 && !isSelf) || viewerLvl === 6) {
-      container.innerHTML = `<span class="muted">Accesso limitato</span>`;
+      container.innerHTML = `<span class="muted"></span>`;
     }
   }
 

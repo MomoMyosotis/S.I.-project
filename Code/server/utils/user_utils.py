@@ -1,8 +1,8 @@
 # first line
 
 from typing import Dict, Any, List, Optional
-from server.objects.users.root import Root
-from server.objects.media.media import Media
+from server.objects.user import User
+from server.objects.media import Media
 from server.db.db_crud import (
     create_relation,
     delete_relation,
@@ -68,9 +68,9 @@ def get_performers(media_id: int) -> List[Dict[str, Any]]:
 # INTERVENTI
 # =====================
 def get_commented_media(user_id: int) -> List[Media]:
-    """Restituisce tutti i media su cui l'utente ha lasciato commenti o note (senza duplicati)."""
+    """Restituisce tutti i media su cui l'utente ha lasciato commenti (senza duplicati)."""
     all_media_ids = set()
-    for table in ["comments", "notes"]:
+    for table in ["comments"]:
         records = Media.fetch_interventions(table, "user_id", user_id)
         all_media_ids.update(r["media_id"] for r in records)
 
@@ -102,12 +102,12 @@ def get_entries(user_obj: Any, table: str) -> List[Dict[str, Any]]:
 # RICERCHE AVANZATE
 # =====================
 def search_song(user_obj: Any, **filters) -> List[Media]:
-    return Root.advanced_song_search(filters)
+    return User.advanced_song_search(filters)
 
 def search_document(user_obj: Any, **filters) -> List[Media]:
-    return Root.advanced_document_search(filters)
+    return User.advanced_document_search(filters)
 
 def search_video(user_obj: Any, **filters) -> List[Media]:
-    return Root.advanced_video_search(filters)
+    return User.advanced_video_search(filters)
 
 # last line

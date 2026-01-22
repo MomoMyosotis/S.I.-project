@@ -1,14 +1,10 @@
 # first line
 
 from typing import Type, Optional, Dict, Any
-from server.objects.media.song import Song
-from server.objects.media.document import Document
-from server.objects.media.video import Video
-from server.objects.media.media import Media
+from server.objects.media import Media
 from server.utils.media_utils import fetch_dict_entry, create_dict_entry
-from server.objects.media.concert import Concert
 import json
-from server.db.db_crud import get_user_id_by_username
+from server.db.db_crud import get_user_id_by_username, create_concert_db, fetch_concert_by_video_id, create_concert_segment_db, fetch_concert_segments_db, update_concert_segment_db, delete_concert_segment_db
 
 # =========================
 # GENERIC CREATION (optional, CLI/debug)
@@ -37,17 +33,29 @@ def build_object(cls: Type[Media], data: Optional[Dict[str, Any]]):
 
 def get_object(cls: Type[Media], object_id: int):
     print(f"[DEBUG][get_object] cls={cls.__name__}, object_id={object_id}")
-    hook_name = f"fetch_full_{cls.__name__.lower()}"
-    hook = getattr(cls, hook_name, None)
-    if callable(hook):
-        obj = hook(object_id)
-    else:
-        obj = cls.fetch(object_id)
+    # Use generic fetch method since all media types now use Media class
+    obj = cls.fetch(object_id)
     print(f"[DEBUG][get_object] Retrieved object={obj}")
     return obj
 
 def create_object(cls: Type[Media], user_obj: Optional[Any], data: Dict[str, Any]):
     print(f"[DEBUG][create_object] cls={cls.__name__}, user_obj={user_obj}, data={data}")
+    
+    # CRITICAL FIX: Convert is_author/is_performer flags to relational data BEFORE object creation
+    # If is_author=True and no authors list, add user_id to authors
+    if data.get('is_author') and not data.get('authors'):
+        user_id = data.get('user_id')
+        if user_id:
+            data['authors'] = [user_id]
+            print(f"[DEBUG][create_object] Converted is_author=True to authors=[{user_id}]")
+    
+    # If is_performer=True and no performers list, add user_id to performers
+    if data.get('is_performer') and not data.get('performers'):
+        user_id = data.get('user_id')
+        if user_id:
+            data['performers'] = [user_id]
+            print(f"[DEBUG][create_object] Converted is_performer=True to performers=[{user_id}]")
+    
     obj = build_object(cls, data) if not isinstance(data, Media) else data
     if not obj:
         print("[DEBUG][create_object] Object is None -> returning None")
@@ -68,10 +76,24 @@ def create_object(cls: Type[Media], user_obj: Optional[Any], data: Dict[str, Any
     print(f"[DEBUG][create_object] Saving object {obj}")
     obj.save()
     print(f"[DEBUG][create_object] Object saved: {obj}")
+    
+    # CONCERT-SPECIFIC: Handle concert segments from payload (if provided in initial creation)
+    if getattr(obj, 'type', None) == 'concert' and obj.id:
+        segments_payload = data.get('segments') or data.get('subtracks')
+        if segments_payload and isinstance(segments_payload, list):
+            print(f"[DEBUG][create_object] Creating {len(segments_payload)} concert segments")
+            for seg in segments_payload:
+                try:
+                    seg_result = add_concert_segment_services(user_obj, obj.id, seg)
+                    print(f"[DEBUG][create_object] Created segment: {seg_result}")
+                except Exception as e:
+                    print(f"[WARNING][create_object] Failed to create concert segment: {e}")
 
     return obj
 
 def update_object(obj: Media, updates: Dict[str, Any]):
+    from datetime import datetime
+    
     print(f"[DEBUG][update_object] obj={obj}, updates={updates}")
     # filter out problematic fields that may cause SQL errors or should not be updated directly
     DISALLOWED_FIELDS = {"references", "raw", "created_at", "id", "media_id"}
@@ -79,11 +101,47 @@ def update_object(obj: Media, updates: Dict[str, Any]):
     MEDIA_ONLY_KEYS = set()  # leave empty to default to media updates
     DOC_KEYS = {"pages", "format", "caption"}
 
-    # build sanitized updates (remove disallowed)
+    # CRITICAL FIX 1: Convert is_author/is_performer flags to relational data BEFORE processing
+    # If is_author=True and no authors list provided, add user_id to authors
+    if updates.get('is_author') and not updates.get('authors'):
+        user_id = getattr(obj, 'user_id', None)
+        if user_id:
+            updates['authors'] = [user_id]
+            print(f"[DEBUG][update_object] Converted is_author=True to authors=[{user_id}]")
+
+    # If is_performer=True and no performers list provided, add user_id to performers
+    if updates.get('is_performer') and not updates.get('performers'):
+        user_id = getattr(obj, 'user_id', None)
+        if user_id:
+            updates['performers'] = [user_id]
+            print(f"[DEBUG][update_object] Converted is_performer=True to performers=[{user_id}]")
+
+    # CRITICAL FIX 2: Convert date strings to datetime objects BEFORE processing
+    DATE_FIELDS = {"recording_date", "concert_date"}
+    for date_field in DATE_FIELDS:
+        if date_field in updates and updates[date_field] is not None:
+            val = updates[date_field]
+            if isinstance(val, str):
+                try:
+                    # Try ISO format first (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
+                    if "T" in val:
+                        updates[date_field] = datetime.fromisoformat(val)
+                    else:
+                        updates[date_field] = datetime.strptime(val, "%Y-%m-%d")
+                    print(f"[DEBUG][update_object] Converted date string '{val}' to datetime for field '{date_field}'")
+                except Exception as e:
+                    print(f"[DEBUG][update_object] Failed to convert date string '{val}' for field '{date_field}': {e}")
+                    # Leave as-is if conversion fails, DB will handle or error appropriately
+
+    # CRITICAL FIX 3: Filter out None values to prevent overwriting with NULL
+    # Only include fields that are explicitly set (not None)
     sanitized = {}
     for k, v in updates.items():
         if k in DISALLOWED_FIELDS:
             print(f"[DEBUG][update_object] Skipping disallowed update field: {k}")
+            continue
+        if v is None:
+            print(f"[DEBUG][update_object] Skipping None value for field '{k}' to preserve existing data")
             continue
         sanitized[k] = v
 
@@ -108,8 +166,9 @@ def update_object(obj: Media, updates: Dict[str, Any]):
         else:
             media_updates[k] = v
 
-    # --- NEW: handle relational fields (authors, genres, performers) ---
-    # convert names -> ids (create dictionary entries when needed) and update relation tables
+    # --- CRITICAL FIX 4: handle relational fields (authors, genres, performers) ONLY if explicitly provided ---
+    # FIX: Only process relation fields that were explicitly in the update request
+    # Do NOT sync relations for safe fields like linked_media
     relation_map = {
         "authors": ("authors", "media_authors", "author_id"),
         "genres": ("genres", "media_genres", "genre_id"),
@@ -119,68 +178,73 @@ def update_object(obj: Media, updates: Dict[str, Any]):
     try:
         from server.db.db_crud import create_dict_entry as db_create_dict_entry, create_relation as db_create_relation, delete_relation as db_delete_relation
         for key, params in relation_map.items():
-            if key in sanitized:
-                table_name, rel_table, rel_col = params
-                val = sanitized[key]
-                if val is None:
-                    # clear relations
-                    try:
-                        if getattr(obj, "id", None):
-                            db_delete_relation(rel_table, {"media_id": getattr(obj, "id")})
-                        setattr(obj, key, [])
-                    except Exception as e:
-                        print(f"[DEBUG][update_object] failed to clear relations for {key}: {e}")
-                    # ensure we don't try to update media table with this field
-                    media_updates.pop(key, None)
-                    continue
-
-                # normalize to list
-                items = []
-                if isinstance(val, str):
-                    # comma separated string -> split
-                    items = [s.strip() for s in val.split(",") if s.strip()]
-                elif isinstance(val, (list, tuple)):
-                    items = list(val)
-                else:
-                    items = [val]
-
-                ids = []
-                for it in items:
-                    try:
-                        if isinstance(it, int):
-                            ids.append(int(it))
-                            continue
-                        # dict form like {type:'user', id: ...}
-                        if isinstance(it, dict):
-                            if "id" in it and it["id"]:
-                                ids.append(int(it["id"]))
-                                continue
-                            name = it.get("name") or it.get("username") or it.get("performer")
-                        else:
-                            name = str(it).strip()
-                        if not name:
-                            continue
-                        # create/fetch dict entry
-                        nid = db_create_dict_entry(table_name, name)
-                        if nid:
-                            ids.append(nid)
-                    except Exception as e:
-                        print(f"[DEBUG][update_object] failed to normalize relation item {it} for {key}: {e}")
-
-                # replace relations in DB: delete existing then insert new ones
+            # CRITICAL FIX: Only process if explicitly in updates (not inferred from missing fields)
+            if key not in sanitized:
+                print(f"[DEBUG][update_object] Skipping {key} - not explicitly provided in update")
+                continue
+            
+            table_name, rel_table, rel_col = params
+            val = sanitized[key]
+            if val is None:
+                # clear relations
                 try:
-                    mid = getattr(obj, "id", None)
-                    if mid is not None:
-                        db_delete_relation(rel_table, {"media_id": mid})
-                        for iid in ids:
-                            db_create_relation(rel_table, ("media_id", rel_col), (mid, iid))
-                        # update in-memory object
-                        setattr(obj, key, ids)
+                    if getattr(obj, "id", None):
+                        db_delete_relation(rel_table, {"media_id": getattr(obj, "id")})
+                    setattr(obj, key, [])
                 except Exception as e:
-                    print(f"[DEBUG][update_object] failed to update relation table {rel_table}: {e}")
-
-                # make sure these are not attempted on media table
+                    print(f"[DEBUG][update_object] failed to clear relations for {key}: {e}")
+                # ensure we don't try to update media table with this field
                 media_updates.pop(key, None)
+                continue
+
+            # normalize to list
+            items = []
+            if isinstance(val, str):
+                # comma separated string -> split
+                items = [s.strip() for s in val.split(",") if s.strip()]
+            elif isinstance(val, (list, tuple)):
+                items = list(val)
+            elif val:  # non-empty non-string/list
+                items = [val]
+
+            ids = []
+            for it in items:
+                try:
+                    if isinstance(it, int):
+                        ids.append(int(it))
+                        continue
+                    # dict form like {type:'user', id: ...}
+                    if isinstance(it, dict):
+                        if "id" in it and it["id"]:
+                            ids.append(int(it["id"]))
+                            continue
+                        name = it.get("name") or it.get("username") or it.get("performer")
+                    else:
+                        name = str(it).strip()
+                    if not name:
+                        continue
+                    # create/fetch dict entry
+                    nid = db_create_dict_entry(table_name, name)
+                    if nid:
+                        ids.append(nid)
+                except Exception as e:
+                    print(f"[DEBUG][update_object] failed to normalize relation item {it} for {key}: {e}")
+
+            # replace relations in DB: delete existing then insert new ones
+            try:
+                mid = getattr(obj, "id", None)
+                if mid is not None:
+                    db_delete_relation(rel_table, {"media_id": mid})
+                    for iid in ids:
+                        db_create_relation(rel_table, ("media_id", rel_col), (mid, iid))
+                    # update in-memory object
+                    setattr(obj, key, ids)
+                    print(f"[DEBUG][update_object] Updated {key} relations: {ids}")
+            except Exception as e:
+                print(f"[DEBUG][update_object] failed to update relation table {rel_table}: {e}")
+
+            # make sure these are not attempted on media table
+            media_updates.pop(key, None)
     except Exception as e:
         print(f"[DEBUG][update_object] relation handling failed: {e}")
 
@@ -189,7 +253,9 @@ def update_object(obj: Media, updates: Dict[str, Any]):
         from server.db.db_crud import update_media_db
         if media_updates:
             print(f"[DEBUG][update_object] Updating media table id={getattr(obj,'id',None)} with {media_updates}")
-            update_media_db(getattr(obj, "id", None), media_updates)
+            result = update_media_db(getattr(obj, "id", None), media_updates)
+            if not result:
+                print(f"[WARNING][update_object] media table update returned False for id={getattr(obj,'id',None)}")
 
             # If updating a concert link, ensure the concerts row and media.linked_media are kept in sync
             try:
@@ -200,8 +266,9 @@ def update_object(obj: Media, updates: Dict[str, Any]):
                         # upsert concerts table so the latest link/title/description are stored
                         try:
                             create_concert_db(mid, media_updates.get('link'), media_updates.get('title') or getattr(obj, 'title', None), media_updates.get('description') or getattr(obj,'description',None))
+                            print(f"[DEBUG][update_object] Updated concerts table for video_id={mid}")
                         except Exception as e:
-                            print(f"[DEBUG][update_object] failed to upsert concerts table: {e}")
+                            print(f"[WARNING][update_object] failed to upsert concerts table: {e}")
 
                         # merge/update linked_media JSON in media table
                         try:
@@ -220,19 +287,25 @@ def update_object(obj: Media, updates: Dict[str, Any]):
                                 lm.append(entry)
                                 _update_media_db(mid, {'linked_media': json.dumps(lm)})
                         except Exception as e:
-                            print(f"[DEBUG][update_object] failed to sync linked_media: {e}")
+                            print(f"[WARNING][update_object] failed to sync linked_media: {e}")
             except Exception as e:
-                print(f"[DEBUG][update_object] concert link sync failed: {e}")
+                print(f"[WARNING][update_object] concert link sync failed: {e}")
     except Exception as e:
         print(f"[ERROR][update_object] failed to update media table: {e}")
+        # Return object in error state but don't crash
+        return obj
 
     if doc_updates:
         try:
             from server.db.db_crud import update_document_db
             print(f"[DEBUG][update_object] Updating documents table id={getattr(obj,'id',None)} with {doc_updates}")
-            update_document_db(getattr(obj, "id", None), doc_updates)
+            result = update_document_db(getattr(obj, "id", None), doc_updates)
+            if not result:
+                print(f"[WARNING][update_object] documents table update returned False for id={getattr(obj,'id',None)}")
         except Exception as e:
             print(f"[ERROR][update_object] failed to update documents table: {e}")
+            # Return object in error state but don't crash
+            return obj
 
     print(f"[DEBUG][update_object] Object after DB update {obj}")
     return obj
@@ -246,9 +319,58 @@ def delete_object(obj: Media):
 # =========================
 # SONG SERVICES
 # =========================
+# MEDIA SERVICES (Generic - formerly type-specific)
+# =========================
+
+# Generic create that dispatches to type-specific logic
+def create_media_services(user_obj, data: dict = None, **kwargs):
+    """Generic media creation that handles song, document, video, concert types."""
+    if data is None:
+        data = {}
+    if isinstance(data, dict) and kwargs:
+        data = {**data, **kwargs}
+    elif not isinstance(data, dict) and kwargs:
+        data = dict(kwargs)
+
+    # Data now uses canonical field names from client
+    print(f"\n[DEBUG][create_media_services] ===== START =====")
+    print(f"[DEBUG][create_media_services] Input payload keys: {list(data.keys())}")
+
+    media_type = data.get("type", "song").lower()
+
+    if media_type == "song":
+        return create_song_services(user_obj, data)
+    elif media_type == "document":
+        return create_document_services(user_obj, data)
+    elif media_type == "video":
+        return create_video_services(user_obj, data)
+    elif media_type == "concert":
+        return create_concert_services(user_obj, data)
+    else:
+        return {"error": f"Unknown media type: {media_type}"}
+
+def get_media_services(user_obj, media_id: int):
+    """Generic media fetch."""
+    return get_object(Media, media_id)
+
+def update_media_services(user_obj, media_id: int, updates: dict):
+    """Generic media update."""
+    media = get_object(Media, media_id)
+    if not media:
+        return {"error": "Media not found"}
+    return update_object(media, updates)
+
+def delete_media_services(user_obj, media_id: int):
+    """Generic media delete."""
+    media = get_object(Media, media_id)
+    if not media:
+        return {"error": "Media not found"}
+    return delete_object(media)
+
+# Legacy type-specific service names that delegate to generic or type-specific implementations
 def get_song_services(user_obj, song_id: int):
     print(f"[DEBUG][get_song_services] song_id={song_id}")
-    return get_object(Song, song_id)
+    return get_object(Media, song_id)
 
 def create_song_services(user_obj, data: dict = None, **kwargs):
     # Accept either a single data dict or keyword args (dispatcher may unpack)
@@ -260,7 +382,9 @@ def create_song_services(user_obj, data: dict = None, **kwargs):
         # unexpected shapes: treat kwargs as the payload
         data = dict(kwargs)
 
-    print(f"[DEBUG][create_song_services] user_obj={user_obj}, data={data}")
+    # Data now uses canonical field names from client
+    print(f"\n[DEBUG][create_song_services] ===== SONG CREATION =====")
+    print(f"[DEBUG][create_song_services] user_obj={user_obj}, data keys={list(data.keys())}")
 
     # normalize alternate keys and aliases
     if 'i_am_author' in data and 'is_author' not in data:
@@ -290,18 +414,20 @@ def create_song_services(user_obj, data: dict = None, **kwargs):
         elif isinstance(g, (list, tuple)):
             data['genres'] = list(g)
 
-    # support publish-on-behalf: map on_behalf_of -> user_id if present
-    if 'on_behalf_of' in data:
+    # support publish-on-behalf: map on_behalf_of or target_username -> user_id if present
+    behalf_username = data.get('target_username') or data.get('on_behalf_of')
+    if behalf_username:
         try:
-            ob = str(data.get('on_behalf_of')).strip()
+            ob = str(behalf_username).strip()
             if ob:
                 uid = get_user_id_by_username(ob)
                 if uid:
                     data['user_id'] = uid
+                    print(f"[create_song_services] Publishing on behalf of '{ob}' (user_id={uid})")
                 else:
-                    print(f"[create_song_services] on_behalf_of username '{ob}' not found")
+                    print(f"[create_song_services] target username '{ob}' not found")
         except Exception as e:
-            print(f"[create_song_services] error resolving on_behalf_of: {e}")
+            print(f"[create_song_services] error resolving target_username: {e}")
 
     data["type"] = "song"
     # only set creator from actor if not explicitly publishing on behalf of someone
@@ -394,14 +520,14 @@ def create_song_services(user_obj, data: dict = None, **kwargs):
                 final_pids.append(nid)
         data["performers"] = final_pids
 
-    # Costruisci oggetto (non salva ancora relazioni M:N)
-    song = Song.from_dict(data)
+    # Build object using generic Media class
+    song = Media.from_dict(data)
 
     # Ensure the song's owner matches the requested owner (on_behalf or actor)
     if data.get('user_id') is not None:
         song.user_id = data.get('user_id')
 
-    # Salva nel DB
+    # Save in DB
     created_id = song.save()
     if not created_id:
         return {"status": "ERROR", "error_msg": "Failed to persist song"}
@@ -409,7 +535,7 @@ def create_song_services(user_obj, data: dict = None, **kwargs):
 
 def update_song_services(user_obj, song_id: int, updates: dict):
     print(f"[DEBUG][update_song_services] song_id={song_id}, updates={updates}")
-    song = get_object(Song, song_id)
+    song = get_object(Media, song_id)
     if not song:
         print("[DEBUG][update_song_services] Song not found")
         return {"error": "Song not found"}
@@ -417,7 +543,7 @@ def update_song_services(user_obj, song_id: int, updates: dict):
 
 def delete_song_services(user_obj, song_id: int):
     print(f"[DEBUG][delete_song_services] song_id={song_id}")
-    song = get_object(Song, song_id)
+    song = get_object(Media, song_id)
     if not song:
         print("[DEBUG][delete_song_services] Song not found")
         return {"error": "Song not found"}
@@ -433,6 +559,23 @@ def create_document_services(user_obj, data: dict = None, **kwargs):
         data = {**data, **kwargs}
     elif not isinstance(data, dict) and kwargs:
         data = dict(kwargs)
+
+    # Data now uses canonical field names from client
+
+    # support publish-on-behalf: map target_username -> user_id if present
+    behalf_username = data.get('target_username') or data.get('on_behalf_of')
+    if behalf_username:
+        try:
+            ob = str(behalf_username).strip()
+            if ob:
+                uid = get_user_id_by_username(ob)
+                if uid:
+                    data['user_id'] = uid
+                    print(f"[create_document_services] Publishing on behalf of '{ob}' (user_id={uid})")
+                else:
+                    print(f"[create_document_services] target username '{ob}' not found")
+        except Exception as e:
+            print(f"[create_document_services] error resolving target_username: {e}")
 
     # map automatic into document fields
     auto = data.get("automatic")
@@ -467,19 +610,19 @@ def create_document_services(user_obj, data: dict = None, **kwargs):
     if data.get("stored_at") is None:
         data["stored_at"] = "server/storage/documents"
 
-    return create_object(Document, user_obj, data)
+    return create_object(Media, user_obj, data)
 
 def get_document_services(user_obj, doc_id: int):
-    return get_object(Document, doc_id)
+    return get_object(Media, doc_id)
 
 def update_document_services(user_obj, doc_id: int, updates: dict):
-    doc_obj = get_object(Document, doc_id)
+    doc_obj = get_object(Media, doc_id)
     if not doc_obj:
         return {"error": "Document not found"}
     return update_object(doc_obj, updates)
 
 def delete_document_services(user_obj, doc_id: int):
-    doc_obj = get_object(Document, doc_id)
+    doc_obj = get_object(Media, doc_id)
     if not doc_obj:
         return {"error": "Document not found"}
     return delete_object(doc_obj)
@@ -488,12 +631,34 @@ def delete_document_services(user_obj, doc_id: int):
 # VIDEO SERVICES
 # =========================
 def create_video_services(user_obj, data: dict = None, **kwargs):
+    print(f"\n[DEBUG][create_video_services] ===== START =====")
     if data is None:
         data = {}
     if isinstance(data, dict) and kwargs:
         data = {**data, **kwargs}
     elif not isinstance(data, dict) and kwargs:
         data = dict(kwargs)
+
+    # Data now uses canonical field names from client
+    print(f"[DEBUG][create_video_services] Input data keys: {list(data.keys())}")
+    print(f"[DEBUG][create_video_services] year={data.get('year')}, description={data.get('description')}, location={data.get('location')}")
+    print(f"[DEBUG][create_video_services] recording_date={data.get('recording_date')}, additional_info={data.get('additional_info')}")
+    print(f"[DEBUG][create_video_services] is_author={data.get('is_author')}, is_performer={data.get('is_performer')}")
+
+    # support publish-on-behalf: map target_username -> user_id if present
+    behalf_username = data.get('target_username') or data.get('on_behalf_of')
+    if behalf_username:
+        try:
+            ob = str(behalf_username).strip()
+            if ob:
+                uid = get_user_id_by_username(ob)
+                if uid:
+                    data['user_id'] = uid
+                    print(f"[create_video_services] Publishing on behalf of '{ob}' (user_id={uid})")
+                else:
+                    print(f"[create_video_services] target username '{ob}' not found")
+        except Exception as e:
+            print(f"[create_video_services] error resolving target_username: {e}")
 
     # handle automatic metadata
     auto = data.get("automatic")
@@ -507,15 +672,16 @@ def create_video_services(user_obj, data: dict = None, **kwargs):
     data["type"] = "video"
     if data.get("stored_at") is None:
         data["stored_at"] = "server/storage/videos"
-    return create_object(Video, user_obj, data)
+    
+    print(f"[DEBUG][create_video_services] Final data keys: {list(data.keys())}")
+    result = create_object(Media, user_obj, data)
+    print(f"[DEBUG][create_video_services] ===== COMPLETE =====\n")
+    return result
 
 
 # =========================
 # CONCERT SERVICES
 # =========================
-from server.objects.media.concert import Concert
-from server.db.db_crud import create_concert_db, fetch_concert_by_video_id, create_concert_segment_db, fetch_concert_segments_db, update_concert_segment_db, delete_concert_segment_db
-
 
 def _extract_user_lvl(user_obj):
     viewer_lvl_raw = user_obj.get("lvl") if isinstance(user_obj, dict) else getattr(user_obj, "lvl", None)
@@ -524,6 +690,7 @@ def _extract_user_lvl(user_obj):
 
 
 def create_concert_services(user_obj, data: dict = None, **kwargs):
+    print(f"\n[DEBUG][create_concert_services] ===== START =====")
     if data is None:
         data = {}
     if isinstance(data, dict) and kwargs:
@@ -531,24 +698,51 @@ def create_concert_services(user_obj, data: dict = None, **kwargs):
     elif not isinstance(data, dict) and kwargs:
         data = dict(kwargs)
 
+    # Data now uses canonical field names from client
+    print(f"[DEBUG][create_concert_services] Input data keys: {list(data.keys())}")
+    print(f"[DEBUG][create_concert_services] year={data.get('year')}, description={data.get('description')}, location={data.get('location')}")
+    print(f"[DEBUG][create_concert_services] recording_date={data.get('recording_date')}, additional_info={data.get('additional_info')}")
+    print(f"[DEBUG][create_concert_services] is_author={data.get('is_author')}, is_performer={data.get('is_performer')}")
+
+    # support publish-on-behalf: map target_username -> user_id if present
+    behalf_username = data.get('target_username') or data.get('on_behalf_of')
+    if behalf_username:
+        try:
+            ob = str(behalf_username).strip()
+            if ob:
+                uid = get_user_id_by_username(ob)
+                if uid:
+                    data['user_id'] = uid
+                    print(f"[create_concert_services] Publishing on behalf of '{ob}' (user_id={uid})")
+                else:
+                    print(f"[create_concert_services] target username '{ob}' not found")
+        except Exception as e:
+            print(f"[create_concert_services] error resolving target_username: {e}")
+
     data["type"] = "concert"
     if data.get("stored_at") is None:
         data["stored_at"] = "server/storage/videos"
-    print(f"[DEBUG][create_concert_services] user={user_obj}, data={data}")
 
     # disallow banned users (lvl 6) from creating concerts
     lvl = _extract_user_lvl(user_obj) if user_obj else None
     if lvl == 6:
         return {"error": "Insufficient permissions to create concert"}
 
+    print(f"[DEBUG][create_concert_services] Calling create_object with data keys: {list(data.keys())}")
     # create concert media and concerts row will be created inside create_media_db
-    concert = create_object(Concert, user_obj, data)
+    concert = create_object(Media, user_obj, data)
+    print(f"[DEBUG][create_concert_services] ===== COMPLETE =====\n")
     return concert
 
 
 def get_concert_services(user_obj, video_id: int):
     print(f"[DEBUG][get_concert_services] user={user_obj}, video_id={video_id}")
-    return Concert.fetch_full_concert(video_id)
+    # Fetch concert data from database
+    concert_data = fetch_concert_by_video_id(video_id)
+    if not concert_data:
+        return None
+    # Return the concert as a generic Media object
+    return Media.from_dict(concert_data)
 
 
 def add_concert_segment_services(user_obj, video_id: int, segment_data: dict):
@@ -653,13 +847,14 @@ def delete_concert_segment_services(user_obj, segment_id: int):
     ok = delete_concert_segment_db(segment_id)
     print(f"[DEBUG][delete_concert_segment_services] delete result for segment_id={segment_id}: {ok}")
     return {"success": ok}
+
 def get_video_services(user_obj, video_id: int):
     print(f"[DEBUG][get_video_services] user={user_obj}, video_id={video_id}")
-    return get_object(Video, video_id)
+    return get_object(Media, video_id)
 
 def update_video_services(user_obj, video_id: int, updates: dict):
     print(f"[DEBUG][update_video_services] user={user_obj}, video_id={video_id}, updates={updates}")
-    video = get_object(Video, video_id)
+    video = get_object(Media, video_id)
     if not video:
         print(f"[DEBUG][update_video_services] video not found for id={video_id}")
         return {"error": "Video not found"}
@@ -667,14 +862,85 @@ def update_video_services(user_obj, video_id: int, updates: dict):
     print(f"[DEBUG][update_video_services] update result for video_id={video_id}: {res}")
     return res
 
+def update_concert_services(user_obj, concert_id: int, updates: dict):
+    """
+    Update a concert media record.
+    Preserves concert-type identity and updates concert-specific fields (link, title, description)
+    in the concerts table in addition to media table updates.
+    
+    SAFETY: Only allows updates to non-relational fields to prevent accidental data loss.
+    Relation updates (authors, performers, genres) must be explicitly provided.
+    """
+    print(f"[DEBUG][update_concert_services] user={user_obj}, concert_id={concert_id}, updates={updates}")
+    
+    # Fetch current concert to ensure it exists
+    concert = get_object(Media, concert_id)
+    if not concert:
+        print(f"[DEBUG][update_concert_services] concert not found for id={concert_id}")
+        return {"error": "Concert not found", "status": "ERROR"}
+    
+    # Make updates copy to avoid mutating original
+    safe_updates = updates.copy() if updates else {}
+    
+    # Enforce concert type (never allow type to change)
+    if 'type' in safe_updates and safe_updates['type'] != 'concert':
+        print(f"[DEBUG][update_concert_services] ignoring type change attempt from {safe_updates['type']} to concert")
+        safe_updates['type'] = 'concert'
+    
+    try:
+        res = update_object(concert, safe_updates)
+        print(f"[DEBUG][update_concert_services] update_object result: {res}")
+        
+        # Also update concert-specific fields in concerts table
+        if concert_id and safe_updates:
+            try:
+                from server.db import db_crud
+                concert_updates = {}
+                if 'link' in safe_updates:
+                    concert_updates['link'] = safe_updates['link']
+                if 'title' in safe_updates:
+                    concert_updates['title'] = safe_updates['title']
+                if 'description' in safe_updates:
+                    concert_updates['description'] = safe_updates['description']
+                
+                if concert_updates:
+                    success = db_crud.execute(
+                        """UPDATE concerts SET link=%s, title=%s, description=%s WHERE video_id=%s""",
+                        (concert_updates.get('link'), concert_updates.get('title'), concert_updates.get('description'), concert_id)
+                    )
+                    if success:
+                        print(f"[DEBUG][update_concert_services] updated concerts table with {concert_updates}")
+                    else:
+                        print(f"[WARNING][update_concert_services] concerts table update returned False")
+            except Exception as e:
+                print(f"[WARNING][update_concert_services] failed to update concerts table: {e}")
+        
+        return {"status": "OK", "id": concert_id}
+    except Exception as e:
+        print(f"[ERROR][update_concert_services] update failed: {e}")
+        # Return error but don't crash - allow client to retry
+        return {"error": str(e), "status": "ERROR"}
+
 def delete_video_services(user_obj, video_id: int):
     print(f"[DEBUG][delete_video_services] user={user_obj}, video_id={video_id}")
-    video = get_object(Video, video_id)
+    video = get_object(Media, video_id)
     if not video:
         print(f"[DEBUG][delete_video_services] video not found for id={video_id}")
         return {"error": "Video not found"}
     res = delete_object(video)
     print(f"[DEBUG][delete_video_services] delete result for video_id={video_id}: {res}")
+    return res
+
+
+def delete_concert_services(user_obj, concert_id: int):
+    """Delete a concert media record (cascades to concerts table via foreign key)."""
+    print(f"[DEBUG][delete_concert_services] user={user_obj}, concert_id={concert_id}")
+    concert = get_object(Media, concert_id)
+    if not concert:
+        print(f"[DEBUG][delete_concert_services] concert not found for id={concert_id}")
+        return {"error": "Concert not found"}
+    res = delete_object(concert)
+    print(f"[DEBUG][delete_concert_services] delete result for concert_id={concert_id}: {res}")
     return res
 
 # ========================
@@ -797,14 +1063,15 @@ def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset
     # Pull a larger batch per media type (no per-type offset) then do global pagination.
     per_type_limit = max(offset + limit * 2, limit)  # fetch enough from each type to cover the requested window
 
-    def fetch_media(cls):
-        return cls.fetch_all(search=search, filter_by=filter_by, offset=0, limit=per_type_limit)
+    def fetch_media(media_type):
+        """Fetch all media of a specific type using generic Media.fetch_all()"""
+        return Media.fetch_all(search=search, filter_by=filter_by, offset=0, limit=per_type_limit, media_type=media_type)
 
-    # Prendi media separatamente dal DB (no per-type offset)
-    songs = fetch_media(Song)
-    videos = fetch_media(Video)
-    documents = fetch_media(Document)
-    concerts = fetch_media(Concert)
+    # Fetch media by type from DB
+    songs = fetch_media("song")
+    videos = fetch_media("video")
+    documents = fetch_media("document")
+    concerts = fetch_media("concert")
 
     # Combina risultati and include created_at for global ordering
     from server.db.db_crud import get_user_username_by_id as duck
@@ -980,12 +1247,10 @@ def get_media_services(user_obj, media_id: int):
         # If this media is a concert, fetch the full concert row (link, segments)
         try:
             if (m.get("type") or "").lower() == "concert":
-                from server.objects.media.concert import Concert
-                full = Concert.fetch_full_concert(mid)
+                full = fetch_concert_by_video_id(mid)
                 if full:
-                    full_map = full.to_dict()
                     # merge concert-specific fields (link, segments) without removing already-computed fields
-                    for k, v in full_map.items():
+                    for k, v in full.items():
                         if v is not None:
                             m[k] = v
                 # Concerts are external links; ensure no file metadata is exposed so clients don't try to fetch a file

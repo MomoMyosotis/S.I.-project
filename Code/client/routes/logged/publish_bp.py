@@ -47,6 +47,11 @@ def publish_page():
     # conservative default: banned (no publish)
     user_level = 6
     username = None
+    target_username = None
+
+    # Check if user is trying to publish on behalf of another user
+    # This is read from the query param ?username=... passed from profile.html
+    target_username = request.args.get("username")
 
     try:
         # ask backend for profile to get level/username (best-effort)
@@ -72,7 +77,7 @@ def publish_page():
         # best-effort: if we can't fetch profile leave defaults (level 6 to be safe)
         current_app.logger.debug(f"[publish_page] error fetching profile: {e}")
 
-    return render_template("publish.html", user_level=user_level, username=username)
+    return render_template("publish.html", user_level=user_level, username=username, target_username=target_username)
 
 @publish_bp.route('/resolve_user', methods=['POST'])
 def resolve_user():
@@ -131,28 +136,83 @@ def publish_content():
     """
     Accept multipart FormData from browser. Validate per media type, optionally save files
     via SAVE_FILE RPC and forward create command to backend.
+    
+    SECURITY: Validates that only users with admin/mod level (0-1) can publish on behalf
+    of other users.
     """
     try:
+        # Ensure authentication token is set
+        if http_client.token is None:
+            http_client.token = session.get("session_token")
+        
+        # SECURITY: Get logged-in user's profile to validate "publish on behalf" permission
+        logged_user_info = None
+        logged_user_level = None
+        try:
+            profile_res = http_client.send_request("GET_PROFILE", [], require_auth=True)
+            if isinstance(profile_res, dict) and profile_res.get("status") in (None, "OK"):
+                info = _unwrap_user_response(profile_res)
+                if info and isinstance(info, dict):
+                    logged_user_info = info
+                    try:
+                        logged_user_level = int(info.get("lvl"))
+                    except (ValueError, TypeError):
+                        pass
+            current_app.logger.debug(f"[publish_content] logged user level: {logged_user_level!r}")
+        except Exception as e:
+            current_app.logger.debug(f"[publish_content] error fetching logged user profile: {e}")
+        
+        # Check if attempting to publish on behalf of another user
+        target_username = (request.form.get("target_username") or "").strip()
+        if target_username and logged_user_info and logged_user_info.get("username"):
+            logged_username = logged_user_info.get("username")
+            # If target_username differs from logged username, user is attempting publish-on-behalf
+            if target_username != logged_username:
+                # SECURITY: Only level 0 (admin) or 1 (moderator) can publish on behalf
+                if logged_user_level is None or logged_user_level not in (0, 1):
+                    current_app.logger.warning(
+                        f"[publish_content] SECURITY: User '{logged_username}' (level {logged_user_level}) "
+                        f"attempted to publish on behalf of '{target_username}' without permission"
+                    )
+                    return jsonify({
+                        "status": "ERROR",
+                        "error_msg": "Permission denied: Only administrators (level 0) and moderators (level 1) can publish on behalf of other users."
+                    }), 403
+        
         media_type = (request.form.get("type") or "").lower()
         title = (request.form.get("title") or "").strip()
         authors = json.loads(request.form.get("authors") or "[]")
-        genre = (request.form.get("genre") or "").strip()
-        composition_year = request.form.get("composition_year") or None
+        genres = (request.form.get("genres") or "").strip()
+        year = request.form.get("year") or None
 
         performers = json.loads(request.form.get("performers") or "[]")
         segments = json.loads(request.form.get("segments") or "[]")
         subtracks = json.loads(request.form.get("subtracks") or "[]")
+        
+        # Capture description from form (used for all media types including concerts)
+        description = (request.form.get("description") or "").strip()
 
         recording_date = request.form.get("recording_date")
-        recording_location = request.form.get("recording_location", "").strip()
+        location = request.form.get("location", "").strip()
 
-        document_type = request.form.get("document_type")
-        document_annotations = request.form.get("document_annotations", "")
+        format = request.form.get("format")
+        additional_info = request.form.get("additional_info", "")
 
         event_title = request.form.get("event_title", "")
         concert_date = request.form.get("concert_date", "")
         concert_location = request.form.get("concert_location", "")
         link = request.form.get("link", "")
+        
+        # Extract publication_date for concerts
+        publication_date = request.form.get("publication_date")
+        # If year is not provided but publication_date is, extract year from it
+        if not year and publication_date:
+            try:
+                year_from_date = publication_date.split('-')[0]
+                year = int(year_from_date) if year_from_date.isdigit() else None
+                print(f"[DEBUG][publish_content] Extracted year from publication_date: {year}")
+            except Exception as e:
+                print(f"[DEBUG][publish_content] Failed to extract year from publication_date: {e}")
 
         # optional helper: when publishing a concert we will build a linked_media entry for the YouTube link
         link_entry = None
@@ -161,34 +221,32 @@ def publish_content():
         file_format = request.form.get("file_format") or None
 
         # read extra checkboxes
-        is_composer = bool(request.form.get("is_composer"))
+        is_author = bool(request.form.get("is_author"))
         is_performer = bool(request.form.get("is_performer"))
         instruments_used = request.form.get("instruments_used", "")
         is_live = bool(request.form.get("is_live"))
 
+        # ===== DEBUG: Log all form fields extracted =====
+        print(f"\n[DEBUG][publish_content] ===== FORM EXTRACTION START =====")
+        print(f"[DEBUG][publish_content] media_type: {media_type}")
+        print(f"[DEBUG][publish_content] title: {title}")
+        print(f"[DEBUG][publish_content] year: {year}")
+        print(f"[DEBUG][publish_content] publication_date: {publication_date}")
+        print(f"[DEBUG][publish_content] duration: {duration}")
+        print(f"[DEBUG][publish_content] description: {description}")
+        print(f"[DEBUG][publish_content] recording_date: {recording_date}")
+        print(f"[DEBUG][publish_content] location: {location}")
+        print(f"[DEBUG][publish_content] is_author: {is_author}")
+        print(f"[DEBUG][publish_content] is_performer: {is_performer}")
+        print(f"[DEBUG][publish_content] authors: {authors}")
+        print(f"[DEBUG][publish_content] performers: {performers}")
+        print(f"[DEBUG][publish_content] genres: {genres}")
+        print(f"[DEBUG][publish_content] link: {link}")
+        print(f"[DEBUG][publish_content] additional_info: {additional_info}")
+        print(f"[DEBUG][publish_content] ===== FORM EXTRACTION COMPLETE =====\n")
+
         # Basic validation per media type
-        if media_type in ("video", "audio"):
-            if not title:
-                return jsonify({"status":"ERROR","error_msg":"title required"}), 400
-            if not isinstance(authors, list) or len(authors) == 0:
-                return jsonify({"status":"ERROR","error_msg":"authors required"}), 400
-            if not genre:
-                return jsonify({"status":"ERROR","error_msg":"genre required"}), 400
-            if recording_date and not recording_location:
-                return jsonify({"status":"ERROR","error_msg":"recording_location required when recording_date provided"}), 400
-            if is_live and (not recording_date or not recording_location):
-                return jsonify({"status":"ERROR","error_msg":"live performance requires recording_date and recording_location"}), 400
-            # require at least one uploaded file
-            if not request.files or len(request.files.getlist("files")) == 0:
-                return jsonify({"status":"ERROR","error_msg":"file upload required for audio/video"}), 400
-        elif media_type == "document":
-            if not title:
-                return jsonify({"status":"ERROR","error_msg":"title required"}), 400
-            if not request.files or len(request.files.getlist("files")) == 0:
-                return jsonify({"status":"ERROR","error_msg":"document file required"}), 400
-            if document_type not in ("score","lyrics","chords","other"):
-                return jsonify({"status":"ERROR","error_msg":"invalid document_type"}), 400
-        elif media_type == "concert":
+        if media_type == "concert":
             if not link:
                 return jsonify({"status":"ERROR","error_msg":"YouTube link required for concert"}), 400
             # sanitize + validate YouTube link
@@ -225,7 +283,7 @@ def publish_content():
             for st in subtracks:
                 if not st.get("title"):
                     return jsonify({"status":"ERROR","error_msg":"each subtrack must have a title"}), 400
-        else:
+        elif media_type not in ("video", "audio", "document", "image", "song"):
             return jsonify({"status":"ERROR","error_msg":"unknown media type"}), 400
 
         # Process files: base64 encode and save via SAVE_FILE RPC if files present
@@ -298,31 +356,44 @@ def publish_content():
         payload = {
             "title": title,
             "authors": authors,
-            "genre": genre,
-            "composition_year": int(composition_year) if composition_year else None,
+            "genres": genres,
+            "year": int(year) if year else None,
             "type": media_type,
             "duration": float(duration) if duration else None,
-            "file_format": file_format,
+            "format": file_format,
             "stored_at": stored_at,
             "performers": performers,
             "segments": segments,
             "subtracks": subtracks,
-            "document_type": document_type,
-            "document_annotations": document_annotations,
+            "description": description,
+            "additional_info": additional_info,
             "event_title": event_title,
-            "concert_date": concert_date,
-            "concert_location": concert_location,
-            "link": link,
             "recording_date": recording_date,
-            "recording_location": recording_location,
-            "is_composer": is_composer,
+            "location": location,
+            "link": link,
+            "is_author": is_author,
             "is_performer": is_performer,
             "instruments_used": instruments_used,
             "is_live": is_live,
             "linked_media": linked_media_entries if linked_media_entries else [],
             # do not forward raw file bytes (we saved them via SAVE_FILE)
-            "files": []
+            "files": [],
+            # Include target_username for publish-on-behalf: server will use this instead of logged user
+            "target_username": target_username if target_username else None
         }
+
+        # ===== DEBUG: Log complete payload before sending =====
+        print(f"\n[DEBUG][publish_content] ===== PAYLOAD BUILDING COMPLETE =====")
+        print(f"[DEBUG][publish_content] Payload keys: {list(payload.keys())}")
+        print(f"[DEBUG][publish_content] CRITICAL FIELDS IN PAYLOAD:")
+        print(f"[DEBUG][publish_content]   - year: {payload.get('year')}")
+        print(f"[DEBUG][publish_content]   - description: {payload.get('description')}")
+        print(f"[DEBUG][publish_content]   - recording_date: {payload.get('recording_date')}")
+        print(f"[DEBUG][publish_content]   - location: {payload.get('location')}")
+        print(f"[DEBUG][publish_content]   - is_author: {payload.get('is_author')}")
+        print(f"[DEBUG][publish_content]   - is_performer: {payload.get('is_performer')}")
+        print(f"[DEBUG][publish_content] FULL PAYLOAD: {payload}")
+        print(f"[DEBUG][publish_content] ===== READY TO SEND =====\n")
 
         # choose backend command
         cmd_map = {
@@ -339,8 +410,45 @@ def publish_content():
             except Exception as e_log:
                 current_app.logger.debug(f"[publish_content][concert] failed logging payload: {e_log}")
         current_app.logger.debug(f"[publish_content] sending CREATE command {cmd} for type={media_type}")
+        
+        print(f"\n[DEBUG][publish_content] ===== SENDING TO BACKEND =====")
+        print(f"[DEBUG][publish_content] Command: {cmd}")
+        print(f"[DEBUG][publish_content] Media type: {media_type}")
+        print(f"[DEBUG][publish_content] Payload keys being sent: {list(payload.keys())}")
+        print(f"[DEBUG][publish_content] Critical fields in outgoing payload:")
+        print(f"[DEBUG][publish_content]   - year: {payload.get('year')}")
+        print(f"[DEBUG][publish_content]   - description: {payload.get('description')}")
+        print(f"[DEBUG][publish_content]   - recording_date: {payload.get('recording_date')}")
+        print(f"[DEBUG][publish_content]   - is_author: {payload.get('is_author')}")
+        print(f"[DEBUG][publish_content]   - is_performer: {payload.get('is_performer')}")
+        print(f"[DEBUG][publish_content] ===== SENDING NOW =====\n")
+        
         res = http_client.send_request(cmd, [payload], require_auth=True)
+        
+        print(f"\n[DEBUG][publish_content] ===== RESPONSE RECEIVED =====")
+        print(f"[DEBUG][publish_content] Response: {res}")
+        print(f"[DEBUG][publish_content] ===== END RESPONSE =====\n")
+        
         current_app.logger.debug(f"[publish_content] CREATE {cmd} response: {res!r}")
+        
+        # ===== DEBUG: Analyze response from backend =====
+        print(f"\n[DEBUG][publish_content] ===== BACKEND RESPONSE ANALYSIS =====")
+        if isinstance(res, dict):
+            print(f"[DEBUG][publish_content] Response keys: {list(res.keys())}")
+            print(f"[DEBUG][publish_content] Response status: {res.get('status')}")
+            print(f"[DEBUG][publish_content] Response ID/main_id: {res.get('id')}")
+            print(f"[DEBUG][publish_content] Fields RETURNED by backend:")
+            print(f"[DEBUG][publish_content]   - year: {res.get('year')}")
+            print(f"[DEBUG][publish_content]   - description: {res.get('description')}")
+            print(f"[DEBUG][publish_content]   - recording_date: {res.get('recording_date')}")
+            print(f"[DEBUG][publish_content]   - location: {res.get('location')}")
+            print(f"[DEBUG][publish_content]   - is_author: {res.get('is_author')}")
+            print(f"[DEBUG][publish_content]   - is_performer: {res.get('is_performer')}")
+            print(f"[DEBUG][publish_content]   - additional_info: {res.get('additional_info')}")
+            print(f"[DEBUG][publish_content] Full response: {res}")
+        else:
+            print(f"[DEBUG][publish_content] Response is not dict: {type(res)} = {res}")
+        print(f"[DEBUG][publish_content] ===== END RESPONSE ANALYSIS =====\n")
 
         # if main creation failed, return error immediately
         if not isinstance(res, dict) or res.get('status') == 'ERROR':
@@ -365,8 +473,8 @@ def publish_content():
                 child_payload = {
                     "title": filename,
                     "authors": [],
-                    "genre": "",
-                    "composition_year": None,
+                    "genres": "",
+                    "year": None,
                     "type": suggested,
                     "stored_at": stored_path,
                     "linked_to": main_id,
@@ -381,19 +489,17 @@ def publish_content():
                         # make child title more descriptive if possible
                         child_payload["title"] = f"{parent_title} — {filename}"
 
-                    # authors/performers/genre/description/tags
+                    # authors/performers/genres/description
                     if payload.get("authors"):
                         child_payload["authors"] = list(payload.get("authors"))
                     if payload.get("performers") and suggested in ("audio", "song", "video"):
                         child_payload["performers"] = list(payload.get("performers"))
-                    if payload.get("genre"):
-                        child_payload["genre"] = payload.get("genre")
+                    if payload.get("genres"):
+                        child_payload["genres"] = payload.get("genres")
                     if payload.get("description"):
                         child_payload["description"] = payload.get("description")
-                    if payload.get("tags"):
-                        child_payload["tags"] = payload.get("tags")
-                    if payload.get("composition_year"):
-                        child_payload["composition_year"] = int(payload.get("composition_year")) if payload.get("composition_year") else None
+                    if payload.get("year"):
+                        child_payload["year"] = int(payload.get("year")) if payload.get("year") else None
                     if payload.get("is_live") is not None:
                         child_payload["is_live"] = bool(payload.get("is_live"))
                 except Exception as e:
@@ -441,50 +547,6 @@ def publish_content():
                     current_app.logger.debug(f"[publish_content] failed creating concert subtrack: {e}")
             if isinstance(res, dict):
                 res['subtracks_created'] = created_segments
-
-        # ensure protagonist media record contains linked_media information (try update, non-fatal on failure)
-        if main_id and linked_media_entries:
-            # Concerts are stored as videos with a concert row; use UPDATE_VIDEO to update linked_media
-            update_cmd_map = {"audio":"UPDATE_SONG", "video":"UPDATE_VIDEO", "document":"UPDATE_DOCUMENT", "concert":"UPDATE_VIDEO"}
-            update_cmd = update_cmd_map.get(media_type)
-            if update_cmd:
-                try:
-                    update_payload = {"linked_media": linked_media_entries}
-                    current_app.logger.debug(f"[publish_content] UPDATE {update_cmd} payload: {update_payload}")
-                    upd_res = http_client.send_request(update_cmd, [main_id, update_payload], require_auth=True)
-                    current_app.logger.debug(f"[publish_content] UPDATE {update_cmd} response: {upd_res}")
-                    if isinstance(res, dict):
-                        res['linked_media_update'] = upd_res
-
-                    # verify persistence by re-fetching the protagonist
-                    try:
-                        get_cmd_map = {"audio":"GET_SONG", "video":"GET_VIDEO", "document":"GET_DOCUMENT", "concert":"GET_CONCERT"}
-                        get_cmd = get_cmd_map.get(media_type)
-                        if get_cmd:
-                            fetch_res = http_client.send_request(get_cmd, [main_id], require_auth=True)
-                            if isinstance(res, dict):
-                                res['post_update_main'] = fetch_res
-                            try:
-                                # inspect fetched media for linked_media presence
-                                inspected = None
-                                if isinstance(fetch_res, dict):
-                                    inspected = fetch_res.get('response') or fetch_res.get('media') or fetch_res
-                                if isinstance(inspected, dict):
-                                    lm = inspected.get('linked_media') if 'linked_media' in inspected else inspected.get('linked') if 'linked' in inspected else None
-                                    current_app.logger.debug(f"[publish_content] post-update fetched linked_media: {lm!r}")
-                                else:
-                                    current_app.logger.debug(f"[publish_content] post-update fetched non-dict: {inspected!r}")
-                            except Exception as e_fetch2:
-                                current_app.logger.debug(f"[publish_content] error inspecting post-update fetch: {e_fetch2}", exc_info=True)
-                    except Exception as e_fetch:
-                        current_app.logger.debug(f"[publish_content] failed to re-fetch protagonist after update: {e_fetch}")
-
-                    # log non-OK responses for easier debugging
-                    if isinstance(upd_res, dict) and upd_res.get('status') == 'ERROR':
-                        current_app.logger.debug(f"[publish_content] UPDATE {update_cmd} returned error: {upd_res}")
-                except Exception as e:
-                    current_app.logger.debug(f"[publish_content] failed to attach linked_media to protagonist: {e}")
-
         return jsonify(res)
     except Exception as e:
         return jsonify({"status":"ERROR","error_msg": str(e)}), 500

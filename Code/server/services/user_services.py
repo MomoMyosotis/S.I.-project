@@ -3,7 +3,7 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 import secrets
-from server.objects.users.root import Root, UserLevel
+from server.objects.user import User, UserLevel
 from server.db.db_crud import verify_password, db_get_followers, db_get_following, db_count_followers, db_count_following, db_count_user_publications
 from server.utils import user_utils as utils
 
@@ -23,7 +23,7 @@ def _to_public_dict(internal_dict: Dict[str, Any]) -> Dict[str, Any]:
 # =====================
 # COSTRUTTORE DI OGGETTI ROOT
 # =====================
-def _build_user_obj(user_data: Dict[str, Any]) -> Optional[Root]:
+def _build_user_obj(user_data: Dict[str, Any]) -> Optional[User]:
     if not user_data:
         return None
 
@@ -48,7 +48,7 @@ def _build_user_obj(user_data: Dict[str, Any]) -> Optional[Root]:
         if isinstance(bday_value, str) else bday_value
     )
     level = _extract_level(user_data)
-    user = Root(
+    user = User(
         id=user_data.get("id"),
         mail=user_data.get("mail"),
         username=user_data.get("username"),
@@ -70,7 +70,7 @@ def _build_user_obj(user_data: Dict[str, Any]) -> Optional[Root]:
 def is_logged(user_obj: Optional[Any]) -> bool:
     if not user_obj:
         return False
-    # se user_obj è dict o oggetto Root, verifica id esistente
+    # se user_obj è dict o oggetto User, verifica id esistente
     user_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
     return user_id is not None
 
@@ -78,9 +78,9 @@ def login_user(login_field: str, password: str, config: Optional[Dict[str, Any]]
     try:
         # recupera l'utente
         if "@" in login_field:
-            user_data = Root.get_user(mail=login_field)
+            user_data = User.get_user(mail=login_field)
         else:
-            user_data = Root.get_user(username=login_field)
+            user_data = User.get_user(username=login_field)
 
         if not user_data:
             print(f"[DEBUG][login_user] Login fallito: utente '{login_field}' non trovato")
@@ -93,6 +93,11 @@ def login_user(login_field: str, password: str, config: Optional[Dict[str, Any]]
         if not verify_password(password, user_obj.password_hash):
             print(f"[DEBUG][login_user] Password errata per utente '{login_field}'")
             return {"status": "wrong_password", "user_obj": None, "error_msg": "WRONG_PASSWORD"}
+
+        # verifica livello: bannati (lvl 6) non possono accedere
+        if user_obj.lvl == UserLevel.BANNED:
+            print(f"[DEBUG][login_user] Utente '{login_field}' bannato (lvl=6)")
+            return {"status": "banned", "user_obj": None, "error_msg": "Your account has been banned"}
 
         # controllo blacklist
         if config and user_obj.mail in config.get("BLACKLIST", []):
@@ -124,19 +129,19 @@ def register_user(mail: str, username: str, password: str, birthday_str: str) ->
             return {"status": "ERROR", "error_msg": "Invalid birthday format, expected YYYY-MM-DD"}
 
         # controllo unicità
-        if Root.get_user(username=username):
+        if User.get_user(username=username):
             return {"status": "ERROR", "error_msg": "Username already in use"}
-        if Root.get_user(mail=mail):
+        if User.get_user(mail=mail):
             return {"status": "ERROR", "error_msg": "Email already in use"}
 
-        user_id = Root.create_user(mail, username, password, birthday)
+        user_id = User.create_user(mail, username, password, birthday)
         if not user_id:
             return {"status": "ERROR", "error_msg": "Failed to create user"}
 
-        user_data_list = Root.get_user(user_id=user_id)
+        user_data_list = User.get_user(user_id=user_id)
         if not user_data_list:
             return {"status": "ERROR", "error_msg": "Failed to fetch user after creation"}
-        user_data = Root.get_user(user_id=user_id)
+        user_data = User.get_user(user_id=user_id)
         user_obj = _build_user_obj(user_data)
 
         token = secrets.token_hex(16)
@@ -154,7 +159,7 @@ def register_user(mail: str, username: str, password: str, birthday_str: str) ->
 # =====================
 # PROFILO / SOCIAL
 # =====================
-def get_profile(user_obj: Root, target_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def get_profile(user_obj: User, target_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Get profile of a target user (or self if target_name is None).
     Returns unified profile_payload with all counts fresh from database.
@@ -163,16 +168,16 @@ def get_profile(user_obj: Root, target_name: Optional[str] = None) -> Optional[D
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
 
-    # Safe extraction while migrating to full Root everywhere
+    # Safe extraction while migrating to full User everywhere
     viewer_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
     viewer_username = user_obj["username"] if isinstance(user_obj, dict) else getattr(user_obj, "username", None)
     
     # If no target specified, default to viewer's own profile using viewer_id
     if target_name:
-        target_data = Root.get_user_by_username(target_name)
+        target_data = User.get_user_by_username(target_name)
     else:
         # Use viewer_id if no target_name provided
-        target_data = Root.get_user(user_id=viewer_id)
+        target_data = User.get_user(user_id=viewer_id)
     
     if not target_data:
         return None
@@ -202,14 +207,14 @@ def get_profile(user_obj: Root, target_name: Optional[str] = None) -> Optional[D
         "self": {"is_self": is_self}
     }
 
-def get_viewer_profile(user_obj: Root) -> Optional[Dict[str, Any]]:
+def get_viewer_profile(user_obj: User) -> Optional[Dict[str, Any]]:
     """
     Alias for get_profile() with no target - returns the logged-in viewer's own profile.
     For backward compatibility with client code.
     """
     return get_profile(user_obj, target_name=None)
 
-def edit_profile(user_obj: Root, username=None, bio=None, profile_pic=None) -> str:
+def edit_profile(user_obj: User, username=None, bio=None, profile_pic=None) -> str:
     if not is_logged(user_obj):
         return {"status": "error", "error_msg": "NOT_LOGGED_IN", "user_obj": None}
 
@@ -239,9 +244,9 @@ def edit_profile(user_obj: Root, username=None, bio=None, profile_pic=None) -> s
 
     # Resolve user id
     uid = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
-    success = Root.update_user(uid, updates)
+    success = User.update_user(uid, updates)
     if success:
-        # Update in-memory object (if Root instance)
+        # Update in-memory object (if User instance)
         if not isinstance(user_obj, dict):
             if "username" in updates:
                 user_obj.username = updates["username"]
@@ -255,7 +260,7 @@ def edit_profile(user_obj: Root, username=None, bio=None, profile_pic=None) -> s
         return "PROFILE_UPDATED"
     return "ERROR: Failed to update profile"
 
-def change_lvl(user_obj: Root, *args) -> dict:
+def change_lvl(user_obj: User, *args) -> dict:
     """
     Change a target user's level.
 
@@ -296,9 +301,9 @@ def change_lvl(user_obj: Root, *args) -> dict:
 
     # fetch target user row
     if isinstance(target_identifier, int):
-        target_row = Root.get_user(user_id=target_identifier)
+        target_row = User.get_user(user_id=target_identifier)
     else:
-        target_row = Root.get_user_by_username(str(target_identifier))
+        target_row = User.get_user_by_username(str(target_identifier))
 
     if not target_row:
         return {"status": "ERROR", "error_msg": "Target user not found"}
@@ -330,7 +335,7 @@ def change_lvl(user_obj: Root, *args) -> dict:
 
     # apply level change
     try:
-        ok = Root.change_user_level(target_id, new_level)
+        ok = User.change_user_level(target_id, new_level)
         if ok:
             # if server uses object instances, try to update in-memory user_obj too
             if not isinstance(user_obj, dict):
@@ -352,11 +357,11 @@ def follow_user(user_obj: Any, target_name: str) -> dict:
     # user_obj should already be a dict from redirect.py
     follower_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
     
-    target = Root.get_user_by_username(target_name)
+    target = User.get_user_by_username(target_name)
     if not target:
         return {"status": "ERROR", "error_msg": "User not found"}
 
-    result = Root.follow_user(follower_id, target["id"], user_obj)
+    result = User.follow_user(follower_id, target["id"], user_obj)
     
     if result["status"] == "OK":
         # Return full updated user data including new follow counts
@@ -379,10 +384,10 @@ def unfollow_user(user_obj: Any, target_name: str) -> dict:
     # user_obj should already be a dict from redirect.py
     follower_id = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
     
-    target = Root.get_user_by_username(target_name)
+    target = User.get_user_by_username(target_name)
     if not target:
         return {"status": "ERROR", "error_msg": "User not found"}
-    result = Root.unfollow_user(follower_id, target["id"], user_obj)
+    result = User.unfollow_user(follower_id, target["id"], user_obj)
     
     if result["status"] == "OK":
         # Return full updated user data including new follow counts
@@ -408,7 +413,7 @@ def get_followers(user_obj: Any, target_name: str) -> dict:
         target_name = user_obj["username"] if isinstance(user_obj, dict) else getattr(user_obj, "username", None)
     
     # Fetch target user to get their id
-    target_data = Root.get_user_by_username(target_name)
+    target_data = User.get_user_by_username(target_name)
     if not target_data:
         return {"status": "ERROR", "error_msg": "User not found"}
     
@@ -433,7 +438,7 @@ def get_following(user_obj: Any, target_name: str) -> dict:
         target_name = user_obj["username"] if isinstance(user_obj, dict) else getattr(user_obj, "username", None)
     
     # Fetch target user to get their id
-    target_data = Root.get_user_by_username(target_name)
+    target_data = User.get_user_by_username(target_name)
     if not target_data:
         return {"status": "ERROR", "error_msg": "User not found"}
     
@@ -472,10 +477,10 @@ def recover(identifier: str) -> Dict[str, Any]:
         
         # Determine if identifier is email or username
         if "@" in identifier:
-            user_data = Root.get_user(mail=identifier)
+            user_data = User.get_user(mail=identifier)
             email = identifier
         else:
-            user_data = Root.get_user(username=identifier)
+            user_data = User.get_user(username=identifier)
             email = user_data.get("mail") if user_data else None
         
         if not user_data:
@@ -524,9 +529,9 @@ def assistance(identifier: str, message: str) -> Dict[str, Any]:
         
         # Determine if identifier is email or username
         if "@" in identifier:
-            user_data = Root.get_user(mail=identifier)
+            user_data = User.get_user(mail=identifier)
         else:
-            user_data = Root.get_user_by_username(identifier)
+            user_data = User.get_user_by_username(identifier)
         
         if not user_data:
             print(f"[DEBUG][assistance] User not found: {identifier}")
@@ -593,7 +598,7 @@ def reset_password(reset_token: str) -> Dict[str, Any]:
             }
         
         # Fetch user by email
-        user_data = Root.get_user(mail=email)
+        user_data = User.get_user(mail=email)
         if not user_data:
             print(f"[DEBUG][reset_password] User not found for email: {email}")
             return {

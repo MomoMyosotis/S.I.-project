@@ -38,7 +38,7 @@
 
             <div class="check-row">
               <input type="checkbox" id="onBehalfToggle" />
-              <label for="onBehalfToggle">Publish on behalf of another user</label>
+              <label for="onBehalfToggle">Publish on behalf of</label>
             </div>
 
             <div id="targetLabel" class="hidden">
@@ -72,6 +72,9 @@
         <label>Description <textarea id="linkDesc" name="description" rows="3"></textarea></label>
         <label>URL <input type="url" id="linkUrl" name="url" required placeholder="https://..." /></label>
         <div id="linkPreview" style="margin-top:8px"></div>
+
+        <label>Publication date <input type="date" id="linkPublicationDate" name="publication_date" /></label>
+        <div class="small">Auto-extracted from YouTube: duration=<span id="linkDuration">-</span></div>
 
         <label><input type="checkbox" id="linkIAmAuthor" /> I am author</label>
         <label><input type="checkbox" id="linkIAmPerformer" /> I am performer</label>
@@ -364,10 +367,14 @@
     // initialize fields
     usernameInput.value = loggedUsername;
     userlvlInput.value = (loggedLvl !== null && !Number.isNaN(loggedLvl)) ? String(loggedLvl) : '';
+    
+    // AUTO-ACTIVATE "publish on behalf" when target username is provided
     if(initialTarget) {
       onBehalfToggle.checked = true;
       targetLabel.classList.remove('hidden');
       targetInput.value = initialTarget;
+      // Trigger change event in case there are listeners
+      onBehalfToggle.dispatchEvent(new Event('change'));
     } else {
       onBehalfToggle.checked = false;
       targetLabel.classList.add('hidden');
@@ -375,10 +382,30 @@
     }
     whoamiEl.textContent = (loggedUsername || 'anonymous') + (loggedLvl !== null ? ` (lvl ${loggedLvl})` : '');
 
+    // --- Check if user is allowed to publish on behalf (only admins/mods: level 0-1) ---
+    const canPublishOnBehalf = loggedLvl !== null && [0, 1].includes(loggedLvl);
+    if (!canPublishOnBehalf) {
+      onBehalfToggle.disabled = true;
+      targetLabel.classList.add('hidden');
+      // optionally add visual indicator that this feature is not available
+      const toggleLabel = document.querySelector('label[for="onBehalfToggle"]');
+      if (toggleLabel) {
+        toggleLabel.title = 'Only administrators (level 0) and moderators (level 1) can publish on behalf of others';
+        toggleLabel.style.opacity = '0.6';
+        toggleLabel.style.cursor = 'not-allowed';
+      }
+    }
+
     // --- Toggle on-behalf ---
     onBehalfToggle.addEventListener('change', (ev)=>{
       const on = !!ev.target.checked;
       if(on){
+        if (!canPublishOnBehalf) {
+          // Prevent toggle if not authorized
+          ev.target.checked = false;
+          alert('You do not have permission to publish on behalf of other users. Only administrators and moderators can use this feature.');
+          return;
+        }
         targetLabel.classList.remove('hidden');
       } else {
         targetLabel.classList.add('hidden');
@@ -576,11 +603,15 @@
           title: document.getElementById('linkTitle').value.trim(),
           description: document.getElementById('linkDesc').value.trim(),
           link: document.getElementById('linkUrl').value.trim(),
-          i_am_author: document.getElementById('linkIAmAuthor').checked,
-          i_am_performer: document.getElementById('linkIAmPerformer').checked,
+          publication_date: document.getElementById('linkPublicationDate').value || null,
+          is_author: document.getElementById('linkIAmAuthor').checked,
+          is_performer: document.getElementById('linkIAmPerformer').checked,
           is_live: document.getElementById('linkIsLive').checked,
           recording_date: document.getElementById('linkRecDate').value || null,
-          recording_location: document.getElementById('linkRecLoc').value || null
+          location: document.getElementById('linkRecLoc').value || null,
+          auto_extracted: {
+            duration: linkDurationEl?.textContent || '-'
+          }
         };
       }
       if(t === 'document'){
@@ -591,12 +622,12 @@
           title: document.getElementById('docTitle').value.trim(),
           description: document.getElementById('docDesc').value.trim(),
           genres: splitListInput(document.getElementById('docGenres').value),
-          publication_year: document.getElementById('docYear').value || null,
+          year: document.getElementById('docYear').value || null,
           linked_media: {
             selected: getSelectedMediaIds(docLinkMedia),
             drafts: drafts
           },
-          i_am_author: document.getElementById('docIAmAuthor').checked,
+          is_author: document.getElementById('docIAmAuthor').checked,
           automatic: {
             format: docFormatEl.textContent || '-',
             pages: docPagesEl.textContent || '-'
@@ -614,19 +645,19 @@
           title: document.getElementById((isAudio?'audioTitle':'videoTitle')).value.trim(),
           description: document.getElementById((isAudio?'audioDesc':'videoDesc')).value.trim(),
           genres: splitListInput(document.getElementById((isAudio?'audioGenres':'videoGenres')).value),
-          publication_year: document.getElementById((isAudio?'audioYear':'videoYear')).value || null,
+          year: document.getElementById((isAudio?'audioYear':'videoYear')).value || null,
           authors: splitListInput(document.getElementById((isAudio?'audioAuthors':'videoAuthors')).value),
           linked_media: {
             selected: getSelectedMediaIds(isAudio?audioLinkMedia:videoLinkMedia),
             drafts: drafts
           },
-          i_am_author: document.getElementById((isAudio?'audioIAmAuthor':'videoIAmAuthor')).checked,
-          i_am_performer: document.getElementById((isAudio?'audioIAmPerformer':'videoIAmPerformer')).checked,
+          is_author: document.getElementById((isAudio?'audioIAmAuthor':'videoIAmAuthor')).checked,
+          is_performer: document.getElementById((isAudio?'audioIAmPerformer':'videoIAmPerformer')).checked,
           performers: splitListInput(document.getElementById((isAudio?'audioPerformers':'videoPerformers'))?.value),
           instruments: splitListInput(document.getElementById((isAudio?'audioInstruments':'videoInstruments'))?.value),
           is_live: document.getElementById((isAudio?'audioIsLive':'videoIsLive')).checked,
           recording_date: document.getElementById((isAudio?'audioRecDate':'videoRecDate')).value || null,
-          recording_location: document.getElementById((isAudio?'audioRecLoc':'videoRecLoc')).value || null,
+          location: document.getElementById((isAudio?'audioRecLoc':'videoRecLoc')).value || null,
           automatic: {
             duration: durationEl?.textContent || '-',
             format: formatEl?.textContent || '-'
@@ -647,25 +678,107 @@
         return m ? m[1] : null;
       } catch(e) { return null; }
     };
+
+    // --- YouTube duration extraction via direct API call ---
+    const fetchYouTubeDuration = async (videoId) => {
+      try {
+        // Use YouTube oEmbed endpoint which provides video info
+        const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+        if (!response.ok) return null;
+        const data = await response.json();
+        
+        // Try to extract duration from title or use alternative method
+        // Note: oEmbed doesn't directly provide duration, so we use a workaround
+        // by parsing video info from an iframe or using external service
+        
+        // Alternative: Try to fetch from YouTube's internal API
+        try {
+          const infoResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}&format=json`);
+          if (infoResponse.ok) {
+            const html = await infoResponse.text();
+            // Look for duration in the HTML (rough extraction)
+            const durationMatch = html.match(/"duration":"?(\d+)"?/);
+            if (durationMatch) {
+              return parseInt(durationMatch[1], 10);
+            }
+          }
+        } catch (e) {}
+        
+        // If all else fails, return null and let server fetch it
+        return null;
+      } catch (e) {
+        console.log('[DEBUG] fetchYouTubeDuration error:', e);
+        return null;
+      }
+    };
+
     const linkUrlInput = document.getElementById('linkUrl');
     const linkPreviewContainer = document.getElementById('linkPreview');
-    const updateLinkPreview = () => {
+    
+    // Add hidden input for YouTube duration (if needed for display)
+    let linkDurationStorage = null;
+
+    const linkDurationEl = document.getElementById('linkDuration');
+    
+    const updateLinkPreview = async () => {
       if(!linkPreviewContainer) return;
       const url = linkUrlInput ? (linkUrlInput.value || '').trim() : '';
       const vid = extractYouTubeId(url);
       if(vid){
-        linkPreviewContainer.innerHTML = `<iframe src="https://www.youtube.com/embed/${vid}?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;height:240px"></iframe>`;
+        linkPreviewContainer.innerHTML = `<iframe src="https://www.youtube.com/embed/${vid}?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;height:240px" id="youtubePreview"></iframe>`;
+        
+        // Try to fetch duration from YouTube
+        console.log('[DEBUG] Attempting to fetch YouTube duration for:', vid);
+        const duration = await fetchYouTubeDuration(vid);
+        console.log('[DEBUG] fetchYouTubeDuration returned:', duration);
+        
+        if(duration && duration > 0){
+          linkDurationStorage = duration;
+          if(linkDurationEl) linkDurationEl.textContent = duration + 's';
+          console.log('[DEBUG] YouTube duration extracted:', duration);
+        } else {
+          // Fallback: try to extract from iframe (limited by CORS)
+          console.log('[DEBUG] Falling back to iframe-based extraction (may be limited by CORS)');
+          linkDurationStorage = null;
+          if(linkDurationEl) linkDurationEl.textContent = '(fetching...)';
+          
+          // Set a timeout to mark as unavailable if fetch doesn't work
+          setTimeout(() => {
+            if(linkDurationStorage === null) {
+              if(linkDurationEl) linkDurationEl.textContent = 'server will fetch';
+              console.log('[DEBUG] Duration extraction timed out; will be fetched by server');
+            }
+          }, 3000);
+        }
       } else if(url){
         linkPreviewContainer.innerHTML = `<div style="color:#a00">Link non riconosciuto come YouTube</div>`;
-      } else { linkPreviewContainer.innerHTML = ''; }
+        linkDurationStorage = null;
+        if(linkDurationEl) linkDurationEl.textContent = '-';
+      } else { 
+        linkPreviewContainer.innerHTML = '';
+        linkDurationStorage = null;
+        if(linkDurationEl) linkDurationEl.textContent = '-';
+      }
     };
     if(linkUrlInput) linkUrlInput.addEventListener('input', updateLinkPreview);
 
     // --- Preview button ---
-    previewBtn.addEventListener('click', (ev)=>{
-      const p = buildPreviewPayload();
-      payloadView.textContent = JSON.stringify(p, null, 2);
-    });
+    if(previewBtn){
+      previewBtn.addEventListener('click', (ev)=>{
+        ev.preventDefault();
+        try{
+          const p = buildPreviewPayload();
+          if(payloadView){
+            payloadView.textContent = JSON.stringify(p, null, 2);
+            payloadView.style.display = 'block';
+            console.log('[DEBUG] Payload preview:', p);
+          }
+        } catch(err){
+          console.error('[DEBUG] Error building payload preview:', err);
+          if(payloadView) payloadView.textContent = 'Error: ' + err.message;
+        }
+      });
+    }
 
     // --- Submit handler ---
     publishForm.addEventListener('submit', async (ev)=>{
@@ -727,32 +840,50 @@
       // build FormData expected by publish_bp
       const fd = new FormData();
 
-      // server expects 'type' values mapping client 'link' -> server 'concert'
+      // server1 expects 'type' values mapping client 'link' -> server 'concert'
       const serverType = (type === 'link') ? 'concert' : type;
       fd.append('type', serverType);
 
-      // common fields: title/description/genre/composition_year
+      // common fields: title/description/genres/year
       if(type === 'link'){
         fd.append('title', document.getElementById('linkTitle').value || '');
         fd.append('description', document.getElementById('linkDesc').value || '');
         fd.append('link', document.getElementById('linkUrl').value || '');
+        
+        // Extract publication_date and year for concerts
+        const pubDate = document.getElementById('linkPublicationDate').value;
+        if(pubDate) {
+          fd.append('publication_date', pubDate);
+          // Extract year from publication_date if not explicitly set
+          const yearFromDate = pubDate.split('-')[0]; // YYYY-MM-DD -> YYYY
+          fd.append('year', parseInt(yearFromDate, 10));
+          console.log('[DEBUG] Concert: extracted year from publication_date:', yearFromDate);
+        }
+        
+        // Append extracted YouTube duration if available
+        if(linkDurationStorage && linkDurationStorage > 0) {
+          fd.append('duration', linkDurationStorage);
+          console.log('[DEBUG] Concert: appending duration from YouTube:', linkDurationStorage);
+        } else {
+          console.log('[DEBUG] Concert: duration not available (linkDurationStorage=' + linkDurationStorage + ')');
+        }
       } else if(type === 'document'){
         fd.append('title', document.getElementById('docTitle').value || '');
         fd.append('description', document.getElementById('docDesc').value || '');
         const genres = splitListInput(document.getElementById('docGenres').value);
-        fd.append('genre', genres.join(', '));
-        if(document.getElementById('docYear').value) fd.append('composition_year', document.getElementById('docYear').value);
+        fd.append('genres', genres.join(', '));
+        if(document.getElementById('docYear').value) fd.append('year', document.getElementById('docYear').value);
         // automatic metadata (format/pages) - send as fields so server can store them if needed
-        fd.append('document_type', docFormatEl.textContent || '');
-        fd.append('document_annotations', '');
+        fd.append('format', docFormatEl.textContent || '');
+        fd.append('additional_info', '');
       } else if(type === 'audio' || type === 'video'){
         const isAudio = type === 'audio';
         fd.append('title', document.getElementById((isAudio?'audioTitle':'videoTitle')).value || '');
         fd.append('description', document.getElementById((isAudio?'audioDesc':'videoDesc')).value || '');
         const genres = splitListInput(document.getElementById((isAudio?'audioGenres':'videoGenres')).value);
 
-        fd.append('genre', genres.join(', '));
-        if(document.getElementById((isAudio?'audioYear':'videoYear')).value) fd.append('composition_year', document.getElementById((isAudio?'audioYear':'videoYear')).value);
+        fd.append('genres', genres.join(', '));
+        if(document.getElementById((isAudio?'audioYear':'videoYear')).value) fd.append('year', document.getElementById((isAudio?'audioYear':'videoYear')).value);
         // authors + performers arrays as JSON strings (publish_bp expects JSON)
         const authorsArr = splitListInput(document.getElementById((isAudio?'audioAuthors':'videoAuthors')).value);
         fd.append('authors', JSON.stringify(authorsArr));
@@ -760,39 +891,55 @@
         const performersArr = splitListInput(document.getElementById((isAudio?'audioPerformers':'videoPerformers')).value);
         if(performersArr.length) fd.append('performers', JSON.stringify(performersArr));
 
+        // CRITICAL: Extract and send duration from extracted metadata
+        const durationEl = isAudio ? audioDurationEl : videoDurationEl;
+        const durationText = durationEl?.textContent || '';
+        // Extract numeric value from duration string (e.g., "120s" -> 120, or "120" -> 120)
+        if(durationText && durationText !== '-' && durationText !== 'unknown'){
+          const durationMatch = durationText.match(/^(\d+)/);
+          if(durationMatch){
+            const durationSeconds = parseInt(durationMatch[1], 10);
+            if(durationSeconds > 0){
+              fd.append('duration', durationSeconds);
+              console.log(`[DEBUG] ${isAudio ? 'Audio' : 'Video'}: appending duration: ${durationSeconds}s`);
+            }
+          }
+        } else {
+          console.log(`[DEBUG] ${isAudio ? 'Audio' : 'Video'}: duration not available (durationText='${durationText}')`);
+        }
       }
 
-      // flags/checkboxes: is_composer, is_performer, is_live
-      let isComposer = false, isPerformer = false, isLive = false;
+      // flags/checkboxes: is_author, is_performer, is_live
+      let isAuthor = false, isPerformer = false, isLive = false;
       if(type === 'link'){
-        isComposer = document.getElementById('linkIAmAuthor').checked;
+        isAuthor = document.getElementById('linkIAmAuthor').checked;
         isPerformer = document.getElementById('linkIAmPerformer').checked;
         isLive = document.getElementById('linkIsLive').checked;
       } else if(type === 'document'){
-        isComposer = document.getElementById('docIAmAuthor').checked;
+        isAuthor = document.getElementById('docIAmAuthor').checked;
       } else if(type === 'audio'){
-        isComposer = document.getElementById('audioIAmAuthor').checked;
+        isAuthor = document.getElementById('audioIAmAuthor').checked;
         isPerformer = document.getElementById('audioIAmPerformer').checked;
         isLive = document.getElementById('audioIsLive').checked;
       } else if(type === 'video'){
-        isComposer = document.getElementById('videoIAmAuthor').checked;
+        isAuthor = document.getElementById('videoIAmAuthor').checked;
         isPerformer = document.getElementById('videoIAmPerformer').checked;
         isLive = document.getElementById('videoIsLive').checked;
       }
-      if(isComposer) fd.append('is_composer', 'on');
+      if(isAuthor) fd.append('is_author', 'on');
       if(isPerformer) fd.append('is_performer', 'on');
       if(isLive) fd.append('is_live', 'on');
 
       // recording info
       if(type === 'link'){
         const rd = document.getElementById('linkRecDate').value; if(rd) fd.append('recording_date', rd);
-        const rl = document.getElementById('linkRecLoc').value; if(rl) fd.append('recording_location', rl);
+        const rl = document.getElementById('linkRecLoc').value; if(rl) fd.append('location', rl);
       } else if(type === 'audio'){
         const rd = document.getElementById('audioRecDate').value; if(rd) fd.append('recording_date', rd);
-        const rl = document.getElementById('audioRecLoc').value; if(rl) fd.append('recording_location', rl);
+        const rl = document.getElementById('audioRecLoc').value; if(rl) fd.append('location', rl);
       } else if(type === 'video'){
         const rd = document.getElementById('videoRecDate').value; if(rd) fd.append('recording_date', rd);
-        const rl = document.getElementById('videoRecLoc').value; if(rl) fd.append('recording_location', rl);
+        const rl = document.getElementById('videoRecLoc').value; if(rl) fd.append('location', rl);
       }
 
       // files: append actual File objects under name "files"
@@ -898,7 +1045,7 @@
                               ? targetInput.value.trim()
                               : usernameInput.value || '';
         if (finalTarget) {
-          window.location.href = `/home/?form_type=profile&username=${encodeURIComponent(finalTarget)}`;
+          window.location.href = `/home?form_type=profile&username=${encodeURIComponent(finalTarget)}`;
         } else {
           window.location.href = '/home/?form_type=feed';
         }

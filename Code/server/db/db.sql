@@ -152,40 +152,12 @@ CREATE TABLE media_references (
 );
 
 -- ========================================
--- NOTE SU SEGMENTI (segnaposti temporali o grafici)
--- ========================================
-CREATE TABLE notes (
-    id SERIAL PRIMARY KEY,
-    author INT REFERENCES users(id),
-    is_public BOOLEAN DEFAULT TRUE,
-    media_id INT REFERENCES media(id) ON DELETE CASCADE,
-    note_type VARCHAR(20) CHECK (note_type IN ('regular','graphic')),
-    start_time NUMERIC(8,2),
-    end_time NUMERIC(8,2),
-    x_coord NUMERIC(8,2),
-    y_coord NUMERIC(8,2),
-    page INT,
-    solos TEXT,
-    rhythm VARCHAR(50),
-    content TEXT,
-    stored_at VARCHAR(255)
-);
-
-CREATE TABLE note_performers_instruments (
-    note_id INT REFERENCES notes(id) ON DELETE CASCADE,
-    performer_id INT REFERENCES performers(id),
-    instrument_id INT REFERENCES instruments(id),
-    PRIMARY KEY (note_id, performer_id, instrument_id)
-);
-
--- ========================================
 -- COMMENTI ANNIDATI
 -- ========================================
 CREATE TABLE comments (
     id SERIAL PRIMARY KEY,
     user_id INT REFERENCES users(id) ON DELETE CASCADE,
     media_id INT REFERENCES media(id) ON DELETE CASCADE,
-    note_id INT REFERENCES notes(id) ON DELETE CASCADE,
     parent_comment_id INT REFERENCES comments(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()

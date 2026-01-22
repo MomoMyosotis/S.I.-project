@@ -4,6 +4,7 @@ from . import connection
 import json
 import hashlib, time
 import psycopg2.extras
+from datetime import datetime
 
 # =====================
 # DEBUG
@@ -179,9 +180,34 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         conn = connection.connect()
         with conn.cursor() as cur:
 
+            # --- CRITICAL FIX: Convert date strings to datetime objects ---
+            DATE_FIELDS = {"recording_date", "concert_date"}
+            prepared_data = data.copy()
+            for date_field in DATE_FIELDS:
+                if date_field in prepared_data and prepared_data[date_field] is not None:
+                    val = prepared_data[date_field]
+                    if isinstance(val, str):
+                        try:
+                            # Try ISO format first (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
+                            if "T" in val:
+                                prepared_data[date_field] = datetime.fromisoformat(val)
+                                debug(f"[DB][create_media_db] Converted ISO date '{val}' for field '{date_field}'")
+                            elif len(val) == 8 and val.isdigit():
+                                # Handle DDMMYYYY format for concert dates
+                                day, month, year_part = val[0:2], val[2:4], val[4:8]
+                                prepared_data[date_field] = datetime.strptime(f"{year_part}-{month}-{day}", "%Y-%m-%d")
+                                debug(f"[DB][create_media_db] Converted DDMMYYYY date '{val}' to {prepared_data[date_field]} for field '{date_field}'")
+                            else:
+                                # Try standard YYYY-MM-DD
+                                prepared_data[date_field] = datetime.strptime(val, "%Y-%m-%d")
+                                debug(f"[DB][create_media_db] Converted YYYY-MM-DD date '{val}' for field '{date_field}'")
+                        except Exception as e:
+                            debug(f"[DB][create_media_db] Failed to convert date string '{val}' for field '{date_field}': {e}")
+                            # Leave as-is if conversion fails, DB will handle or error appropriately
+
             # --- BASE MEDIA ---
             # Ensure linked_media is stored as JSON/text (avoid passing raw dict/list to DB driver)
-            linked_media_val = data.get("linked_media")
+            linked_media_val = prepared_data.get("linked_media")
             if isinstance(linked_media_val, (dict, list)):
                 try:
                     linked_media_serialized = json.dumps(linked_media_val)
@@ -198,20 +224,37 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING id;
             """, (
-                data.get("type"),
-                data.get("user_id"),
-                data.get("title"),
-                data.get("year"),
-                data.get("description"),
+                prepared_data.get("type"),
+                prepared_data.get("user_id"),
+                prepared_data.get("title"),
+                prepared_data.get("year"),
+                prepared_data.get("description"),
                 linked_media_serialized,
-                data.get("duration"),
-                data.get("recording_date"),
-                data.get("location"),
-                data.get("additional_info"),
-                data.get("stored_at"),
-                data.get("is_author", False),
-                data.get("is_performer", False),
+                prepared_data.get("duration"),
+                prepared_data.get("recording_date"),
+                prepared_data.get("location"),
+                prepared_data.get("additional_info"),
+                prepared_data.get("stored_at"),
+                prepared_data.get("is_author", False),
+                prepared_data.get("is_performer", False),
             ))
+            
+            # DEBUG: Log what was actually inserted
+            debug(f"[DB][create_media_db] ===== INSERT VALUES =====")
+            debug(f"[DB][create_media_db] type={prepared_data.get('type')}")
+            debug(f"[DB][create_media_db] user_id={prepared_data.get('user_id')}")
+            debug(f"[DB][create_media_db] title={prepared_data.get('title')}")
+            debug(f"[DB][create_media_db] year={prepared_data.get('year')}")
+            debug(f"[DB][create_media_db] description={prepared_data.get('description')}")
+            debug(f"[DB][create_media_db] duration={prepared_data.get('duration')}")
+            debug(f"[DB][create_media_db] recording_date={prepared_data.get('recording_date')}")
+            debug(f"[DB][create_media_db] location={prepared_data.get('location')}")
+            debug(f"[DB][create_media_db] additional_info={prepared_data.get('additional_info')}")
+            debug(f"[DB][create_media_db] stored_at={prepared_data.get('stored_at')}")
+            debug(f"[DB][create_media_db] is_author={prepared_data.get('is_author', False)}")
+            debug(f"[DB][create_media_db] is_performer={prepared_data.get('is_performer', False)}")
+            debug(f"[DB][create_media_db] ===== END VALUES =====")
+            
             media_id_row = cur.fetchone()
             media_id = media_id_row[0] if media_id_row else None
             debug(f"[DB][CREATE] media_id={media_id}")
@@ -401,6 +444,19 @@ def fetch_media_db(media_id: int) -> Optional[Dict[str, Any]]:
 
             cur.execute("SELECT passive_id FROM media_references WHERE active_id=%s;", (media_id,))
             media["references"] = [r["passive_id"] for r in cur.fetchall()]
+
+            # CRITICAL FIX: Fill year from recording_date if year is None
+            if media.get("year") is None and media.get("recording_date") is not None:
+                try:
+                    from datetime import date
+                    rec_date = media["recording_date"]
+                    if isinstance(rec_date, date):
+                        media["year"] = rec_date.year
+                    elif isinstance(rec_date, str):
+                        # try to parse string like '2021-02-04'
+                        media["year"] = int(rec_date.split("-")[0])
+                except Exception as e:
+                    debug(f"[WARNING][fetch_media_db] Failed to extract year from recording_date: {e}")
 
             return media
     except Exception as e:
@@ -625,6 +681,21 @@ def fetch_all_media_db(
                 return []
 
             result = [dict(r) for r in rows]
+            
+            # CRITICAL FIX: Fill year from recording_date if year is None for all rows
+            try:
+                from datetime import date
+                for item in result:
+                    if item.get("year") is None and item.get("recording_date") is not None:
+                        rec_date = item["recording_date"]
+                        if isinstance(rec_date, date):
+                            item["year"] = rec_date.year
+                        elif isinstance(rec_date, str):
+                            # try to parse string like '2021-02-04'
+                            item["year"] = int(rec_date.split("-")[0])
+            except Exception as e:
+                debug(f"[WARNING][fetch_all_media_db] Failed to extract year from recording_date: {e}")
+            
             return result
 
     except Exception as e:
@@ -635,20 +706,71 @@ def fetch_all_media_db(
             connection.close(None, conn)
 
 def update_media_db(media_id: int, updates: Dict[str, Any]) -> bool:
+    """
+    Update media record, preserving existing values for fields not explicitly provided.
+    CRITICAL FIXES:
+    1. Filter out None values to prevent overwriting with NULL
+    2. Convert date strings to proper datetime objects
+    3. Serialize linked_media to JSON string
+    4. Skip relational fields (handled separately)
+    """
     conn = None
     try:
-        # Ensure linked_media is serialized when passing to DB
-        if 'linked_media' in updates and isinstance(updates['linked_media'], (dict, list)):
-            try:
-                updates['linked_media'] = json.dumps(updates['linked_media'])
-            except Exception:
-                updates['linked_media'] = str(updates['linked_media'])
+        # CRITICAL FIX 1: Skip None values to preserve existing data
+        # Only include fields that are explicitly set (not None)
+        filtered_updates = {}
+        for k, v in updates.items():
+            if v is None:
+                debug(f"[DB][update_media_db] Skipping None value for field '{k}' to preserve existing data")
+                continue
+            filtered_updates[k] = v
+        
+        # CRITICAL FIX 2: Skip relational fields (handled separately via relation tables)
+        RELATIONAL_FIELDS = {"authors", "performers", "genres", "references"}
+        for rel_field in RELATIONAL_FIELDS:
+            if rel_field in filtered_updates:
+                debug(f"[DB][update_media_db] Skipping relational field '{rel_field}' - must be updated via relation tables")
+                del filtered_updates[rel_field]
 
-        debug(f"[DB][update_media_db] id={media_id}, updates={updates}")
+        if not filtered_updates:
+            debug(f"[DB][update_media_db] No non-None fields to update for id={media_id}")
+            return True
+
+        # CRITICAL FIX 3: Convert date strings to datetime objects
+        DATE_FIELDS = {"recording_date", "concert_date", "created_at"}
+        for date_field in DATE_FIELDS:
+            if date_field in filtered_updates and filtered_updates[date_field] is not None:
+                val = filtered_updates[date_field]
+                if isinstance(val, str):
+                    try:
+                        # Try ISO format first (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
+                        if "T" in val:
+                            filtered_updates[date_field] = datetime.fromisoformat(val)
+                        else:
+                            filtered_updates[date_field] = datetime.strptime(val, "%Y-%m-%d")
+                        debug(f"[DB][update_media_db] Converted date string '{val}' to datetime for field '{date_field}'")
+                    except Exception as e:
+                        debug(f"[DB][update_media_db] Failed to convert date string '{val}' for field '{date_field}': {e}")
+                        # Leave as-is if conversion fails, DB will handle or error appropriately
+                elif not isinstance(val, datetime):
+                    debug(f"[DB][update_media_db] Date field '{date_field}' is not string or datetime: {type(val)}")
+
+        # CRITICAL FIX 4: Ensure linked_media is serialized when passing to DB
+        if 'linked_media' in filtered_updates and filtered_updates['linked_media'] is not None:
+            lm_val = filtered_updates['linked_media']
+            if isinstance(lm_val, (dict, list)):
+                try:
+                    filtered_updates['linked_media'] = json.dumps(lm_val)
+                    debug(f"[DB][update_media_db] Serialized linked_media to JSON")
+                except Exception:
+                    filtered_updates['linked_media'] = str(lm_val)
+                    debug(f"[DB][update_media_db] Converted linked_media to string")
+
+        debug(f"[DB][update_media_db] id={media_id}, filtered_updates={filtered_updates}")
         conn = connection.connect()
         with conn.cursor() as cur:
-            set_clause = ", ".join(f"{k}=%s" for k in updates.keys())
-            params = list(updates.values()) + [media_id]
+            set_clause = ", ".join(f"{k}=%s" for k in filtered_updates.keys())
+            params = list(filtered_updates.values()) + [media_id]
             cur.execute(f"UPDATE media SET {set_clause} WHERE id=%s;", params)
         conn.commit()
         debug(f"[DB][update_media_db] success id={media_id}")
@@ -681,70 +803,10 @@ def delete_media_db(media_id: int) -> bool:
             connection.close(None, conn)
 
 # =====================
-# NOTES CRUD
-# =====================
-def create_note_db(author: int, media_id: int, note_type: str, **kwargs) -> Optional[int]:
-    conn = connection.connect()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # Controllo utente
-            user_row = fetch_one("SELECT id FROM users WHERE id=%s", (author,))
-            if not user_row:
-                print(f"[create_note_db] User id={author} does not exist!")
-                return None
-
-            # Controllo media
-            media_row = fetch_one("SELECT id FROM media WHERE id=%s", (media_id,))
-            if not media_row:
-                print(f"[create_note_db] Media id={media_id} does not exist!")
-                return None
-
-            fields = ["author", "media_id", "note_type"]
-            values = [author, media_id, note_type]
-
-            for k, v in kwargs.items():
-                fields.append(k)
-                values.append(v)
-
-            placeholders = ",".join(["%s"] * len(values))
-            query = f"INSERT INTO notes ({','.join(fields)}) VALUES ({placeholders}) RETURNING id"
-
-            cur.execute(query, tuple(values))
-            row = cur.fetchone()
-            conn.commit()
-
-            return row["id"] if row and "id" in row else None
-
-    except Exception as e:
-        if conn: conn.rollback()
-        print(f"[DB ERROR create_note_db]: {e}")
-        return None
-    finally:
-        if conn:
-            connection.close(None, conn)
-
-def fetch_note_db(where_field: str, where_value: Any) -> List[Dict[str, Any]]:
-    return fetch_all(f"SELECT * FROM notes WHERE {where_field}=%s ORDER BY id ASC", (where_value,))
-
-ALLOWED_NOTE_FIELDS = {
-    "note_type", "start_time", "end_time", "x_coord", "y_coord",
-    "page", "solos", "rhythm", "content", "stored_at"
-}
-
-def update_note_db(note_id: int, field: str, value: Any) -> bool:
-    if field not in ALLOWED_NOTE_FIELDS:
-        print(f"[update_note_db] Invalid field: {field}")
-        return False
-    return execute(f"UPDATE notes SET {field}=%s WHERE id=%s", (value, note_id))
-
-def delete_note_db(note_id: int) -> bool:
-    return execute("DELETE FROM notes WHERE id=%s", (note_id,))
-
-# =====================
 # COMMENTS CRUD
 # =====================
 def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
-                        note_id: Optional[int] = None, parent_comment_id: Optional[int] = None) -> Optional[int]:
+                        parent_comment_id: Optional[int] = None) -> Optional[int]:
     conn = connection.connect()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -764,15 +826,6 @@ def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
                     return None
                 fields.append("media_id")
                 values.append(media_id)
-
-            # Controllo se la nota esiste
-            if note_id is not None:
-                note_row = fetch_one("SELECT id FROM notes WHERE id=%s", (note_id,))
-                if not note_row:
-                    print(f"[create_comment_db] Note id={note_id} does not exist!")
-                    return None
-                fields.append("note_id")
-                values.append(note_id)
 
             # Controllo se il commento parent esiste
             if parent_comment_id is not None:
@@ -810,10 +863,6 @@ def fetch_comment_db(where_field: str, where_value: Any) -> List[Dict[str, Any]]
 
 def fetch_comments_by_media_db(media_id: int) -> List[Dict[str, Any]]:
     comments = fetch_all("SELECT * FROM comments WHERE media_id=%s ORDER BY id ASC", (media_id,))
-    return comments
-
-def fetch_comments_by_note_db(note_id: int) -> List[Dict[str, Any]]:
-    comments = fetch_all("SELECT * FROM comments WHERE note_id=%s ORDER BY id ASC", (note_id,))
     return comments
 
 def fetch_comment_replies_db(parent_comment_id: int) -> List[Dict[str, Any]]:

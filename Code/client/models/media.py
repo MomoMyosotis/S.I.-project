@@ -17,26 +17,40 @@ class Media:
     def __init__(
         self,
         id: Optional[Any],
+        type: str = None,
+        user_id: Optional[Any] = None,
         title: str = "Untitled",
-        media_type: MediaType = MediaType.UNKNOWN,
-        uploader_id: Optional[Any] = None,
-        tags: Optional[List[str]] = None,
+        year: Optional[int] = None,
         description: str = "",
+        location: Optional[str] = None,
+        additional_info: Optional[str] = None,
         stored_at: Optional[str] = None,
-        filename: Optional[str] = None,
-        linked_to: Optional[int] = None,
+        duration: Optional[int] = None,
+        created_at: Optional[str] = None,
+        genres: Optional[List[str]] = None,
+        authors: Optional[List[str]] = None,
+        performers: Optional[List[str]] = None,
         linked_media: Optional[List[Dict[str, Any]]] = None,
+        is_author: Optional[bool] = None,
+        is_performer: Optional[bool] = None,
     ):
         self.id = id
+        self.type = type
+        self.user_id = user_id
         self.title = title or "Untitled"
-        self.media_type = media_type if isinstance(media_type, MediaType) else MediaType(media_type) if media_type in MediaType._value2member_map_ else MediaType.UNKNOWN
-        self.uploader_id = uploader_id
-        self.tags = tags or []
+        self.year = year
         self.description = description or ""
+        self.location = location
+        self.additional_info = additional_info
         self.stored_at = stored_at
-        self.filename = filename
-        self.linked_to = linked_to
+        self.duration = duration
+        self.created_at = created_at
+        self.genres = genres or []
+        self.authors = authors or []
+        self.performers = performers or []
         self.linked_media = linked_media or []
+        self.is_author = bool(is_author) if is_author is not None else False
+        self.is_performer = bool(is_performer) if is_performer is not None else False
 
     @staticmethod
     def _unwrap_envelope(data: Any) -> Dict[str, Any]:
@@ -59,92 +73,139 @@ class Media:
     def from_server(data: Dict[str, Any]) -> "Media":
         raw = Media._unwrap_envelope(data)
 
-        # normalize common keys
+        # ===== DEBUG: Log received data structure =====
+        print(f"\n[DEBUG][Media.from_server] ===== RECEIVED FROM SERVER =====")
+        print(f"[DEBUG][Media.from_server] Raw keys: {list(raw.keys()) if isinstance(raw, dict) else 'NOT A DICT'}")
+        print(f"[DEBUG][Media.from_server] Critical fields in server response:")
+        print(f"[DEBUG][Media.from_server]   - year: {raw.get('year')}")
+        print(f"[DEBUG][Media.from_server]   - description: {raw.get('description')}")
+        print(f"[DEBUG][Media.from_server]   - recording_date: {raw.get('recording_date')}")
+        print(f"[DEBUG][Media.from_server]   - location: {raw.get('location')}")
+        print(f"[DEBUG][Media.from_server]   - is_author: {raw.get('is_author')}")
+        print(f"[DEBUG][Media.from_server]   - is_performer: {raw.get('is_performer')}")
+        print(f"[DEBUG][Media.from_server]   - additional_info: {raw.get('additional_info')}")
+        print(f"[DEBUG][Media.from_server] Full raw data: {raw}")
+        print(f"[DEBUG][Media.from_server] ===== END RECEIVED DATA =====\n")
+
+        # Extract canonical fields using server field names
         mid = raw.get("id") or raw.get("media_id") or raw.get("_id") or raw.get("id_media")
-        title = raw.get("title") or raw.get("name") or raw.get("filename") or "Untitled"
-        # infer type from multiple possible keys
-        mtype_raw = (raw.get("type") or raw.get("media_type") or raw.get("file_type") or "").lower() if isinstance(raw.get("type") or raw.get("media_type") or raw.get("file_type"), str) else raw.get("type") or raw.get("media_type") or raw.get("file_type") or ""
-        if isinstance(mtype_raw, str) and mtype_raw:
-            mtype = MediaType(mtype_raw) if mtype_raw in MediaType._value2member_map_ else MediaType.UNKNOWN
-        else:
-            # try detection from path/filename
-            stored = (raw.get("stored_at") or raw.get("file_path") or raw.get("file") or raw.get("link") or "").lower()
-            if any(ext in stored for ext in (".mp3", ".wav", ".m4a", ".flac")):
-                mtype = MediaType.SONG
-            elif any(ext in stored for ext in (".mp4", ".mov", ".webm", ".avi", ".mkv")):
-                mtype = MediaType.VIDEO
-            elif any(ext in stored for ext in (".pdf", ".doc", ".docx", ".txt")):
-                mtype = MediaType.DOCUMENT
-            elif "youtube.com" in stored or "youtu.be" in stored:
-                mtype = MediaType.CONCERT
-            else:
-                mtype = MediaType.UNKNOWN
-        # Debug: report detected type and stored value
-        try:
-            print(f"[DEBUG][Media.from_server] mid={mid}, mtype={mtype}, stored={stored}")
-        except Exception:
-            pass
-
-        tags = raw.get("tags") or raw.get("genre") or raw.get("genres") or []
-        if isinstance(tags, str):
-            tags = [t.strip() for t in tags.split(",") if t.strip()]
-
-        description = raw.get("description") or raw.get("additional_info") or ""
-        stored_at = raw.get("stored_at") or raw.get("file_path") or raw.get("file") or raw.get("stored") or raw.get("link")
-        filename = raw.get("filename") or (stored_at.split("/")[-1] if stored_at and "/" in stored_at else None)
-
-        # parse linked_media if present (may be JSON string or list/dict)
-        raw_linked = raw.get("linked_media") or raw.get("linked") or None
+        title = raw.get("title") or raw.get("name") or "Untitled"
+        
+        # Use canonical 'type' field
+        mtype = (raw.get("type") or raw.get("media_type") or raw.get("file_type") or "unknown").lower()
+        
+        # Extract all canonical fields with fallbacks
+        user_id = raw.get("user_id") or raw.get("uploader_id") or raw.get("owner_id") or raw.get("owner")
+        year = raw.get("year") or None
+        if year and isinstance(year, str):
+            try:
+                year = int(year)
+            except (ValueError, TypeError):
+                year = None
+        
+        description = raw.get("description") or ""
+        location = raw.get("location") or raw.get("recording_location") or None
+        additional_info = raw.get("additional_info") or raw.get("document_annotations") or ""
+        stored_at = raw.get("stored_at") or raw.get("file_path") or raw.get("file") or raw.get("stored") or None
+        
+        # Extract duration (may be string or int)
+        duration = raw.get("duration") or raw.get("duration_seconds") or None
+        if duration and isinstance(duration, str):
+            try:
+                duration = int(duration)
+            except (ValueError, TypeError):
+                duration = None
+        
+        created_at = raw.get("created_at") or raw.get("date") or None
+        
+        # Extract genres (handle both 'genres' and 'tags')
+        genres = raw.get("genres") or raw.get("tags") or []
+        if isinstance(genres, str):
+            genres = [g.strip() for g in genres.split(",") if g.strip()]
+        
+        # Extract authors and performers (may be lists or comma-separated strings)
+        authors = raw.get("authors") or raw.get("author_names") or []
+        if isinstance(authors, str):
+            authors = [a.strip() for a in authors.split(",") if a.strip()]
+        
+        performers = raw.get("performers") or []
+        if isinstance(performers, str):
+            performers = [p.strip() for p in performers.split(",") if p.strip()]
+        
+        # Extract linked_media
+        raw_linked = raw.get("linked_media") or raw.get("linked") or []
         linked_media = []
         if raw_linked:
-            parsed = None
             if isinstance(raw_linked, str):
                 try:
-                    parsed = json.loads(raw_linked)
+                    linked_media = json.loads(raw_linked)
+                    if not isinstance(linked_media, list):
+                        linked_media = [linked_media]
                 except Exception:
-                    parsed = raw_linked
-            else:
-                parsed = raw_linked
-            if isinstance(parsed, dict):
-                linked_media = [parsed]
-            elif isinstance(parsed, list):
-                linked_media = parsed
-        # normalize entries to list of dicts
-        norm = []
-        for entry in linked_media:
-            if isinstance(entry, str):
-                norm.append({"filename": entry})
-            elif isinstance(entry, dict):
-                norm.append(entry)
-        linked_media = norm
+                    linked_media = []
+            elif isinstance(raw_linked, list):
+                linked_media = raw_linked
+            elif isinstance(raw_linked, dict):
+                linked_media = [raw_linked]
+
+        # Extract boolean flags
+        is_author = bool(raw.get("is_author"))
+        is_performer = bool(raw.get("is_performer"))
+        
+        # SPECIAL CASE: For concerts with no direct link but with linked_media containing YouTube URLs,
+        # extract the YouTube URL from linked_media to populate the stored_at field
+        if mtype == "concert" and not stored_at and linked_media:
+            # Try to find a YouTube link in the first linked_media entry
+            first_linked = linked_media[0] if isinstance(linked_media, list) and len(linked_media) > 0 else None
+            if isinstance(first_linked, dict):
+                # Prefer embed_url for direct embedding, fallback to url
+                yt_url = first_linked.get("embed_url") or first_linked.get("url")
+                if yt_url:
+                    # Store the YouTube URL so show.html can use it
+                    stored_at = yt_url
+                    print(f"[DEBUG][Media.from_server] Concert: extracted YouTube URL from linked_media: {yt_url}")
 
         return Media(
             id=mid,
+            type=mtype,
+            user_id=user_id,
             title=title,
-            media_type=mtype,
-            uploader_id=raw.get("uploader_id") or raw.get("user_id") or raw.get("owner"),
-            tags=tags,
+            year=year,
             description=description,
+            location=location,
+            additional_info=additional_info,
             stored_at=stored_at,
-            filename=filename,
-            linked_to=raw.get("linked_to") or raw.get("protagonist"),
-            linked_media=linked_media
+            duration=duration,
+            created_at=created_at,
+            genres=genres,
+            authors=authors,
+            performers=performers,
+            linked_media=linked_media,
+            is_author=is_author,
+            is_performer=is_performer
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "id": self.id,
+            "type": self.type,
+            "user_id": self.user_id,
             "title": self.title,
-            "type": self.media_type.value if isinstance(self.media_type, MediaType) else str(self.media_type),
-            "media_type": self.media_type.value if isinstance(self.media_type, MediaType) else str(self.media_type),
-            "uploader_id": self.uploader_id,
-            "tags": self.tags,
+            "year": self.year,
             "description": self.description,
+            "location": self.location,
+            "additional_info": self.additional_info,
             "stored_at": self.stored_at,
-            "filename": self.filename,
+            "duration": self.duration,
+            "created_at": self.created_at,
+            "genres": self.genres,
+            "authors": self.authors,
+            "performers": self.performers,
             "linked_media": self.linked_media,
-            "linked_to": self.linked_to
+            "is_author": self.is_author,
+            "is_performer": self.is_performer,
         }
+        return result
 
     # Network helper methods (optional; call RPCs via shared http_client)
     def upload_media(self) -> Dict[str, Any]:

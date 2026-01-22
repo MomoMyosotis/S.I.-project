@@ -46,7 +46,7 @@ class User:
         profile_pic: Optional[str] = None,
         publications_count: int = 0,
     ):
-        # minimal, stable attributes used across client
+        # stable attributes matching server object
         self.id = id
         self.username = username
         self.followers_count = followers_count

@@ -6,7 +6,7 @@ from server.utils.storage_manager import (save_file,
                                     fetch_file,
                                     download_file,
                                     delete_file)
-from server.objects.users.root import Root
+from server.objects.user import User
 from server.services.interventions_services import get_commented_medias
 from typing import Optional, Any, Tuple
 import json
@@ -144,10 +144,6 @@ COMMAND_MAP = {
     "fetch_comment" : interventions_services.get_comments,
     "update_comment" : interventions_services.update_comment,
     "delete_comment" : interventions_services.delete_comment,
-    "create_note" : interventions_services.create_note,
-    "fetch_note" : interventions_services.get_notes,
-    "update_note" : interventions_services.update_note,
-    "delete_note" : interventions_services.delete_note,
     # SEARCH/DIZIONARI
     "search_song": interventions_services.search_song,
     "search_document": interventions_services.search_document,
@@ -175,13 +171,13 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
         uname = user_obj.get("username")
         full = None
         if uid:
-            full = Root.get_user(user_id=uid)
+            full = User.get_user(user_id=uid)
         elif uname:
-            full = Root.get_user(username=uname)
+            full = User.get_user(username=uname)
         if full:
-            # Build Root object to load follow lists from DB, use internal dict with follow lists for server-side tracking
-            root_obj = user_services._build_user_obj(full)
-            user_obj = root_obj.to_dict_internal() if root_obj else user_obj
+            # Build User object to load follow lists from DB, use internal dict with follow lists for server-side tracking
+            user_obj_instance = user_services._build_user_obj(full)
+            user_obj = user_obj_instance.to_dict_internal() if user_obj_instance else user_obj
 
     # allow some public commands without authentication (feed browsing, user search, etc.)
     if user_obj is None and command not in ["login", "register", "recover", "reset_password", "assistance", "get_feed", "search_users"]:
@@ -218,11 +214,11 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
                     uname = public.get("username")
                     full = None
                     if uid:
-                        full = Root.get_user(user_id=uid)
+                        full = User.get_user(user_id=uid)
                     elif uname:
-                        full = Root.get_user(username=uname)
-                    root_obj = user_services._build_user_obj(full) if full else None
-                    user_obj = root_obj.to_dict_internal() if root_obj else public
+                        full = User.get_user(username=uname)
+                    user_obj_instance = user_services._build_user_obj(full) if full else None
+                    user_obj = user_obj_instance.to_dict_internal() if user_obj_instance else public
 
         serialized = json.dumps(result, default=default_encoder)
 

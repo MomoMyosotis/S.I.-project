@@ -49,13 +49,7 @@ class Intervention:
 ##############################
     @classmethod
     def make_intervention(cls, pubblisher: int, media: int, type: TYPEIntervention, content: str) -> dict:
-        if type == TYPEIntervention.TEXT:
-            args = [pubblisher, media, content, "regular"]
-            response = http_client.send_request(command="MAKE_NOTE", args=args, require_auth=True)
-        elif type == TYPEIntervention.GRAPHIC:
-            args = [pubblisher, media, content, "graphic"]
-            response = http_client.send_request(command="MAKE_NOTE", args=args, require_auth=True)
-        elif type == TYPEIntervention.COMMENT:
+        if type == TYPEIntervention.COMMENT:
             args = [pubblisher, media, content]
             response = http_client.send_request(command="MAKE_COMMENT", args=args, require_auth=True)
         else:
@@ -64,9 +58,7 @@ class Intervention:
 
     @classmethod
     def fetch_interventions(cls, media_id: int, intervention_type: TYPEIntervention) -> List["Intervention"]:
-        if intervention_type == TYPEIntervention.TEXT or intervention_type == TYPEIntervention.GRAPHIC:
-            response = http_client.send_request(command="FETCH_NOTE", args=[media_id], require_auth=True)
-        elif intervention_type == TYPEIntervention.COMMENT:
+        if intervention_type == TYPEIntervention.COMMENT:
             response = http_client.send_request(command="FETCH_COMMENT", args=[media_id], require_auth=True)
         else:
             raise ValueError(f"Invalid intervention type.\ntype: {intervention_type}\nmedia_id: {media_id}")
@@ -75,13 +67,7 @@ class Intervention:
 
     @classmethod
     def update_intervention(cls, intervention_id: int, new_content: str, intervention_type: TYPEIntervention) -> dict:
-        if intervention_type == TYPEIntervention.TEXT:
-            args = [intervention_id, new_content, "regular"]
-            response = http_client.send_request(command="UPDATE_NOTE", args=args, require_auth=True)
-        elif intervention_type == TYPEIntervention.GRAPHIC:
-            args = [intervention_id, new_content, "graphic"]
-            response = http_client.send_request(command="UPDATE_NOTE", args=args, require_auth=True)
-        elif intervention_type == TYPEIntervention.COMMENT:
+        if intervention_type == TYPEIntervention.COMMENT:
             args = [intervention_id, new_content]
             response = http_client.send_request(command="UPDATE_COMMENT", args=args, require_auth=True)
         else:
@@ -90,9 +76,7 @@ class Intervention:
 
     @classmethod
     def delete_intervention(cls, intervention_id: int, intervention_type: TYPEIntervention) -> dict:
-        if intervention_type == TYPEIntervention.TEXT or intervention_type == TYPEIntervention.GRAPHIC:
-            response = http_client.send_request(command="DELETE_NOTE", args=[intervention_id], require_auth=True)
-        elif intervention_type == TYPEIntervention.COMMENT:
+        if intervention_type == TYPEIntervention.COMMENT:
             response = http_client.send_request(command="DELETE_COMMENT", args=[intervention_id], require_auth=True)
         else:
             raise ValueError(f"Invalid intervention type.\ntype: {intervention_type}\nid: {intervention_id}")

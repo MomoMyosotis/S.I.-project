@@ -10,7 +10,6 @@ BASE_STORAGE = r"server/storage"
 FOLDERS = {
     "image": "images",
     "document": "documents",
-    "note": "notes",
     "song": "songs",
     "video": "videos"
 }

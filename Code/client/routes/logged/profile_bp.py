@@ -35,10 +35,27 @@ def profile_data():
             print(f"[ERROR][profile_bp.profile_data] Invalid user data: {user_data}")
             return jsonify({"status": "ERROR", "error": err}), 400
         
+        # Fetch viewer's own profile to get viewer's id, username, lvl
+        viewer_profile = ProfileService.get_profile(None)  # None = fetch own profile
+        viewer_data = {}
+        if viewer_profile.get("status") == "OK":
+            viewer_info = viewer_profile.get("user", {})
+            viewer_data = {
+                "id": viewer_info.get("id"),
+                "username": viewer_info.get("username"),
+                "lvl": viewer_info.get("lvl"),
+                "is_self": response.get("self", {}).get("is_self", False)
+            }
+        else:
+            # Fallback: if viewer profile fetch fails, at least mark is_self correctly
+            viewer_data = {
+                "is_self": response.get("self", {}).get("is_self", False)
+            }
+        
         payload = {
             "status": "OK",
             "user": user_data,
-            "self": response.get("self", {"is_self": False}),
+            "viewer": viewer_data,  # Include viewer's own profile data
             "recent_publications": response.get("recent_publications", [])
         }
         print("[DEBUG][profile_bp.profile_data] returning payload:", payload)

@@ -1,7 +1,7 @@
 # first line
 
 from typing import Dict, Any, Optional, List
-from server.objects.media.media import Media
+from server.objects.media import Media
 from server.db.db_crud import (
     create_dict_entry,
     fetch_dict_entry_by_name,

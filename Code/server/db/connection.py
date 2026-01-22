@@ -67,8 +67,8 @@ def flow():
     required_tables = ["users",
                         "media",
                         "documents",
-                        "comments",
-                        "notes"]
+                        "comments"
+                        ]
 
     result = check_db(cur, required_tables)
 

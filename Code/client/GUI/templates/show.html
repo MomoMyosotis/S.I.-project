@@ -1028,7 +1028,7 @@
     const details = [
       {k:'Authors', v: safeJoin((media.author_names && media.author_names.length) ? media.author_names : (media.authors || []), '-')},
       {k:'Genre', v: (media.tags && media.tags.length) ? safeJoin(media.tags, '-') : (Array.isArray(media.genres) && media.genres.length ? media.genres.join(', ') : '-')},
-      {k:'Composition year', v: media.year || media.date || media.composition_year || '-'},
+      {k:'Composition year', v: media.year || media.date || '-'},
       {k:'Type', v: media.type || '-'},
       {k:'Filename', v: filename || '-'},
       {k:'Format', v: deriveFormat()},

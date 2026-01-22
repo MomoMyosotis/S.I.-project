@@ -40,6 +40,11 @@ def login():
                 flash("Login pending admin approval =^^=", "info")
                 return render_template("auth.html", form_type="login", form=form)
 
+            elif status == "banned":
+                session["login_status"] = "REFUSED"
+                flash("Your account has been banned. You cannot login.", "danger")
+                return render_template("auth.html", form_type="login", form=form)
+
             elif status == "error":
                 session["login_status"] = "REFUSED"
                 flash(f"Error: {response.get('error_msg','Unknown error')}", "danger")
