@@ -71,10 +71,8 @@
           <label>Duration (sec)<br><input id="edit-duration" type="number" style="width:100%"></label>
           <label>Recording date<br><input id="edit-recording-date" type="date" style="width:100%"></label>
           <label>Recording location<br><input id="edit-recording-location" style="width:100%"></label>
-          <label>Location (stored_at)<br><input id="edit-stored-at" style="width:100%"></label>
           <label>Link<br><input id="edit-link" style="width:100%"></label>
           <div id="edit-link-preview" style="margin-top:8px"></div>
-          <label>Format / File format<br><input id="edit-format" style="width:100%"></label>
           <label>Pages (document)<br><input id="edit-pages" type="number" style="width:100%"></label>
           <label>Is author<br><input id="edit-is-author" type="checkbox"></label>
           <label>Is performer<br><input id="edit-is-performer" type="checkbox"></label>
@@ -127,6 +125,113 @@
 
 <script>
 (async function(){
+  // Global metadata for autocomplete/suggestions (segments, etc.)
+  if (!window.appMetadata) {
+    window.appMetadata = {
+      instruments: [],
+      genres: [],
+      authors: [],
+      performers: [],
+      media_titles: []
+    };
+    
+    // Load metadata from server
+    try {
+      const apiBase = window.SERVER_API_BASE || 'http://127.0.0.1:8000';
+      const apiUrl = (apiBase.endsWith('/') ? apiBase.slice(0,-1) : apiBase) + '/api';
+      console.log('[DEBUG] show.html calling API at', apiUrl, 'window.SERVER_API_BASE=', window.SERVER_API_BASE);
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          command: 'GET_METADATA',
+          args: [],
+          token: sessionStorage.getItem('session_token') || ''
+        })
+      });
+
+      // Setup metadata datalists for segment editing
+      function setupSegmentMetadataInputs() {
+        // Create instruments datalist for segment editor
+        if (!document.getElementById('instruments-datalist')) {
+          const instrumentsList = document.createElement('datalist');
+          instrumentsList.id = 'instruments-datalist';
+          (window.appMetadata.instruments || []).forEach(i => {
+            const opt = document.createElement('option');
+            opt.value = i;
+            instrumentsList.appendChild(opt);
+          });
+          document.body.appendChild(instrumentsList);
+        }
+
+        // Create genres datalist for metadata editing
+        if (!document.getElementById('genres-datalist')) {
+          const genresList = document.createElement('datalist');
+          genresList.id = 'genres-datalist';
+          (window.appMetadata.genres || []).forEach(g => {
+            const opt = document.createElement('option');
+            opt.value = g;
+            genresList.appendChild(opt);
+          });
+          document.body.appendChild(genresList);
+        }
+
+        // Create authors datalist
+        if (!document.getElementById('authors-datalist')) {
+          const authorsList = document.createElement('datalist');
+          authorsList.id = 'authors-datalist';
+          (window.appMetadata.authors || []).forEach(a => {
+            const opt = document.createElement('option');
+            opt.value = a;
+            authorsList.appendChild(opt);
+          });
+          document.body.appendChild(authorsList);
+        }
+
+        // Create performers datalist
+        if (!document.getElementById('performers-datalist')) {
+          const performersList = document.createElement('datalist');
+          performersList.id = 'performers-datalist';
+          (window.appMetadata.performers || []).forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p;
+            performersList.appendChild(opt);
+          });
+          document.body.appendChild(performersList);
+        }
+
+        console.log('[DEBUG] Segment metadata autocomplete setup complete');
+      }
+      const data = await response.json();
+      if (data && (data.status === 'OK' || data.response)) {
+        const metadata = data.response || data;
+        // Normalize metadata: accept array of strings or array of {id,name} objects
+        const rawGenres = metadata.genre_objects || metadata.genres || [];
+        const genreNames = rawGenres.map(g => (typeof g === 'string') ? g : (g.name || g.label || g.title || (g.value && String(g.value)) || '')).filter(Boolean);
+        const genresById = {};
+        rawGenres.forEach(g => {
+          if(g && typeof g === 'object'){
+            const id = g.id || g.genre_id || (g.value && g.value) || null;
+            const name = g.name || g.label || g.title || (g.value && String(g.value)) || '';
+            if(id !== null && name) genresById[String(id)] = name;
+          }
+        });
+        window.appMetadata = {
+          instruments: metadata.instruments || [],
+          genres: genreNames,
+          genresById: genresById,
+          authors: metadata.authors || [],
+          performers: metadata.performers || [],
+          media_titles: metadata.media_titles || []
+        };
+        console.log('[DEBUG] Metadata loaded in show.html:', window.appMetadata);
+        setupSegmentMetadataInputs();
+      }
+    } catch (err) {
+      console.error('[ERROR] Failed to load metadata:', err);
+    }
+  }
+
   function showModal(id, show = true){
     const el = document.getElementById(id);
     const backdrop = document.getElementById('modal-backdrop');
@@ -141,6 +246,23 @@
       el.setAttribute('aria-hidden', 'true');
     }
   }
+
+  // Click outside modal to close it (click on backdrop)
+  document.addEventListener('click', (ev) => {
+    const backdrop = document.getElementById('modal-backdrop');
+    const editForm = document.getElementById('editForm');
+    const confirmDialog = document.getElementById('confirmationDialog');
+    
+    // If clicking on backdrop, close any open modal
+    if (ev.target === backdrop) {
+      if (editForm && editForm.classList.contains('open')) {
+        showModal('editForm', false);
+      }
+      if (confirmDialog && confirmDialog.classList.contains('open')) {
+        showModal('confirmationDialog', false);
+      }
+    }
+  });
 
   const qs = name => new URLSearchParams(window.location.search).get(name);
   const mediaId = qs('media_id');
@@ -244,6 +366,44 @@
       return mapped.length ? mapped.join(', ') : fallback;
     }
     return fallback;
+  };
+
+  // Resolve tag/genre ids/objects to human-readable names (returns array of names)
+  const resolveTagNames = (tags) => {
+    if(!tags) return [];
+    const out = [];
+    const gmap = (window.appMetadata && window.appMetadata.genresById) ? window.appMetadata.genresById : {};
+    const maybeNameFromMap = (v) => {
+      if(v === null || v === undefined) return null;
+      const s = String(v);
+      if(gmap && gmap[s]) return gmap[s];
+      return null;
+    };
+
+    tags.forEach(t => {
+      if(t === null || t === undefined) return;
+      if(typeof t === 'string'){
+        const trimmed = t.trim();
+        if(!trimmed) return;
+        if(/^[0-9]+$/.test(trimmed)){
+          const name = maybeNameFromMap(trimmed);
+          out.push(name || trimmed);
+        } else {
+          const name = maybeNameFromMap(trimmed);
+          out.push(name || trimmed);
+        }
+      } else if(typeof t === 'number'){
+        const name = maybeNameFromMap(String(t));
+        out.push(name || String(t));
+      } else if(typeof t === 'object'){
+        const name = (t.name || t.label || t.title || (t.value && String(t.value))) || null;
+        if(name) out.push(name);
+        else if(t.id){ const m = maybeNameFromMap(t.id); out.push(m || String(t.id)); }
+      } else {
+        out.push(String(t));
+      }
+    });
+    return out.filter(Boolean);
   };
 
   // Edit-modal YouTube preview
@@ -695,17 +855,32 @@
     media.user_id = media.user_id || media.uploader_id || media.owner_id || media.owner || media.uploader || media.publisher || null;
     media.username = media.username || media.uploader || media.owner || media.user || null;
 
+    // Resolve numeric genre/tag ids to human-readable names (use metadata map when available)
+    try {
+      const resolveIdArray = (arr) => {
+        if(!Array.isArray(arr) || !arr.length) return arr;
+        const gmap = (window.appMetadata && window.appMetadata.genresById) ? window.appMetadata.genresById : {};
+        const allNumeric = arr.every(v => v !== null && v !== undefined && (typeof v === 'number' || /^\d+$/.test(String(v))));
+        if(allNumeric && Object.keys(gmap).length){
+          return arr.map(v => gmap[String(v)] || String(v));
+        }
+        return arr;
+      };
+      if(media.tags) media.tags = resolveIdArray(media.tags);
+      if(media.genres) media.genres = resolveIdArray(media.genres);
+    } catch(e){ console.error('genre resolution failed', e); }
+
     // Debug: expose media type/link so we can see whether concert links are present
     try{ console.debug('[show] media.type=', media.type, 'media.link=', media.link || media.url || media.stored_at); }catch(e){}
 
-    el('media-title').textContent = media.title || media.name || media.filename || 'Untitled';
+    el('media-title').textContent = media.title || media.name || 'Untitled';
 
     const uploader = media.username || null;
     const uploaderEl = el('media-uploader');
     if (uploader && uploaderEl) {
       const a = document.createElement('a');
       a.href = `/home/?form_type=profile&username=${encodeURIComponent(uploader)}`;
-      a.textContent = `Pubblicato da: ${uploader}`;
+      a.textContent = `By: ${uploader}`;
       a.style.color = 'var(--accent-2)'; a.style.textDecoration = 'none'; a.target = '_blank';
       uploaderEl.innerHTML = ''; uploaderEl.appendChild(a);
     } else if (uploaderEl) uploaderEl.textContent = '';
@@ -1025,43 +1200,110 @@
     const deriveFormat = () => media.file_format || media.format || (filename && filename.includes('.') ? filename.split('.').pop().toLowerCase() : '-');
     const deriveDuration = () => media.duration_display || (media.duration_seconds ? formatTime(media.duration_seconds) : (media.duration ? formatTime(media.duration) : '-'));
 
-    const details = [
-      {k:'Authors', v: safeJoin((media.author_names && media.author_names.length) ? media.author_names : (media.authors || []), '-')},
-      {k:'Genre', v: (media.tags && media.tags.length) ? safeJoin(media.tags, '-') : (Array.isArray(media.genres) && media.genres.length ? media.genres.join(', ') : '-')},
-      {k:'Composition year', v: media.year || media.date || '-'},
-      {k:'Type', v: media.type || '-'},
-      {k:'Filename', v: filename || '-'},
-      {k:'Format', v: deriveFormat()},
-      {k:'Duration', v: deriveDuration()},
-      {k:'Recording date', v: media.recording_date || '-'},
-      {k:'Recording location', v: media.recording_location || '-'},
-      {k:'Location (stored_at)', v: media.stored_at || '-'},
-      {k:'Link', v: media.link || '-'},
-      {k:'Pages', v: media.pages || '-'},
+    // Show only description initially, rest behind "see more" button
+    const quickDetails = [
       {k:'Description', v: media.description || media.full_description || '-'}
     ];
 
+    // Metadata details (hidden initially)
+    const metadataDetails = [];
+    
+    // Authors - use author_names array (resolved names from backend)
+    if(media.author_names && media.author_names.length) {
+      metadataDetails.push({k:'Authors', v: media.author_names.join(', ')});
+    } else if(media.authors && media.authors.length) {
+      metadataDetails.push({k:'Authors', v: safeJoin(media.authors, '-')});
+    } else {
+      metadataDetails.push({k:'Authors', v: '-'});
+    }
+    
+    // Genre/Tags - use tags (resolved genre names from backend)
+    // Resolve and display genre/tag names (accept many possible shapes)
+    const resolvedGenres = (Array.isArray(media.tags) && media.tags.length) ? resolveTagNames(media.tags) : ((Array.isArray(media.genres) && media.genres.length) ? resolveTagNames(media.genres) : []);
+    metadataDetails.push({k:'Genre', v: resolvedGenres.length ? resolvedGenres.join(', ') : '-'});
+
+    metadataDetails.push({k:'Composition year', v: media.year || media.date || '-'});
+    metadataDetails.push({k:'Type', v: media.type || '-'});
+    metadataDetails.push({k:'Recording date', v: media.recording_date || '-'});
+    metadataDetails.push({k:'Recording location', v: media.recording_location || '-'});
+
+    // Performers - use performer_names array (resolved names from backend) or fallback to performers list
+    if(media.performer_names && media.performer_names.length) {
+      metadataDetails.push({k:'Performers', v: media.performer_names.join(', ')});
+    } else if(media.performers && media.performers.length) {
+      metadataDetails.push({k:'Performers', v: safeJoin(media.performers, '-')});
+    } else {
+      metadataDetails.push({k:'Performers', v: '-'});
+    }
+
+    if(media.type === 'document' && media.pages) {
+      metadataDetails.push({k:'Pages', v: media.pages || '-'});
+    }
+
+    if(media.type === 'video' && media.duration){
+      metadataDetails.push({k:'Duration (sec)', v: String(Math.round(Number(media.duration) || 0))});
+    }
+    if(media.type === 'audio' && media.duration){
+      metadataDetails.push({k:'Duration (sec)', v: String(Math.round(Number(media.duration) || 0))});
+    }
+    if(media.type === 'concert' && media.link) {
+      metadataDetails.push({k:'Link', v: media.link || '-'});
+    }
+    if(media.type === 'concert' && media.duration){
+      metadataDetails.hidden({k:'Duration (sec)', v: String(Math.round(Number(media.duration) || 0))});
+    }
+
     const container = el('media-details-content');
     container.innerHTML = '';
-    const grid = document.createElement('div'); grid.className='meta-grid';
-    details.forEach(d=>{
+
+    // Show quick description first
+    const quickGrid = document.createElement('div'); quickGrid.className='meta-grid';
+    quickDetails.forEach(d=>{
       const item = document.createElement('div'); item.className='meta-item';
       const title = document.createElement('strong'); title.style.color = 'var(--accent-2)'; title.textContent = d.k;
       const value = document.createElement('div'); value.className='meta-value'; value.style.marginTop='6px'; value.style.color='var(--muted)'; value.textContent = d.v;
-      item.appendChild(title); item.appendChild(value); grid.appendChild(item);
+      item.appendChild(title); item.appendChild(value); quickGrid.appendChild(item);
     });
-    container.appendChild(grid);
+    container.appendChild(quickGrid);
 
-    // performers
-    if(media.performers && media.performers.length){
-      const ptitle = document.createElement('div'); ptitle.className='list-title'; ptitle.textContent='Performers';
-      const plist = document.createElement('div'); plist.className='performers-list';
-      media.performers.forEach(p=>{
-        const it = document.createElement('div'); it.className='performer-item';
-        const name = (p.name || p.performer || p.username || p); const inst = (p.instruments && p.instruments.length) ? 'Instruments: '+p.instruments.join(', ') : '';
-        it.innerHTML = `<strong>${name}</strong><div style="color:var(--muted)">${inst}</div>`; plist.appendChild(it);
+    // Hidden metadata section with "see more" button
+    if(metadataDetails.length) {
+      const seeMoreBtn = document.createElement('button');
+      seeMoreBtn.textContent = 'See more';
+      seeMoreBtn.style.marginTop = '12px';
+      seeMoreBtn.style.marginBottom = '12px';
+      seeMoreBtn.style.padding = '6px 12px';
+      seeMoreBtn.style.background = 'var(--accent-2)';
+      seeMoreBtn.style.color = '#fff';
+      seeMoreBtn.style.border = 'none';
+      seeMoreBtn.style.borderRadius = '4px';
+      seeMoreBtn.style.cursor = 'pointer';
+      seeMoreBtn.style.transition = 'background 0.2s';
+      seeMoreBtn.addEventListener('mouseenter', ()=>{ seeMoreBtn.style.background = 'var(--accent-1)'; });
+      seeMoreBtn.addEventListener('mouseleave', ()=>{ seeMoreBtn.style.background = 'var(--accent-2)'; });
+      
+      const metadataGrid = document.createElement('div'); 
+      metadataGrid.className='meta-grid';
+      metadataGrid.style.display = 'none';
+      metadataDetails.forEach(d=>{
+        const item = document.createElement('div'); item.className='meta-item';
+        const title = document.createElement('strong'); title.style.color = 'var(--accent-2)'; title.textContent = d.k;
+        const value = document.createElement('div'); value.className='meta-value'; value.style.marginTop='6px'; value.style.color='var(--muted)'; value.textContent = d.v;
+        item.appendChild(title); item.appendChild(value); metadataGrid.appendChild(item);
       });
-      container.appendChild(ptitle); container.appendChild(plist);
+      
+      seeMoreBtn.addEventListener('click', ()=>{
+        if(metadataGrid.style.display === 'none') {
+          metadataGrid.style.display = '';
+          seeMoreBtn.textContent = 'See less';
+        } else {
+          metadataGrid.style.display = 'none';
+          seeMoreBtn.textContent = 'See more';
+        }
+      });
+      
+      container.appendChild(seeMoreBtn);
+      container.appendChild(metadataGrid);
     }
 
     // sections/subtracks
@@ -1089,7 +1331,7 @@
         const item = document.createElement('div'); item.className='linked-media-item';
         const typ = (it.type || it.media_type || '').toLowerCase();
         const fname = it.filename || (it.stored_at ? it.stored_at.split('/').pop() : '');
-        const display = it.title || fname || (it.name||'file');
+        const display = it.title || it.name || 'file';
         let href = '#';
         if(it.id){ href = `${window.location.pathname}?media_id=${encodeURIComponent(it.id)}`; }
         else if(fname && typ){ href = `/show/file?file_type=${encodeURIComponent(typ)}&filename=${encodeURIComponent(fname)}`; }
@@ -1116,7 +1358,7 @@
             if(!resp.ok){ alert('Download fallito'); return; }
             const blob = await resp.blob();
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = filename || ''; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            const a = document.createElement('a'); a.href = url; a.download = (media.title ? String(media.title).replace(/[\\\/:*?"<>|]/g,'') : '') || ''; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
           }
         } catch(e){ console.error(e); alert('Errore durante il download'); }
       });
@@ -1157,13 +1399,15 @@
         document.getElementById('edit-duration').value = media.duration || media.duration_seconds || '';
         document.getElementById('edit-recording-date').value = media.recording_date || '';
         document.getElementById('edit-recording-location').value = media.recording_location || '';
-        document.getElementById('edit-stored-at').value = media.stored_at || '';
         document.getElementById('edit-link').value = media.link || '';
-        document.getElementById('edit-format').value = media.format || media.file_format || '';
         document.getElementById('edit-pages').value = media.pages || '';
         document.getElementById('edit-is-author').checked = !!media.is_author;
         document.getElementById('edit-is-performer').checked = !!media.is_performer;
-        document.getElementById('edit-genres').value = Array.isArray(media.tags) ? media.tags.join(', ') : (Array.isArray(media.genres) ? media.genres.join(', ') : '');
+        // Populate genres input with human-readable names when possible
+        try {
+          const gnames = (Array.isArray(media.tags) && media.tags.length) ? resolveTagNames(media.tags) : ((Array.isArray(media.genres) && media.genres.length) ? resolveTagNames(media.genres) : []);
+          document.getElementById('edit-genres').value = gnames.join(', ');
+        } catch(e){ document.getElementById('edit-genres').value = '';}
         document.getElementById('edit-authors').value = Array.isArray(media.author_names) ? media.author_names.join(', ') : (Array.isArray(media.authors) ? media.authors.join(', ') : '');
         document.getElementById('edit-performers').value = Array.isArray(media.performers) ? media.performers.join(', ') : '';
 
@@ -1188,9 +1432,7 @@
           setIfPresent('duration', document.getElementById('edit-duration').value ? Number(document.getElementById('edit-duration').value) : null);
           setIfPresent('recording_date', document.getElementById('edit-recording-date').value || null);
           setIfPresent('recording_location', document.getElementById('edit-recording-location').value.trim() || null);
-          setIfPresent('stored_at', document.getElementById('edit-stored-at').value.trim() || null);
           setIfPresent('link', document.getElementById('edit-link').value.trim() || null);
-          setIfPresent('format', document.getElementById('edit-format').value.trim() || null);
           setIfPresent('pages', document.getElementById('edit-pages').value ? Number(document.getElementById('edit-pages').value) : null);
 
           // proper JS booleans

@@ -201,6 +201,43 @@ legend {
 }
 
 /* ============
+   FORM VALIDATION STYLES
+   ============ */
+input:invalid,
+textarea:invalid,
+select:invalid {
+  border-color: #ff6b6b !important;
+  background-color: #3a2f2f !important;
+}
+
+input.required-empty,
+textarea.required-empty {
+  border-color: #ff9999 !important;
+  background-color: #3a2f2f !important;
+}
+
+.field-error {
+  display: inline-block;
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+label .required-mark {
+  color: #ff6b6b;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+button#submitBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #4a4a5a;
+  border-color: #5a5a6a;
+}
+
+/* ============
    LABELS & INPUTS
    ============ */
 label {

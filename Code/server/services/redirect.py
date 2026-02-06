@@ -34,6 +34,64 @@ def default_encoder(obj):
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 # =====================
+# METADATA FETCHERS
+# =====================
+def get_metadata_for_client():
+    """
+    Fetch all metadata from database: instruments, genres, media titles, authors.
+    Returns a dict suitable for client-side autocomplete/suggestions.
+    """
+    from server.db.db_crud import fetch_all_dict_entries, fetch_all
+    
+    metadata = {}
+    
+    # Fetch instruments
+    try:
+        instruments = fetch_all_dict_entries("instruments")
+        metadata["instruments"] = [inst.get("name") for inst in (instruments or []) if inst.get("name")]
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch instruments: {e}")
+        metadata["instruments"] = []
+    
+    # Fetch genres/tags
+    try:
+        genres = fetch_all_dict_entries("genres")
+        metadata["genres"] = [g.get("name") for g in (genres or []) if g.get("name")]
+        # full objects for id->name resolution on clients that need it
+        metadata["genre_objects"] = genres or []
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch genres: {e}")
+        metadata["genres"] = []
+        metadata["genre_objects"] = []
+    
+    # Fetch authors
+    try:
+        authors = fetch_all_dict_entries("authors")
+        metadata["authors"] = [a.get("name") for a in (authors or []) if a.get("name")]
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch authors: {e}")
+        metadata["authors"] = []
+    
+    # Fetch performers
+    try:
+        performers = fetch_all_dict_entries("performers")
+        metadata["performers"] = [p.get("name") for p in (performers or []) if p.get("name")]
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch performers: {e}")
+        metadata["performers"] = []
+    
+    # Fetch media titles (recent/popular)
+    try:
+        # Use GROUP BY + MAX(created_at) so PostgreSQL can ORDER correctly when selecting distinct titles
+        media_titles = fetch_all("SELECT title, MAX(created_at) as latest FROM media WHERE title IS NOT NULL GROUP BY title ORDER BY latest DESC LIMIT 100")
+        metadata["media_titles"] = [m.get("title") for m in (media_titles or []) if m.get("title")]
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch media titles: {e}")
+        metadata["media_titles"] = []
+    
+    return metadata
+
+# =====================
 # FILE MANAGER WRAPPERS
 # =====================
 def dispatch_save_file(user_obj, file_type, file_name, content: bytes):
@@ -105,6 +163,7 @@ COMMAND_MAP = {
     "recover": user_services.recover,
     "reset_password": user_services.reset_password,
     "assistance": user_services.assistance,
+    "change_password": user_services.change_password,
     "get_profile": user_services.get_profile,
     "get_viewer_profile": user_services.get_viewer_profile,
     "edit_profile": user_services.edit_profile,
@@ -121,6 +180,7 @@ COMMAND_MAP = {
     "create_song": media_services.create_song_services,
     "get_song": media_services.get_song_services,
     "get_media": media_services.get_media_services,
+    "update_media": media_services.update_media_services,
     "update_song": media_services.update_song_services,
     "delete_song": media_services.delete_song_services,
     "create_document": media_services.create_document_services,
@@ -154,6 +214,8 @@ COMMAND_MAP = {
     "get_commented_medias": interventions_services.get_commented_medias,
     "get_commented_media": interventions_services.get_commented_media_paginated,
     "get_followed_media": interventions_services.get_followed_media_paginated,
+    # METADATA (for client-side autocomplete/suggestions)
+    "get_metadata": lambda user_obj, *args: get_metadata_for_client(),
     # FILE MANAGER
     "save_file" : dispatch_save_file,
     "fetch_file" : dispatch_fetch_file,
@@ -165,6 +227,27 @@ COMMAND_MAP = {
 def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple[str, Optional[Any], Optional[str], str]:
     print(f"[DEBUG][dispatch_command] START - command={command}, args={args}, user_obj={user_obj}")
     command = command.lower()
+
+    # =====================
+    # EXTRACT USER_ID FROM ARGS IF user_obj IS None
+    # =====================
+    # If user_obj is None but first arg is a user_id (int), extract it and build user_obj
+    if user_obj is None and args and len(args) > 0:
+        first_arg = args[0]
+        if isinstance(first_arg, int):
+            # Try to fetch user and build user_obj
+            try:
+                full = User.get_user(user_id=first_arg)
+                if full:
+                    user_obj_instance = user_services._build_user_obj(full)
+                    user_obj = user_obj_instance.to_dict_internal() if user_obj_instance else None
+                    # Remove the user_id from args since it's now in user_obj
+                    args = args[1:]
+                    print(f"[DEBUG][dispatch_command] Built user_obj from user_id={first_arg}, remaining args={args}")
+            except Exception as e:
+                print(f"[DEBUG][dispatch_command] Failed to build user_obj from user_id: {e}")
+    
+    print(f"[DEBUG][dispatch_command] After user_id extraction - user_obj={'(set)' if user_obj else 'None'}, args={args}")
 
     if isinstance(user_obj, dict):
         uid = user_obj.get("id")
@@ -180,7 +263,7 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
             user_obj = user_obj_instance.to_dict_internal() if user_obj_instance else user_obj
 
     # allow some public commands without authentication (feed browsing, user search, etc.)
-    if user_obj is None and command not in ["login", "register", "recover", "reset_password", "assistance", "get_feed", "search_users"]:
+    if user_obj is None and command not in ["login", "register", "recover", "reset_password", "assistance", "change_password", "get_feed", "search_users", "get_metadata"]:
         return json.dumps({"error_msg": "User is not logged in. Please log in to proceed.", "status": "error"}), None, None, "ERROR"
 
     func = COMMAND_MAP.get(command)

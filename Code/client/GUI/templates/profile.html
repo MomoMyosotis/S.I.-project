@@ -47,11 +47,7 @@
   <!-- Sezione Bio -->
   <section class="profile-full-bio" aria-label="Biografia utente" role="region">
     <h2 tabindex="0">Biography</h2>
-    <p id="full-bio" class="bio-collapsed">Nessuna biografia disponibile.</p>
-
-    <button id="toggle-bio-btn" class="toggle-bio-btn" style="display:none">
-      Mostra di più
-    </button>
+    <p id="full-bio">Nessuna biografia disponibile.</p>
   </section>
 
   <!-- Azioni profilo -->
@@ -84,18 +80,23 @@
       <div class="s-item"></div>
     </div>
 
-    <!-- container with fixed height and scroll (collapsible) -->
-    <div id="pubs-container" class="pubs-container collapsed" aria-live="polite">
+    <!-- container with infinite scroll -->
+    <div id="pubs-container" class="pubs-container" aria-live="polite">
       <ul id="recent-publications" class="pub-grid"></ul>
     </div>
 
     <p id="no-publications" tabindex="0" style="display:none">Nessuna pubblicazione recente.</p>
 
-    <!-- controls: expand + load more -->
-    <div class="load-more-wrap">
-      <button id="toggle-pubs-btn" class="toggle-pubs-btn" style="display:inline-block">Mostra altro</button>
-      <button id="load-more-btn" class="load-more-btn" style="display:none">Carica altre pubblicazioni</button>
+    <!-- sentinel for lazy loading -->
+    <div id="publications-sentinel" style="height:1px;visibility:hidden;"></div>
+
+    <!-- loading indicator -->
+    <div id="pubs-loading" class="pubs-loading" style="display:none;text-align:center;padding:20px;color:#999;">
+      Caricamento...
     </div>
+
+    <!-- padding to avoid nav menu overlap -->
+    <div style="height:100px;"></div>
   </section>
 
 </main>
@@ -170,21 +171,13 @@
   }
 
   function renderLoadMoreButton() {
-    const btn = document.getElementById("load-more-btn");
-    if (!btn) return;
-    // show when we don't know total OR offset < total
-    if (totalPublications === null || currentOffset < totalPublications) {
-      btn.style.display = "inline-block";
-      btn.onclick = loadMorePublications;
-    } else {
-      btn.style.display = "none";
-    }
+    // This function is no longer needed - lazy scrolling handles pagination
+    // kept for backward compat but does nothing
   }
 
   async function loadMorePublications() {
     if (loading) return;
     loading = true;
-    showSkeleton(true);
     try {
       const usernameParam = viewedUsername ? `&username=${encodeURIComponent(viewedUsername)}` : "";
       const res = await fetch(`/profile/publications?offset=${currentOffset}&limit=${pageLimit}${usernameParam}`);
@@ -193,16 +186,22 @@
       const pubs = data.publications || [];
       const count = data.count;
       if (typeof count === "number") totalPublications = count;
+      
+      // Stop if no new publications
+      if (pubs.length === 0) {
+        document.getElementById('publications-sentinel').style.display = 'none';
+      }
+      
       updatePublications(pubs, false);
       currentOffset += pubs.length;
       const pubsEl = document.getElementById("publications-count");
       if (pubsEl && totalPublications !== null) pubsEl.textContent = totalPublications;
-      renderLoadMoreButton();
     } catch (err) {
       console.error("[DEBUG][loadMorePublications] Errore:", err);
     } finally {
       loading = false;
-      showSkeleton(false);
+      const loadingIndicator = document.getElementById('pubs-loading');
+      if (loadingIndicator) loadingIndicator.style.display = 'none';
     }
   }
 
@@ -460,7 +459,9 @@
 
     // Follow / Unfollow only when viewing other user's profile and viewer is logged
     if (!isSelf && viewerId) {
+      console.debug("Target user data:", targetUser);
       const isFollowing = Boolean(targetUser?.is_followed ?? targetUser?.is_following ?? false);
+      console.debug("Computed isFollowing:", isFollowing);
       const btnText = isFollowing ? "Unfollow" : "Follow";
       container.insertAdjacentHTML("beforeend",
         `<button id="follow-btn" class="follow-btn">${btnText}</button>`);
@@ -566,20 +567,12 @@
   }
 
   function attachBioToggle() {
-    const btn = document.getElementById("toggle-bio-btn");
+    // Bio toggle removed - bio is always fully visible
     const full = document.getElementById("full-bio");
-    if (!btn || !full) return;
-    btn.style.display = full.textContent.length > 120 ? "inline-block" : "none";
-    btn.textContent = "Mostra di più";
-    btn.onclick = () => {
-      if (full.classList.contains("bio-collapsed")) {
-        full.classList.remove("bio-collapsed");
-        btn.textContent = "Mostra di meno";
-      } else {
-        full.classList.add("bio-collapsed");
-        btn.textContent = "Mostra di più";
-      }
-    };
+    if (full) {
+      full.style.whiteSpace = 'pre-wrap';
+      full.style.wordWrap = 'break-word';
+    }
   }
 
   function editProfile() {
@@ -599,6 +592,7 @@
       }
     };
   }
+
   // ensure global is set in case other code calls editProfile directly
   if (typeof window.editProfile !== 'function') window.editProfile = (u)=>{ window.location.href = u ? `/profile/edit?username=${u}` : '/profile/edit'; };
   async function toggleFollow(targetIdentifier) {
@@ -628,11 +622,29 @@
       console.error("[DEBUG][toggleFollow] Errore:", err);
     }
   }
+
+  // Setup lazy scrolling to load more publications as user scrolls
+  function setupLazyScrolling() {
+    const sentinel = document.getElementById('publications-sentinel');
+    const loadingIndicator = document.getElementById('pubs-loading');
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading) {
+          loadingIndicator.style.display = 'block';
+          loadMorePublications();
+        }
+      },
+      { rootMargin: '300px', threshold: 0.01 }
+    );
+
+    observer.observe(sentinel);
+  }
+
   loadProfile();
+  setupLazyScrolling();
 
 </script>
-
-
-
 </body>
 </html>

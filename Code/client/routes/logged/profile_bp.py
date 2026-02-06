@@ -38,20 +38,50 @@ def profile_data():
         # Fetch viewer's own profile to get viewer's id, username, lvl
         viewer_profile = ProfileService.get_profile(None)  # None = fetch own profile
         viewer_data = {}
+        viewer_username = None
         if viewer_profile.get("status") == "OK":
             viewer_info = viewer_profile.get("user", {})
+            viewer_username = viewer_info.get("username")
             viewer_data = {
                 "id": viewer_info.get("id"),
-                "username": viewer_info.get("username"),
+                "username": viewer_username,
                 "lvl": viewer_info.get("lvl"),
                 "is_self": response.get("self", {}).get("is_self", False)
             }
         else:
-            # Fallback: if viewer profile fetch fails, at least mark is_self correctly
-            viewer_data = {
-                "is_self": response.get("self", {}).get("is_self", False)
-            }
+            # fallback handled below
+            viewer_data = {}
+
+        # Determine if viewer is following the target user
+        target_username = user_data.get("username")
+        is_followed = False
         
+        if viewer_username and target_username and viewer_username != target_username:
+            try:
+                following_res = http_client.send_request("GET_FOLLOWING", [viewer_username], require_auth=True)
+                following_list = []
+                if isinstance(following_res, dict) and following_res.get("status") in (None, "OK"):
+                    inner = following_res.get("response", [])
+                    if isinstance(inner, dict):
+                        following_list = inner.get("results", []) or inner.get("response", []) or []
+                    elif isinstance(inner, list):
+                        following_list = inner
+                
+                # Normalize and check if target is in following list
+                for f in following_list:
+                    if isinstance(f, dict):
+                        f_username = f.get("username") or f.get("user") or f.get("id")
+                    else:
+                        f_username = f
+                    if f_username and str(f_username) == str(target_username):
+                        is_followed = True
+                        break
+            except Exception as e:
+                print(f"[DEBUG][profile_bp.profile_data] Error checking follow status: {e}")
+                is_followed = False
+        
+        user_data['is_followed'] = is_followed
+
         payload = {
             "status": "OK",
             "user": user_data,
@@ -132,8 +162,6 @@ def get_publications():
                 "title": md.get("title") or p.get("title") or p.get("name") or "Untitled",
                 "description": p.get("description") or md.get("description") or p.get("additional_info") or "",
                 "date_published": p.get("date_published") or p.get("created_at") or p.get("date") or p.get("year") or "",
-                "stored_at": p.get("stored_at") or md.get("stored_at") or p.get("file_path") or "",
-                "file_name": (p.get("stored_at") or md.get("stored_at") or "").split("/")[-1] if (p.get("stored_at") or md.get("stored_at")) else None,
                 "file_type": md.get("type") or p.get("type") or p.get("media_type") or "unknown",
             })
         except Exception:

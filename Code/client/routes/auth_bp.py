@@ -1,7 +1,7 @@
 # first line
 
 from flask import Blueprint, render_template, redirect, url_for, flash, session, request
-from client.forms import Login, Register, Recover, Assistance
+from client.forms import Login, Register, Recover, Assistance, ChangePassword
 from client.services.http_helper import http_client
 from client.services.auth_service import AuthService
 
@@ -30,6 +30,15 @@ def login():
                     http_client.token = token
 
                 session["login_status"] = "ACCEPTED"
+                
+                # Check if user must change password (temporary password used)
+                # The flag is nested in the "response" key from the API
+                response_data = response.get("response", {})
+                if isinstance(response_data, dict) and response_data.get("must_change_password"):
+                    flash("You are using a temporary password. Please set a new one.", "warning")
+                    session["must_change_password"] = True
+                    return redirect(url_for("auth.change_password"))
+                
                 flash("Login successful!", "success")
                 # print("[DEBUG][login] http_client id:", id(http_client), "token:", http_client.token)
                 return redirect(url_for("home.homepage"))
@@ -148,6 +157,41 @@ def assistance():
 @auth_bp.route("/index", methods=["GET"])
 def index():
     return render_template("unified.html")  # No content_template, shows login
+
+# =====================
+# CHANGE PASSWORD
+# =====================
+@auth_bp.route("/change-password", methods=["GET", "POST"])
+def change_password():
+    """Handle password change for users with temporary password."""
+    # Check if user is authenticated
+    if not http_client.token:
+        flash("You must be logged in to change your password.", "danger")
+        return redirect(url_for("auth.login"))
+    
+    form = ChangePassword()
+    if form.validate_on_submit():
+        # Check if passwords match
+        if form.new_password.data != form.confirm_password.data:
+            flash("Passwords do not match. Please try again.", "danger")
+            return render_template("change_password.html", form=form)
+        
+        # Send change password request to server
+        response = AuthService.change_password(form.new_password.data)
+        print(f"[DEBUG][change_password] Response: {repr(response)}")
+        
+        if isinstance(response, dict):
+            status = response.get("status", "").lower()
+            if status in ["ok", "accepted"]:
+                session.pop("must_change_password", None)
+                flash("Password changed successfully! You can now access the application.", "success")
+                return redirect(url_for("home.homepage"))
+            else:
+                flash(f"Error: {response.get('error_msg', 'Failed to change password')}", "danger")
+        else:
+            flash(f"Error: {response}", "danger")
+    
+    return render_template("change_password.html", form=form)
 
 # last line
 # =====================

@@ -241,6 +241,31 @@ def publish_content():
         print(f"[DEBUG][publish_content] authors: {authors}")
         print(f"[DEBUG][publish_content] performers: {performers}")
         print(f"[DEBUG][publish_content] genres: {genres}")
+        # Normalize genres string into a list of tags (split on comma) to match server expectations
+        if genres and isinstance(genres, str):
+            try:
+                genres = [s.strip() for s in genres.split(",") if s.strip()]
+                print(f"[DEBUG][publish_content] normalized genres -> {genres}")
+            except Exception as e:
+                print(f"[DEBUG][publish_content] failed to normalize genres: {e}")
+                genres = []
+
+        # Normalize instruments string into a list
+        instruments_list = []
+        if isinstance(instruments_used, str):
+            try:
+                instruments_list = [s.strip() for s in instruments_used.split(",") if s.strip()]
+                print(f"[DEBUG][publish_content] normalized instruments -> {instruments_list}")
+            except Exception as e:
+                print(f"[DEBUG][publish_content] failed to normalize instruments: {e}")
+                instruments_list = []
+        elif isinstance(instruments_used, list):
+            instruments_list = instruments_used
+
+        # If user declared performer, instruments are required
+        if is_performer and not instruments_list:
+            return jsonify({"status":"ERROR","error_msg":"You declared yourself performer: 'instruments_used' must be provided (comma separated)"}), 400
+
         print(f"[DEBUG][publish_content] link: {link}")
         print(f"[DEBUG][publish_content] additional_info: {additional_info}")
         print(f"[DEBUG][publish_content] ===== FORM EXTRACTION COMPLETE =====\n")
@@ -373,7 +398,7 @@ def publish_content():
             "link": link,
             "is_author": is_author,
             "is_performer": is_performer,
-            "instruments_used": instruments_used,
+            "instruments": instruments_list,
             "is_live": is_live,
             "linked_media": linked_media_entries if linked_media_entries else [],
             # do not forward raw file bytes (we saved them via SAVE_FILE)

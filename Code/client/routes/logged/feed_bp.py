@@ -70,6 +70,8 @@ def feed_data():
             md = m.to_dict()
             # preserve server-side created_at so client-side date filters work
             md["created_at"] = it.get("created_at") or it.get("createdAt") or md.get("created_at")
+            # sanitize raw before exposing to client
+            md_sanit = Media.sanitize_for_client(md)
             username = it.get("username") or it.get("owner") or it.get("uploader") or md.get("uploader_id")
             tags = it.get("tags") or md.get("tags") or it.get("genre") or []
             thumbnail = it.get("thumbnail") or it.get("thumb") or "/static/images/unknown.jpg"
@@ -81,7 +83,7 @@ def feed_data():
                 "tags": tags,
                 "type": md.get("type") or it.get("type") or it.get("media_type") or it.get("file_type") or "unknown",
                 "created_at": md.get("created_at"),
-                "raw": md
+                "raw": md_sanit
             })
         except Exception as e:
             print(f"[DEBUG] feed item normalization failed: {e}")

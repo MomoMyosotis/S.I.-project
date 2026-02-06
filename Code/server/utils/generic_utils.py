@@ -52,8 +52,9 @@ def get_media_by_users(user_ids: List[int]) -> List[Dict[str, Any]]:
     try:
         placeholders = ','.join(['%s'] * len(user_ids))
         query = f"""
-            SELECT m.*
+            SELECT m.*, u.username
             FROM media m
+            JOIN users u ON u.id = m.user_id
             WHERE m.user_id IN ({placeholders})
             ORDER BY m.created_at DESC
         """

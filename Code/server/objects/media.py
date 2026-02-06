@@ -23,7 +23,7 @@ import base64, uuid, os
 from werkzeug.utils import secure_filename
 import subprocess
 from typing import Optional
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 # helper: probe duration/pages
 def _format_duration(seconds: Optional[float]) -> Optional[str]:
@@ -52,11 +52,9 @@ def _probe_media_duration(path: str) -> Optional[float]:
         return None
 
 def _probe_pdf_pages(path: str) -> Optional[int]:
-    """Try PyPDF2, then pdfinfo to get page count."""
     try:
         if PdfReader:
             reader = PdfReader(path)
-            # PyPDF2 v2 exposes pages as list-like
             pages = getattr(reader, "pages", None)
             if pages is not None:
                 return len(pages)
@@ -146,11 +144,6 @@ class Media:
         is_performer: Optional[bool] = None,
         **kwargs
     ):
-        print(f"\n[DEBUG][Media.__init__] ===== INIT START =====")
-        print(f"[DEBUG][Media.__init__] type={type}, user_id={user_id}, title={title}, year={year}")
-        print(f"[DEBUG][Media.__init__] description={description}, location={location}")
-        print(f"[DEBUG][Media.__init__] additional_info={additional_info}, is_author={is_author}, is_performer={is_performer}")
-        print(f"[DEBUG][Media.__init__] authors={authors}, performers={performers}")
 
         # Alias tra id e media_id
         self.id = media_id or kwargs.get("id")
@@ -192,24 +185,40 @@ class Media:
 
         # Gestione extra attr
         for k, v in kwargs.items():
-            print(f"[DEBUG][Media.__init__] Setting extra attr: {k}={v}")
+            #print(f"[DEBUG][Media.__init__] Setting extra attr: {k}={v}")
             setattr(self, k, v)
 
         # Gestione tracklist
         tracklist = kwargs.get("tracklist")
         if tracklist is not None:
             self.additional_info = json.dumps(tracklist)
-            print(f"[DEBUG][Media.__init__] Converted tracklist to additional_info")
+            #print(f"[DEBUG][Media.__init__] Converted tracklist to additional_info")
 
-        print(f"[DEBUG][Media.__init__] ===== INIT COMPLETE =====")
-        print(f"[DEBUG][Media.__init__] Final object state:")
-        print(f"  year={self.year}, description={self.description}, location={self.location}")
-        print(f"  additional_info={self.additional_info}, is_author={self.is_author}, is_performer={self.is_performer}")
-        print(f"  authors={self.authors}, performers={self.performers}\n")
+        #print(f"[DEBUG][Media.__init__] ===== INIT COMPLETE =====")
+        #print(f"[DEBUG][Media.__init__] Final object state:")
+        #print(f"  year={self.year}, description={self.description}, location={self.location}")
+        #print(f"  additional_info={self.additional_info}, is_author={self.is_author}, is_performer={self.is_performer}")
+        #print(f"  authors={self.authors}, performers={self.performers}\n")
 
     def media_type(self) -> str:
         """Return the media type. Can be 'song', 'document', 'video', 'concert', etc."""
         return getattr(self, 'type', 'unknown')
+
+    @staticmethod
+    def sanitize_for_client(m: Optional[Dict[str, Any]]):
+        """
+        Return a shallow copy of a media dict with sensitive storage/display-only fields removed
+        (filename, stored_at, format). Tolerant to non-dict input.
+        """
+        if not isinstance(m, dict):
+            return m
+        try:
+            md = dict(m)
+            for k in ("filename", "stored_at", "format"):
+                md.pop(k, None)
+            return md
+        except Exception:
+            return m
 
     # =====================
     # CRUD BASE
@@ -224,6 +233,15 @@ class Media:
         """
         # build clean payload from object
         payload = self.to_dict()
+        
+        # CRITICAL FIX 0: Normalize field name aliases to canonical database column names
+        # Map client-side aliases to actual database columns
+        if 'recording_location' in payload and 'location' not in payload:
+            payload['location'] = payload.pop('recording_location')
+        if 'tags' in payload and 'genres' not in payload:
+            payload['genres'] = payload.pop('tags')
+        if 'url' in payload and 'link' not in payload:
+            payload['link'] = payload.pop('url')
         
         # CRITICAL FIX 1: Convert date strings to datetime objects BEFORE processing
         DATE_FIELDS = {"recording_date", "concert_date"}
@@ -265,32 +283,23 @@ class Media:
             for it in items:
                 if it is None:
                     continue
-                # already an int -> verify it exists
-                if isinstance(it, int):
+                
+                # Handle string names (most common case for client submissions)
+                if isinstance(it, str):
+                    name = it.strip()
+                    if not name:
+                        continue
+                    # Check if entry already exists by name
                     try:
-                        row = fetch_one(f"SELECT id FROM {table} WHERE id=%s", (it,))
+                        row = fetch_dict_entry_by_name(table, name)
                         if row and row.get("id"):
-                            ids.append(it)
-                        else:
-                            print(f"[Media.save] provided id={it} not found in {table}, skipping")
+                            ids.append(row["id"])
+                            print(f"[Media.save] found existing {table} entry '{name}' -> id={row['id']}")
+                            continue
                     except Exception as e:
-                        print(f"[Media.save] verify id error for {table} id={it}: {e}")
-                    continue
-
-                name = str(it).strip()
-                if not name:
-                    continue
-                # try fetch existing
-                try:
-                    row = fetch_dict_entry_by_name(table, name)
-                except Exception as e:
-                    row = None
-                    print(f"[Media.save] fetch_dict_entry_by_name error: {e}")
-
-                if row and row.get("id"):
-                    ids.append(row["id"])
-                else:
-                    # create and return new id (create_dict_entry commits)
+                        print(f"[Media.save] fetch_dict_entry_by_name error: {e}")
+                    
+                    # Create new entry if not found
                     try:
                         nid = create_dict_entry(table, name)
                         if nid:
@@ -300,6 +309,108 @@ class Media:
                             print(f"[Media.save] failed to create {table} entry '{name}'")
                     except Exception as e:
                         print(f"[Media.save] create_dict_entry error for {table} name={name}: {e}")
+                    continue
+                
+                # Handle integer IDs
+                if isinstance(it, int):
+                    try:
+                        # For authors/performers, check if it's a user_id first
+                        if table in ("authors", "performers"):
+                            # Try to fetch as a user first
+                            urow = fetch_one("SELECT id, username FROM users WHERE id=%s", (it,))
+                            if urow and urow.get("id"):
+                                # User exists - try to find or create corresponding author/performer entry
+                                existing = fetch_one(f"SELECT id FROM {table} WHERE user_id=%s", (it,))
+                                if existing and existing.get("id"):
+                                    ids.append(int(existing.get("id")))
+                                    print(f"[Media.save] found existing {table} for user_id={it} -> id={existing['id']}")
+                                    continue
+                                # Create linked dict entry for this user
+                                try:
+                                    if table == "authors":
+                                        from server.db.db_crud import create_author_with_user
+                                        new_id = create_author_with_user(int(it), urow.get("username") or f"user_{it}")
+                                    else:
+                                        from server.db.db_crud import create_performer_with_user
+                                        new_id = create_performer_with_user(int(it), urow.get("username") or f"user_{it}")
+                                    if new_id:
+                                        ids.append(int(new_id))
+                                        print(f"[Media.save] created {table[:-1]} for user_id={it} -> id={new_id}")
+                                    continue
+                                except Exception as e:
+                                    print(f"[Media.save] failed to create {table[:-1]} for user {it}: {e}")
+
+                            # ID is not a user - try as a direct dict entry id
+                            arow = fetch_one(f"SELECT id FROM {table} WHERE id=%s", (it,))
+                            if arow and arow.get("id"):
+                                ids.append(int(arow.get("id")))
+                                print(f"[Media.save] found {table} entry with id={it}")
+                                continue
+                            print(f"[Media.save] id={it} not found in {table} or users, skipping")
+                        else:
+                            # For other tables (genres, instruments), verify id exists
+                            row = fetch_one(f"SELECT id FROM {table} WHERE id=%s", (it,))
+                            if row and row.get("id"):
+                                ids.append(it)
+                                print(f"[Media.save] verified {table} entry with id={it}")
+                                continue
+                            print(f"[Media.save] id={it} not found in {table}, skipping")
+                    except Exception as e:
+                        print(f"[Media.save] verify id error for {table} id={it}: {e}")
+                    continue
+                
+                # Handle dict entries (e.g., from deserialization)
+                if isinstance(it, dict):
+                    # Try to extract name or id from dict
+                    name = it.get("name") or it.get("title") or None
+                    entry_id = it.get("id") or None
+                    
+                    if name:
+                        # Treat as a string name
+                        try:
+                            row = fetch_dict_entry_by_name(table, name)
+                            if row and row.get("id"):
+                                ids.append(row["id"])
+                                continue
+                        except Exception as e:
+                            print(f"[Media.save] fetch error for dict name: {e}")
+                        
+                        try:
+                            nid = create_dict_entry(table, name)
+                            if nid:
+                                ids.append(nid)
+                                continue
+                        except Exception as e:
+                            print(f"[Media.save] create error for dict name: {e}")
+                    elif entry_id:
+                        # Treat as an id
+                        try:
+                            row = fetch_one(f"SELECT id FROM {table} WHERE id=%s", (entry_id,))
+                            if row and row.get("id"):
+                                ids.append(entry_id)
+                                continue
+                        except Exception as e:
+                            print(f"[Media.save] verify error for dict id: {e}")
+                    continue
+                
+                # Fallback: convert to string and retry
+                name = str(it).strip()
+                if name:
+                    try:
+                        row = fetch_dict_entry_by_name(table, name)
+                        if row and row.get("id"):
+                            ids.append(row["id"])
+                            continue
+                    except Exception as e:
+                        pass
+                    
+                    try:
+                        nid = create_dict_entry(table, name)
+                        if nid:
+                            ids.append(nid)
+                    except Exception as e:
+                        print(f"[Media.save] fallback create error: {e}")
+            
             return ids
 
         # normalize relations from names -> ids
@@ -307,6 +418,7 @@ class Media:
             payload["authors"] = ensure_ids("authors", payload.get("authors") or [])
             payload["genres"] = ensure_ids("genres", payload.get("genres") or [])
             payload["performers"] = ensure_ids("performers", payload.get("performers") or [])
+            payload["instruments"] = ensure_ids("instruments", payload.get("instruments") or [])
         except Exception as e:
             print(f"[Media.save] relation normalization failed: {e}")
 
@@ -548,7 +660,30 @@ class Media:
         # Override nelle sottoclassi per gestire relazioni come authors, performers, genres.
 
     def to_dict(self) -> Dict[str, Any]:
-        print(f"\n[DEBUG][Media.to_dict] ===== TO_DICT START =====")
+        #print(f"\n[DEBUG][Media.to_dict] ===== TO_DICT START =====")
+        # Normalize genres/tags into display-ready names when possible so clients receive names, not ids
+        def _normalize_genres_list(lst):
+            if not lst:
+                return []
+            out = []
+            for v in lst:
+                if v is None:
+                    continue
+                # dict shapes from DB may include name/genre_name/label/title
+                if isinstance(v, dict):
+                    name = v.get('name') or v.get('genre_name') or v.get('label') or v.get('title') or (v.get('value') and str(v.get('value'))) or None
+                    if name:
+                        out.append(name)
+                    elif v.get('id') is not None:
+                        out.append(v.get('id'))
+                    else:
+                        out.append(str(v))
+                else:
+                    out.append(v)
+            return out
+
+        genres_normalized = _normalize_genres_list(self.genres)
+
         d = {
             "id": self.media_id,
             "media_id": self.media_id,
@@ -566,46 +701,88 @@ class Media:
             "stored_at": self.stored_at,
             "recording_date": getattr(self, "recording_date", None),
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "genres": self.genres,
+            "genres": genres_normalized,
+            "tags": genres_normalized,
             "authors": self.authors,
             "performers": self.performers,
             "references": self.references,
             "is_author": self.is_author,
             "is_performer": self.is_performer
         }
-        print(f"[DEBUG][Media.to_dict] Result dict: year={d.get('year')}, description={d.get('description')}, location={d.get('location')}")
-        print(f"[DEBUG][Media.to_dict] additional_info={d.get('additional_info')}, is_author={d.get('is_author')}, is_performer={d.get('is_performer')}, recording_date={d.get('recording_date')}")
-        print(f"[DEBUG][Media.to_dict] ===== TO_DICT COMPLETE =====\n")
+        #print(f"[DEBUG][Media.to_dict] Result dict: year={d.get('year')}, description={d.get('description')}, location={d.get('location')}")
+        #print(f"[DEBUG][Media.to_dict] additional_info={d.get('additional_info')}, is_author={d.get('is_author')}, is_performer={d.get('is_performer')}, recording_date={d.get('recording_date')}")
+        #print(f"[DEBUG][Media.to_dict] ===== TO_DICT COMPLETE =====\n")
         return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
-        print(f"\n[DEBUG][Media.from_dict] ===== FROM_DICT START =====")
-        print(f"[DEBUG][Media.from_dict] Input data: year={data.get('year')}, description={data.get('description')}, location={data.get('location')}")
-        print(f"[DEBUG][Media.from_dict] Input data: additional_info={data.get('additional_info')}, is_author={data.get('is_author')}, is_performer={data.get('is_performer')}")
-        print(f"[DEBUG][Media.from_dict] Input data keys: {list(data.keys())}")
+        #print(f"[DEBUG][Media.from_dict] Input data keys: {list(data.keys())}")
         
         if 'id' in data:
             data['media_id'] = data.pop('id')
         
+        # === USE NAMES FROM DATABASE INSTEAD OF IDs ===
+        # If server returns author_names and performer_names (from JOINs in fetch_media_db),
+        # use those instead of the numeric IDs to preserve human-readable names
+        if data.get('author_names'):
+            data['authors'] = data.pop('author_names')
+            #print(f"[DEBUG][Media.from_dict] Using author_names as authors: {data['authors']}")
+        
+        if data.get('performer_names'):
+            data['performers'] = data.pop('performer_names')
+            #print(f"[DEBUG][Media.from_dict] Using performer_names as performers: {data['performers']}")
+        
+        # --- PREFER SERVER-PROVIDED TAG NAMES ---
+        # Backend queries may populate 'tags' (display names) or 'genre_names'. Prefer those
+        # over numeric 'genres' ids to avoid degrading names into ids later in the flow.
+        tag_candidates = None
+        if data.get('tags'):
+            tag_candidates = data.pop('tags')
+        elif data.get('tag_names'):
+            tag_candidates = data.pop('tag_names')
+        elif data.get('genre_names'):
+            tag_candidates = data.pop('genre_names')
+
+        if tag_candidates is not None:
+            norms = []
+            if isinstance(tag_candidates, (list, tuple)):
+                for t in tag_candidates:
+                    if t is None:
+                        continue
+                    if isinstance(t, dict):
+                        name = t.get('name') or t.get('genre_name') or t.get('label') or t.get('title') or (t.get('value') and str(t.get('value')))
+                        if name:
+                            norms.append(name)
+                        elif t.get('id') is not None:
+                            norms.append(t.get('id'))
+                        else:
+                            norms.append(str(t))
+                    else:
+                        norms.append(t)
+            else:
+                # single string or numeric value
+                norms.append(tag_candidates)
+            data['genres'] = norms
+            data['tags'] = norms
+
         # === SEMANTIC INFERENCE: Map is_author/is_performer flags to authors/performers lists ===
         # If is_author is True but authors list is empty, add current user as author
         if data.get('is_author') and not data.get('authors'):
             user_id = data.get('user_id')
             if user_id:
                 data['authors'] = [user_id]
-                print(f"[DEBUG][Media.from_dict] Inferred authors=[{user_id}] from is_author=True")
+                #print(f"[DEBUG][Media.from_dict] Inferred authors=[{user_id}] from is_author=True")
         
         # If is_performer is True but performers list is empty, add current user as performer
         if data.get('is_performer') and not data.get('performers'):
             user_id = data.get('user_id')
             if user_id:
                 data['performers'] = [user_id]
-                print(f"[DEBUG][Media.from_dict] Inferred performers=[{user_id}] from is_performer=True")
+                #print(f"[DEBUG][Media.from_dict] Inferred performers=[{user_id}] from is_performer=True")
         
         # Return a direct Media instance instead of delegating to subclasses
         obj = cls(**data)
-        print(f"[DEBUG][Media.from_dict] ===== FROM_DICT COMPLETE =====\n")
+        # print(f"[DEBUG][Media.from_dict] ===== FROM_DICT COMPLETE =====\n")
         return obj
 
     def __repr__(self) -> str:

@@ -75,6 +75,10 @@ def is_logged(user_obj: Optional[Any]) -> bool:
     return user_id is not None
 
 def login_user(login_field: str, password: str, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Authenticate user and return session token.
+    Also checks if password is the default temporary password.
+    """
     try:
         # recupera l'utente
         if "@" in login_field:
@@ -106,11 +110,17 @@ def login_user(login_field: str, password: str, config: Optional[Dict[str, Any]]
 
         # login OK
         token = secrets.token_hex(16)
+        
+        # Check if password is the temporary password
+        from server.services.email_service import DEFAULT_RESET_PASSWORD
+        must_change_password = password == DEFAULT_RESET_PASSWORD
+        
         return {
             "status": "accepted",
             "user_obj": user_dict,
             "token": token,
-            "error_msg": None
+            "error_msg": None,
+            "must_change_password": must_change_password
         }
 
     except Exception as e:
@@ -198,9 +208,31 @@ def get_profile(user_obj: User, target_name: Optional[str] = None) -> Optional[D
         "lvl": target_obj.lvl.value
     }
     
-    # Return unified structure: always use "user" key, is_self goes in separate "self" metadata
+    # Determine if the viewer is following the target user
+    # Only check if viewing someone else's profile (not self)
     is_self = viewer_id == target_obj.id
+    is_followed = False
     
+    if not is_self and viewer_id:
+        try:
+            # Get the viewer's following list and check if target is in it
+            following_list = db_get_following(viewer_id)
+            # following_list contains dicts with user info; check if target_obj.id matches any
+            for followed_user in following_list:
+                followed_id = followed_user.get("id") or followed_user.get("user_id") or followed_user.get("_id")
+                if followed_id == target_obj.id:
+                    is_followed = True
+                    break
+        except Exception as e:
+            # On error, default to not following (safe fallback)
+            print(f"[DEBUG][get_profile] Error checking follow status: {e}")
+            is_followed = False
+    
+    # Add follow flag to profile payload so frontend can display correct button
+    profile_payload["is_followed"] = is_followed
+    profile_payload["is_following"] = is_followed  # Both keys for compatibility
+    
+    # Return unified structure: always use "user" key, is_self goes in separate "self" metadata
     return {
         "status": "OK",
         "user": profile_payload,
@@ -242,21 +274,33 @@ def edit_profile(user_obj: User, username=None, bio=None, profile_pic=None) -> s
     if not updates:
         return "ERROR: No updates provided"
 
-    # Resolve user id
-    uid = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+    # Resolve target user id: if username is provided, fetch the target user; otherwise use logged-in user
+    from server.db.db_crud import get_user_id_by_username
+    
+    if username:
+        # Editing a target user's profile (admin/root editing another user)
+        target_id = get_user_id_by_username(username)
+        if not target_id:
+            return "ERROR: Target user not found"
+        uid = target_id
+    else:
+        # Editing own profile
+        uid = user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)
+    
     success = User.update_user(uid, updates)
     if success:
-        # Update in-memory object (if User instance)
-        if not isinstance(user_obj, dict):
-            if "username" in updates:
-                user_obj.username = updates["username"]
-            if "bio" in updates:
-                user_obj.bio = updates["bio"]
-            if "profile_pic" in updates:
-                user_obj.profile_pic = updates["profile_pic"]
-        else:
-            # if it's a dict, update keys for callers relying on it
-            user_obj.update(updates)
+        # Update in-memory object only if editing self (not when editing another user)
+        if uid == (user_obj["id"] if isinstance(user_obj, dict) else getattr(user_obj, "id", None)):
+            if not isinstance(user_obj, dict):
+                if "username" in updates:
+                    user_obj.username = updates["username"]
+                if "bio" in updates:
+                    user_obj.bio = updates["bio"]
+                if "profile_pic" in updates:
+                    user_obj.profile_pic = updates["profile_pic"]
+            else:
+                # if it's a dict, update keys for callers relying on it
+                user_obj.update(updates)
         return "PROFILE_UPDATED"
     return "ERROR: Failed to update profile"
 
@@ -634,6 +678,66 @@ def reset_password(reset_token: str) -> Dict[str, Any]:
         return {
             "status": "ERROR",
             "error_msg": f"Password reset failed: {str(e)}"
+        }
+
+def change_password(user_obj: Any, new_password: str) -> Dict[str, Any]:
+    """
+    Change the password for an authenticated user.
+    Used when user needs to change from temporary password.
+    Bypasses permission checks as this is a required action.
+    """
+    try:
+        # Extract user_id from either User object or dict
+        user_id = None
+        username = None
+        
+        if isinstance(user_obj, User):
+            user_id = user_obj.id
+            username = user_obj.username
+        elif isinstance(user_obj, dict):
+            user_id = user_obj.get("id")
+            username = user_obj.get("username")
+        
+        if not user_id:
+            return {
+                "status": "ERROR",
+                "error_msg": "User not authenticated"
+            }
+        
+        # Validate password length
+        if not new_password or len(new_password) < 6:
+            return {
+                "status": "ERROR",
+                "error_msg": "Password must be at least 6 characters long"
+            }
+        
+        # Hash the new password
+        from server.db.db_crud import hash_pswd, update_user_db
+        new_password_hash = hash_pswd(new_password)
+        
+        # Update password in database - directly update without permission checks
+        success = update_user_db(user_id, {"password_hash": new_password_hash})
+        
+        if success:
+            print(f"[DEBUG][change_password] Password changed successfully for user {username} (id={user_id})")
+            return {
+                "status": "OK",
+                "message": "Password changed successfully"
+            }
+        else:
+            print(f"[ERROR][change_password] Failed to update password for user {username} (id={user_id})")
+            return {
+                "status": "ERROR",
+                "error_msg": "Failed to update password"
+            }
+    
+    except Exception as e:
+        print(f"[ERROR][change_password] Exception: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "status": "ERROR",
+            "error_msg": f"Password change failed: {str(e)}"
         }
 
 # has to pass maybe from server.utils.user_utils that then calls server.db.db_crud

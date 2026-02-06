@@ -272,7 +272,7 @@ video, iframe{
   border-radius:8px;
   border:0;
   cursor:pointer;
-  background: transparent;
+  background: #ff1c56;
   color: var(--accent-2);
   font-weight:700;
 }

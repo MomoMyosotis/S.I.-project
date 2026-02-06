@@ -23,6 +23,8 @@ class Media:
         year: Optional[int] = None,
         description: str = "",
         location: Optional[str] = None,
+        recording_location: Optional[str] = None,
+        recording_date: Optional[str] = None,
         additional_info: Optional[str] = None,
         stored_at: Optional[str] = None,
         duration: Optional[int] = None,
@@ -40,7 +42,9 @@ class Media:
         self.title = title or "Untitled"
         self.year = year
         self.description = description or ""
-        self.location = location
+        self.location = location or recording_location  # use recording_location if location not provided
+        self.recording_location = recording_location or location  # alias for client compatibility
+        self.recording_date = recording_date
         self.additional_info = additional_info
         self.stored_at = stored_at
         self.duration = duration
@@ -72,20 +76,6 @@ class Media:
     @staticmethod
     def from_server(data: Dict[str, Any]) -> "Media":
         raw = Media._unwrap_envelope(data)
-
-        # ===== DEBUG: Log received data structure =====
-        print(f"\n[DEBUG][Media.from_server] ===== RECEIVED FROM SERVER =====")
-        print(f"[DEBUG][Media.from_server] Raw keys: {list(raw.keys()) if isinstance(raw, dict) else 'NOT A DICT'}")
-        print(f"[DEBUG][Media.from_server] Critical fields in server response:")
-        print(f"[DEBUG][Media.from_server]   - year: {raw.get('year')}")
-        print(f"[DEBUG][Media.from_server]   - description: {raw.get('description')}")
-        print(f"[DEBUG][Media.from_server]   - recording_date: {raw.get('recording_date')}")
-        print(f"[DEBUG][Media.from_server]   - location: {raw.get('location')}")
-        print(f"[DEBUG][Media.from_server]   - is_author: {raw.get('is_author')}")
-        print(f"[DEBUG][Media.from_server]   - is_performer: {raw.get('is_performer')}")
-        print(f"[DEBUG][Media.from_server]   - additional_info: {raw.get('additional_info')}")
-        print(f"[DEBUG][Media.from_server] Full raw data: {raw}")
-        print(f"[DEBUG][Media.from_server] ===== END RECEIVED DATA =====\n")
 
         # Extract canonical fields using server field names
         mid = raw.get("id") or raw.get("media_id") or raw.get("_id") or raw.get("id_media")
@@ -132,6 +122,18 @@ class Media:
         if isinstance(performers, str):
             performers = [p.strip() for p in performers.split(",") if p.strip()]
         
+        # Extract recording_date - convert if it's a date object from server
+        recording_date = raw.get("recording_date") or None
+        if recording_date and not isinstance(recording_date, str):
+            # If it's a date/datetime object, convert to ISO string
+            try:
+                recording_date = str(recording_date) if hasattr(recording_date, 'isoformat') else str(recording_date)
+            except Exception:
+                recording_date = str(recording_date) if recording_date else None
+        
+        # Extract recording_location alias for location
+        recording_location = raw.get("recording_location") or location
+        
         # Extract linked_media
         raw_linked = raw.get("linked_media") or raw.get("linked") or []
         linked_media = []
@@ -173,6 +175,8 @@ class Media:
             year=year,
             description=description,
             location=location,
+            recording_location=recording_location,
+            recording_date=recording_date,
             additional_info=additional_info,
             stored_at=stored_at,
             duration=duration,
@@ -194,6 +198,8 @@ class Media:
             "year": self.year,
             "description": self.description,
             "location": self.location,
+            "recording_location": self.recording_location,
+            "recording_date": self.recording_date,
             "additional_info": self.additional_info,
             "stored_at": self.stored_at,
             "duration": self.duration,

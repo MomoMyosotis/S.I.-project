@@ -31,4 +31,8 @@ class AuthService:
     def assistance(username, problem):
         return http_client.send_request("ASSISTANCE", [username, problem])
 
+    @staticmethod
+    def change_password(new_password):
+        return http_client.send_request("CHANGE_PASSWORD", [new_password], require_auth=True)
+
 # last line

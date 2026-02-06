@@ -269,11 +269,17 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 seen = set()
                 if raw_items is None:
                     return ids
-                # if single string like 'alt,indie' or 'alt' handle
+                # Normalize nested lists/tuples and strings
+                parts = []
                 if isinstance(raw_items, str):
                     parts = [p.strip() for p in raw_items.split(",") if p.strip()]
                 elif isinstance(raw_items, (list, tuple)):
-                    parts = list(raw_items)
+                    for part in raw_items:
+                        if isinstance(part, (list, tuple)):
+                            for sub in part:
+                                parts.append(sub)
+                        else:
+                            parts.append(part)
                 else:
                     parts = [raw_items]
 
@@ -281,8 +287,24 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     if it is None:
                         continue
                     try:
+                        nid = None
+                        # Special resolution for author identifiers: an int may refer to a users.id
                         if isinstance(it, int):
-                            nid = int(it)
+                            if table_name == "authors":
+                                # prefer explicit authors.id if present
+                                arow = fetch_one("SELECT id FROM authors WHERE id=%s", (it,))
+                                if arow and arow.get("id"):
+                                    nid = int(arow.get("id"))
+                                else:
+                                    # try resolving as users.id -> create or fetch author linked to that user
+                                    urow = fetch_one("SELECT id, username FROM users WHERE id=%s", (it,))
+                                    if urow and urow.get("id"):
+                                        nid = create_author_with_user(int(it), urow.get("username") or f"user_{it}")
+                                    else:
+                                        debug(f"[DB][create_media_db] author identifier {it} not found in authors or users")
+                                        continue
+                            else:
+                                nid = int(it)
                         elif isinstance(it, dict):
                             if it.get("id"):
                                 nid = int(it.get("id"))
@@ -292,11 +314,12 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                                     continue
                                 nid = create_dict_entry(table_name, str(name).strip())
                         else:
-                            # string
+                            # string or other scalar
                             name = str(it).strip()
                             if not name:
                                 continue
                             nid = create_dict_entry(table_name, name)
+
                         if nid and nid not in seen:
                             ids.append(nid)
                             seen.add(nid)
@@ -315,13 +338,30 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 debug(f"[DB][AUTHOR] linked {author_id}")
 
             # --- PERFORMERS ---
-            for performer_id in _normalize_ids("performers", data.get("performers", [])):
+            performer_ids = _normalize_ids("performers", data.get("performers", []))
+            for performer_id in performer_ids:
                 cur.execute("""
                     INSERT INTO media_performances (media_id, performer_id)
                     SELECT %s, %s
                     WHERE NOT EXISTS (SELECT 1 FROM media_performances WHERE media_id=%s AND performer_id=%s);
                     """, (media_id, performer_id, media_id, performer_id))
                 debug(f"[DB][PERF] linked {performer_id}")
+
+            # --- INSTRUMENTS ---
+            try:
+                instr_raw = prepared_data.get("instruments") if "instruments" in prepared_data else prepared_data.get("instruments_used")
+                instr_ids = _normalize_ids("instruments", instr_raw)
+                if instr_ids:
+                    for pid in performer_ids:
+                        cur.execute("SELECT id FROM media_performances WHERE media_id=%s AND performer_id=%s", (media_id, pid))
+                        row = cur.fetchone()
+                        perf_id = row[0] if row else None
+                        if perf_id:
+                            for iid in instr_ids:
+                                cur.execute("INSERT INTO performance_instruments (performance_id, instrument_id) VALUES (%s,%s) ON CONFLICT DO NOTHING", (perf_id, iid))
+                            debug(f"[DB][INST] attached instruments {instr_ids} to performer {pid}")
+            except Exception as e:
+                debug(f"[DB][INST] failed to attach instruments: {e}")
 
             # --- GENRES ---
             for genre_id in _normalize_ids("genres", data.get("genres", [])):
@@ -432,15 +472,36 @@ def fetch_media_db(media_id: int) -> Optional[Dict[str, Any]]:
 
             media = dict(row)
 
-            # relazioni
-            cur.execute("SELECT author_id FROM media_authors WHERE media_id=%s;", (media_id,))
-            media["authors"] = [r["author_id"] for r in cur.fetchall()]
+            # relazioni - fetch BOTH IDs and names/details from joined tables
+            # Authors: fetch ID and name
+            cur.execute(
+                "SELECT ma.author_id, a.name as author_name FROM media_authors ma "
+                "JOIN authors a ON a.id = ma.author_id WHERE ma.media_id=%s;",
+                (media_id,)
+            )
+            author_rows = cur.fetchall()
+            media["authors"] = [r["author_id"] for r in author_rows]
+            media["author_names"] = [r["author_name"] for r in author_rows]
 
-            cur.execute("SELECT performer_id FROM media_performances WHERE media_id=%s;", (media_id,))
-            media["performers"] = [r["performer_id"] for r in cur.fetchall()]
+            # Performers: fetch ID and name
+            cur.execute(
+                "SELECT mp.performer_id, p.name as performer_name FROM media_performances mp "
+                "JOIN performers p ON p.id = mp.performer_id WHERE mp.media_id=%s;",
+                (media_id,)
+            )
+            performer_rows = cur.fetchall()
+            media["performers"] = [r["performer_id"] for r in performer_rows]
+            media["performer_names"] = [r["performer_name"] for r in performer_rows]
 
-            cur.execute("SELECT genre_id FROM media_genres WHERE media_id=%s;", (media_id,))
-            media["genres"] = [r["genre_id"] for r in cur.fetchall()]
+            # Genres: fetch ID and name
+            cur.execute(
+                "SELECT mg.genre_id, g.name as genre_name FROM media_genres mg "
+                "JOIN genres g ON g.id = mg.genre_id WHERE mg.media_id=%s;",
+                (media_id,)
+            )
+            genre_rows = cur.fetchall()
+            media["genres"] = [r["genre_id"] for r in genre_rows]
+            media["tags"] = [r["genre_name"] for r in genre_rows]  # "tags" is the display-ready field
 
             cur.execute("SELECT passive_id FROM media_references WHERE active_id=%s;", (media_id,))
             media["references"] = [r["passive_id"] for r in cur.fetchall()]
@@ -899,12 +960,15 @@ def create_dict_entry(table: str, name: str) -> Optional[int]:
         # First try to fetch existing entry using a dedicated connection
         conn = connection.connect()
         with conn.cursor() as cur:
-            cur.execute(f"SELECT id FROM {table} WHERE name = %s FOR UPDATE", (name,))
+            # Normalize and strip name to avoid duplicates caused by leading/trailing whitespace
+            norm_name = name.strip() if isinstance(name, str) else name
+            # Case-insensitive lookup to prevent duplicates like 'Science' vs 'science'
+            cur.execute(f"SELECT id FROM {table} WHERE lower(name) = lower(%s) FOR UPDATE", (norm_name,))
             row = cur.fetchone()
             if row:
                 return row[0]
             # not present -> insert and commit so other connections can see it
-            cur.execute(f"INSERT INTO {table} (name) VALUES (%s) RETURNING id", (name,))
+            cur.execute(f"INSERT INTO {table} (name) VALUES (%s) RETURNING id", (norm_name,))
             new_row = cur.fetchone()
             conn.commit()
             return new_row[0] if new_row else None
@@ -918,13 +982,18 @@ def create_dict_entry(table: str, name: str) -> Optional[int]:
             connection.close(None, conn)
 
 def fetch_dict_entry_by_name(table: str, name: str) -> Optional[Dict[str, Any]]:
-    return fetch_one(f"SELECT * FROM {table} WHERE name=%s", (name,))
+    # Case-insensitive lookup and strip whitespace to match create_dict_entry normalization
+    if not isinstance(name, str):
+        return fetch_one(f"SELECT * FROM {table} WHERE name=%s", (name,))
+    norm_name = name.strip()
+    return fetch_one(f"SELECT * FROM {table} WHERE lower(name)=lower(%s)", (norm_name,))
 
 def fetch_dict_entry(table: str, name: str) -> Optional[Dict[str, Any]]:
     return fetch_dict_entry_by_name(table, name)
 
 def fetch_all_dict_entries(table: str) -> List[Dict[str, Any]]:
-    return fetch_all(f"SELECT * FROM {table} ORDER BY name")
+    # Order case-insensitively for consistent listing
+    return fetch_all(f"SELECT * FROM {table} ORDER BY lower(name)")
 
 # ---------------------
 # PERFORMER helpers
@@ -958,6 +1027,49 @@ def create_performer_with_user(user_id: int, name: str) -> Optional[int]:
         if conn:
             conn.rollback()
         debug(f"[DB ERROR create_performer_with_user]: {e}")
+        return None
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+
+# ---------------------
+# AUTHOR helpers
+# ---------------------
+
+def get_author_by_user_id(user_id: int) -> Optional[Dict[str, Any]]:
+    """Return author row for a given user_id if exists."""
+    return fetch_one("SELECT id, name, user_id FROM authors WHERE user_id=%s", (user_id,))
+
+
+def create_author_with_user(user_id: int, name: str) -> Optional[int]:
+    """Create an author row linked to a user. If an author with same user_id
+    exists return it; if insertion by (name,user_id) fails, try to find by user_id or name."""
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            try:
+                cur.execute("INSERT INTO authors (name, user_id) VALUES (%s,%s) RETURNING id", (name, user_id))
+                new = cur.fetchone()
+                conn.commit()
+                return new[0] if new else None
+            except Exception:
+                # fallback: check by user_id first
+                cur.execute("SELECT id FROM authors WHERE user_id=%s", (user_id,))
+                row = cur.fetchone()
+                if row:
+                    return row[0]
+                # fallback: check by name
+                cur.execute("SELECT id FROM authors WHERE name=%s", (name,))
+                row = cur.fetchone()
+                if row:
+                    return row[0]
+                return None
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        debug(f"[DB ERROR create_author_with_user]: {e}")
         return None
     finally:
         if conn:
@@ -1073,9 +1185,10 @@ def advanced_video_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def get_commented_medias_db(user_id: int) -> List[Dict[str, Any]]:
     query = """
-        SELECT DISTINCT m.*
+        SELECT DISTINCT m.*, u.username
         FROM media m
         JOIN comments c ON c.media_id = m.id
+        JOIN users u ON u.id = m.user_id
         WHERE c.user_id = %s
         ORDER BY m.created_at DESC
     """

@@ -11,6 +11,14 @@ app = Flask(__name__)
 sessions = {}      # token -> user_obj (condiviso)
 mode_ref = ["auto"]  # modalità mutabile
 
+# Allow simple CORS for browser clients (used when client app served on different origin)
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,POST,OPTIONS'
+    return response
+
 # Load configuration and initialize Flask-Mail
 try:
     config = load_config()

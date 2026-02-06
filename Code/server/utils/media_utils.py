@@ -2,46 +2,40 @@
 
 from typing import Dict, Any, Optional, List
 from server.objects.media import Media
-from server.db.db_crud import (
-    create_dict_entry,
-    fetch_dict_entry_by_name,
-    fetch_all_dict_entries,
-    update_dict_entry,
-    delete_dict_entry,
-    create_relation,
-    fetch_relations,
-    delete_relation,
-)
+import server.db.db_crud as db_crud
 
 # ---------------------------
 # Dizionari (genres, authors, instruments, performers)
 # ---------------------------
 def add_dict_entry(table: str, name: str) -> Optional[int]:
-    return create_dict_entry(table, name)
+    return db_crud.create_dict_entry(table, name)
+
+def create_dict_entry(table: str, name: str) -> Optional[int]:
+    return db_crud.create_dict_entry(table, name)
 
 def fetch_dict_entry(table: str, name: str) -> Optional[Dict[str, Any]]:
-    return fetch_dict_entry_by_name(table, name)
+    return db_crud.fetch_dict_entry_by_name(table, name)
 
 def fetch_all_dict_entries(table: str) -> List[Dict[str, Any]]:
-    return fetch_all_dict_entries(table)
+    return db_crud.fetch_all_dict_entries(table)
 
 def update_dict_entry(table: str, entry_id: int, new_name: str) -> bool:
-    return update_dict_entry(table, entry_id, new_name)
+    return db_crud.update_dict_entry(table, entry_id, new_name)
 
 def delete_dict_entry(table: str, entry_id: int) -> bool:
-    return delete_dict_entry(table, entry_id)
+    return db_crud.delete_dict_entry(table, entry_id)
 
 # ---------------------------
 # Relazioni tra media e dizionari
 # ---------------------------
 def create_relation_entry(table: str, fields: tuple, values: tuple) -> bool:
-    return create_relation(table, fields, values)
+    return db_crud.create_relation(table, fields, values)
 
 def fetch_relations_entry(table: str, where_field: str, where_value: Any) -> List[Dict[str, Any]]:
-    return fetch_relations(table, where_field, where_value)
+    return db_crud.fetch_relations(table, where_field, where_value)
 
 def delete_relation_entry(table: str, conditions: Dict[str, Any]) -> bool:
-    return delete_relation(table, conditions)
+    return db_crud.delete_relation(table, conditions)
 
 # ---------------------------
 # Helper combinati / utility
@@ -90,6 +84,6 @@ def fetch_concert_segments(concert_media_id: int) -> List[Dict[str, Any]]:
         return res
     except Exception as e:
         print(f"[DEBUG][fetch_concert_segments] fallback fetch_relations due to: {e}")
-        return fetch_relations("concert_segments", "concert_id", concert_media_id)
+        return db_crud.fetch_relations("concert_segments", "concert_id", concert_media_id)
 
 # last line

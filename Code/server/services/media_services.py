@@ -38,8 +38,166 @@ def get_object(cls: Type[Media], object_id: int):
     print(f"[DEBUG][get_object] Retrieved object={obj}")
     return obj
 
+# Helper: flatten incoming relation values (strings, lists, nested lists)
+def _flatten_relation(val):
+    if isinstance(val, str):
+        return [s.strip() for s in val.split(",") if s.strip()]
+    if isinstance(val, (list, tuple)):
+        out = []
+        for part in val:
+            if isinstance(part, (list, tuple)):
+                for sub in part:
+                    out.append(sub)
+            else:
+                out.append(part)
+        return out
+    if val:
+        return [val]
+    return []
+
+def convert_relation_names_to_ids(updates: Dict[str, Any]):
+    """
+    Transform relation fields in updates dict by converting string names to integer IDs.
+    
+    Process authors, performers, genres, and tags (maps to genres).
+    For each string name:
+    1. Fetch existing entry by name
+    2. Create if missing via create_dict_entry
+    3. Refetch if creation failed (handle race conditions)
+    4. Only add valid integer IDs to result
+    
+    This runs BEFORE update_object, ensuring it only receives integer IDs.
+    """
+    print(f"[DEBUG][convert_relation_names_to_ids] START - updates keys={list(updates.keys())}")
+    
+    from server.db.db_crud import (
+        create_dict_entry as db_create_dict_entry,
+        fetch_dict_entry_by_name,
+        fetch_one as _fetch_one
+    )
+    
+    # Relation field mappings
+    relation_map = {
+        "authors": "authors",
+        "genres": "genres",
+        "performers": "performers",
+        "tags": "genres",  # Map tags to genres
+        "instruments": "instruments"
+    }
+    
+    converted = {}
+    
+    for field_name, table_name in relation_map.items():
+        if field_name not in updates:
+            continue
+        
+        val = updates[field_name]
+        if val is None:
+            converted[field_name] = None
+            continue
+        
+        print(f"[DEBUG][convert_relation_names_to_ids] Processing {field_name} -> {table_name}")
+        
+        # Flatten to list
+        items = _flatten_relation(val)
+        print(f"[DEBUG][convert_relation_names_to_ids] Flattened {field_name}: {items}")
+        
+        ids = []
+        for it in items:
+            try:
+                # Already an integer ID
+                if isinstance(it, int):
+                    ids.append(int(it))
+                    print(f"[DEBUG][convert_relation_names_to_ids] Kept {field_name} integer id={it}")
+                    continue
+                
+                # Dict with id field
+                if isinstance(it, dict):
+                    if it.get('id'):
+                        ids.append(int(it['id']))
+                        print(f"[DEBUG][convert_relation_names_to_ids] Extracted {field_name} id from dict: {it['id']}")
+                        continue
+                    # Has name field: treat as string name
+                    name = it.get('name')
+                    if not name:
+                        continue
+                else:
+                    # Treat as string name
+                    name = str(it).strip()
+                    if not name:
+                        continue
+                
+                # Convert string name to ID
+                entry_id = None
+                
+                # Step 1: Try to fetch
+                try:
+                    row = fetch_dict_entry_by_name(table_name, name)
+                    if row and row.get("id"):
+                        entry_id = row["id"]
+                        print(f"[DEBUG][convert_relation_names_to_ids] Found {table_name} '{name}' -> id={entry_id}")
+                except Exception as e:
+                    print(f"[DEBUG][convert_relation_names_to_ids] fetch_dict_entry_by_name error for '{name}': {e}")
+                
+                # Step 2: Create if not found
+                if entry_id is None:
+                    try:
+                        nid = db_create_dict_entry(table_name, name)
+                        if nid:
+                            entry_id = nid
+                            print(f"[DEBUG][convert_relation_names_to_ids] Created {table_name} '{name}' -> id={entry_id}")
+                        else:
+                            print(f"[WARNING][convert_relation_names_to_ids] create_dict_entry returned None for {table_name} '{name}'")
+                    except Exception as e:
+                        print(f"[ERROR][convert_relation_names_to_ids] create_dict_entry error for '{name}': {e}")
+                
+                # Step 3: Refetch if creation failed
+                if entry_id is None:
+                    try:
+                        row = fetch_dict_entry_by_name(table_name, name)
+                        if row and row.get("id"):
+                            entry_id = row["id"]
+                            print(f"[DEBUG][convert_relation_names_to_ids] Refetched {table_name} '{name}' -> id={entry_id}")
+                    except Exception as e:
+                        print(f"[ERROR][convert_relation_names_to_ids] refetch error for '{name}': {e}")
+                
+                # Step 4: Only add if we have valid ID
+                if entry_id is not None:
+                    ids.append(entry_id)
+                    print(f"[DEBUG][convert_relation_names_to_ids] Added {field_name} id={entry_id}")
+                else:
+                    print(f"[WARNING][convert_relation_names_to_ids] Skipping {field_name} '{name}' - could not obtain ID")
+            
+            except Exception as e:
+                print(f"[ERROR][convert_relation_names_to_ids] Processing {field_name} item {it} failed: {e}")
+        
+        # Store converted IDs
+        if field_name == "tags":
+            # Map tags back to genres in result
+            converted["genres"] = ids
+            # Remove tags from updates since it maps to genres
+            updates.pop("tags", None)
+        else:
+            converted[field_name] = ids if ids else None
+    
+    # Update with converted IDs
+    for field_name, ids in converted.items():
+        updates[field_name] = ids
+    
+    print(f"[DEBUG][convert_relation_names_to_ids] DONE - converted updates: {updates}")
+    return updates
+
 def create_object(cls: Type[Media], user_obj: Optional[Any], data: Dict[str, Any]):
     print(f"[DEBUG][create_object] cls={cls.__name__}, user_obj={user_obj}, data={data}")
+    
+    # CRITICAL FIX 0: Normalize field name aliases to canonical database column names
+    # Map client-side aliases to actual database columns
+    if 'recording_location' in data and 'location' not in data:
+        data['location'] = data.pop('recording_location')
+    if 'tags' in data and 'genres' not in data:
+        data['genres'] = data.pop('tags')
+    if 'url' in data and 'link' not in data:
+        data['link'] = data.pop('url')
     
     # CRITICAL FIX: Convert is_author/is_performer flags to relational data BEFORE object creation
     # If is_author=True and no authors list, add user_id to authors
@@ -94,9 +252,14 @@ def create_object(cls: Type[Media], user_obj: Optional[Any], data: Dict[str, Any
 def update_object(obj: Media, updates: Dict[str, Any]):
     from datetime import datetime
     
-    print(f"[DEBUG][update_object] obj={obj}, updates={updates}")
+    print(f"[DEBUG][update_object] ===== START =====")
+    print(f"[DEBUG][update_object] obj={obj}")
+    print(f"[DEBUG][update_object] obj.id={getattr(obj, 'id', None)}, obj.type={getattr(obj, 'type', None)}")
+    print(f"[DEBUG][update_object] updates keys={list(updates.keys()) if isinstance(updates, dict) else 'NOT A DICT'}")
+    print(f"[DEBUG][update_object] updates: {updates}")
     # filter out problematic fields that may cause SQL errors or should not be updated directly
-    DISALLOWED_FIELDS = {"references", "raw", "created_at", "id", "media_id"}
+    # Also protect identity/ownership fields from casual updates coming from clients
+    DISALLOWED_FIELDS = {"references", "raw", "created_at", "id", "media_id", "user_id", "username", "owner", "owner_id", "target_username", "on_behalf_of"} 
     # split keys between media table and document child table
     MEDIA_ONLY_KEYS = set()  # leave empty to default to media updates
     DOC_KEYS = {"pages", "format", "caption"}
@@ -116,7 +279,28 @@ def update_object(obj: Media, updates: Dict[str, Any]):
             updates['performers'] = [user_id]
             print(f"[DEBUG][update_object] Converted is_performer=True to performers=[{user_id}]")
 
-    # CRITICAL FIX 2: Convert date strings to datetime objects BEFORE processing
+    # CRITICAL FIX 2: Normalize common client aliases BEFORE processing
+    # Map 'tags' -> 'genres', 'url' -> 'link', 'recording_location' -> 'location' so client/server use canonical names
+    if isinstance(updates, dict):
+        if 'tags' in updates and 'genres' not in updates:
+            try:
+                updates['genres'] = updates.pop('tags')
+                print(f"[DEBUG][update_object] Normalized alias 'tags' -> 'genres'")
+            except Exception as e:
+                print(f"[DEBUG][update_object] failed to normalize 'tags' -> 'genres': {e}")
+        if 'url' in updates and 'link' not in updates:
+            try:
+                updates['link'] = updates.pop('url')
+                print(f"[DEBUG][update_object] Normalized alias 'url' -> 'link'")
+            except Exception as e:
+                print(f"[DEBUG][update_object] failed to normalize 'url' -> 'link': {e}")
+        if 'recording_location' in updates and 'location' not in updates:
+            try:
+                updates['location'] = updates.pop('recording_location')
+                print(f"[DEBUG][update_object] Normalized alias 'recording_location' -> 'location'")
+            except Exception as e:
+                print(f"[DEBUG][update_object] failed to normalize 'recording_location' -> 'location': {e}")
+
     DATE_FIELDS = {"recording_date", "concert_date"}
     for date_field in DATE_FIELDS:
         if date_field in updates and updates[date_field] is not None:
@@ -138,12 +322,39 @@ def update_object(obj: Media, updates: Dict[str, Any]):
     sanitized = {}
     for k, v in updates.items():
         if k in DISALLOWED_FIELDS:
-            print(f"[DEBUG][update_object] Skipping disallowed update field: {k}")
+            print(f"[DEBUG][update_object] Skipping disallowed/identifier update field: {k}")
             continue
         if v is None:
             print(f"[DEBUG][update_object] Skipping None value for field '{k}' to preserve existing data")
             continue
         sanitized[k] = v
+
+    # Remove fields that are unchanged compared to current object to avoid unnecessary updates
+    try:
+        import json as _json
+        to_drop = []
+        for k, v in list(sanitized.items()):
+            current = getattr(obj, k, None)
+            equal = False
+            try:
+                # Compare complex structures by canonical JSON
+                if isinstance(v, (dict, list, tuple)) or isinstance(current, (dict, list, tuple)):
+                    cur_ser = _json.dumps(current, sort_keys=True) if current is not None else None
+                    new_ser = _json.dumps(v, sort_keys=True)
+                    if cur_ser == new_ser:
+                        equal = True
+                else:
+                    if current == v:
+                        equal = True
+            except Exception:
+                pass
+            if equal:
+                to_drop.append(k)
+        for k in to_drop:
+            print(f"[DEBUG][update_object] Skipping unchanged field {k}")
+            sanitized.pop(k, None)
+    except Exception as e:
+        print(f"[DEBUG][update_object] unchanged-field check failed: {e}")
 
     if not sanitized:
         print("[DEBUG][update_object] No sanitized fields to update -> returning object")
@@ -166,9 +377,6 @@ def update_object(obj: Media, updates: Dict[str, Any]):
         else:
             media_updates[k] = v
 
-    # --- CRITICAL FIX 4: handle relational fields (authors, genres, performers) ONLY if explicitly provided ---
-    # FIX: Only process relation fields that were explicitly in the update request
-    # Do NOT sync relations for safe fields like linked_media
     relation_map = {
         "authors": ("authors", "media_authors", "author_id"),
         "genres": ("genres", "media_genres", "genre_id"),
@@ -176,15 +384,17 @@ def update_object(obj: Media, updates: Dict[str, Any]):
     }
 
     try:
-        from server.db.db_crud import create_dict_entry as db_create_dict_entry, create_relation as db_create_relation, delete_relation as db_delete_relation
+        from server.db.db_crud import create_dict_entry as db_create_dict_entry, create_relation as db_create_relation, delete_relation as db_delete_relation, fetch_one as _fetch_one
         for key, params in relation_map.items():
             # CRITICAL FIX: Only process if explicitly in updates (not inferred from missing fields)
             if key not in sanitized:
                 print(f"[DEBUG][update_object] Skipping {key} - not explicitly provided in update")
                 continue
             
+            print(f"[DEBUG][update_object] ===== Processing relation: {key} =====")
             table_name, rel_table, rel_col = params
             val = sanitized[key]
+            print(f"[DEBUG][update_object] table_name={table_name}, rel_table={rel_table}, val={val}")
             if val is None:
                 # clear relations
                 try:
@@ -197,54 +407,412 @@ def update_object(obj: Media, updates: Dict[str, Any]):
                 media_updates.pop(key, None)
                 continue
 
-            # normalize to list
-            items = []
-            if isinstance(val, str):
-                # comma separated string -> split
-                items = [s.strip() for s in val.split(",") if s.strip()]
-            elif isinstance(val, (list, tuple)):
-                items = list(val)
-            elif val:  # non-empty non-string/list
-                items = [val]
+            # normalize to list (flatten nested lists/tuples and split comma-separated strings)
+            items = _flatten_relation(val)
+            print(f"[DEBUG][update_object] flattened items for {key}: {items}")
 
             ids = []
             for it in items:
                 try:
-                    if isinstance(it, int):
-                        ids.append(int(it))
+                    print(f"[DEBUG][update_object] processing item={it} (type={type(it).__name__}) for {key}")
+                    # Handle string names first (most common from client)
+                    if isinstance(it, str):
+                        name = it.strip()
+                        if not name:
+                            continue
+                        
+                        entry_id = None
+                        
+                        # Step 1: Try to fetch existing entry by name
+                        try:
+                            from server.db.db_crud import fetch_dict_entry_by_name
+                            row = fetch_dict_entry_by_name(table_name, name)
+                            if row and row.get("id"):
+                                entry_id = row["id"]
+                                print(f"[DEBUG][update_object] found existing {table_name} entry '{name}' -> id={entry_id}")
+                        except Exception as e:
+                            print(f"[DEBUG][update_object] fetch_dict_entry_by_name error for '{name}': {e}")
+                        
+                        # Step 2: If not found, create new entry
+                        if entry_id is None:
+                            try:
+                                nid = db_create_dict_entry(table_name, name)
+                                if nid:
+                                    entry_id = nid
+                                    print(f"[DEBUG][update_object] created {table_name} entry '{name}' -> id={entry_id}")
+                                else:
+                                    print(f"[WARNING][update_object] create_dict_entry returned None for {table_name} entry '{name}'")
+                            except Exception as e:
+                                print(f"[ERROR][update_object] create_dict_entry error for '{name}': {e}")
+                        
+                        # Step 3: After creation, if we still don't have an ID, try to fetch again
+                        if entry_id is None:
+                            try:
+                                from server.db.db_crud import fetch_dict_entry_by_name
+                                row = fetch_dict_entry_by_name(table_name, name)
+                                if row and row.get("id"):
+                                    entry_id = row["id"]
+                                    print(f"[DEBUG][update_object] refetched {table_name} entry '{name}' after creation -> id={entry_id}")
+                                else:
+                                    print(f"[ERROR][update_object] {table_name} entry '{name}' not found after creation attempt")
+                            except Exception as e:
+                                print(f"[ERROR][update_object] refetch_dict_entry_by_name error for '{name}': {e}")
+                        
+                        # Step 4: Only add to ids if we have a valid ID
+                        if entry_id is not None:
+                            ids.append(entry_id)
+                            print(f"[DEBUG][update_object] added id={entry_id} to ids list for {key}")
+                        else:
+                            print(f"[WARNING][update_object] skipping '{name}' - could not obtain ID from {table_name}")
+                        
                         continue
-                    # dict form like {type:'user', id: ...}
+                    
+                    # Handle integer IDs
+                    if isinstance(it, int):
+                        if table_name == "authors":
+                            try:
+                                # prefer explicit authors.id
+                                arow = _fetch_one("SELECT id FROM authors WHERE id=%s", (int(it),))
+                                if arow and arow.get("id"):
+                                    ids.append(int(arow.get("id")))
+                                    continue
+                                # try resolving as users.id -> create/get author linked to user
+                                urow = _fetch_one("SELECT id, username FROM users WHERE id=%s", (int(it),))
+                                if urow and urow.get("id"):
+                                    # try to find existing author for user
+                                    erow = _fetch_one("SELECT id FROM authors WHERE user_id=%s", (int(it),))
+                                    if erow and erow.get("id"):
+                                        ids.append(int(erow.get("id")))
+                                    else:
+                                        try:
+                                            from server.db.db_crud import create_author_with_user
+                                            new_aid = create_author_with_user(int(it), urow.get("username") or f"user_{it}")
+                                            if new_aid:
+                                                ids.append(int(new_aid))
+                                        except Exception as e:
+                                            print(f"[DEBUG][update_object] failed to create author for user id {it}: {e}")
+                                    continue
+                                # unknown integer for authors -> skip
+                                print(f"[DEBUG][update_object] provided id={it} not found in authors or users, skipping")
+                                continue
+                            except Exception as e:
+                                print(f"[DEBUG][update_object] author-id resolution failed for {it}: {e}")
+                                continue
+                        elif table_name == "performers":
+                            try:
+                                # Check if it's a performer ID
+                                prow = _fetch_one("SELECT id FROM performers WHERE id=%s", (int(it),))
+                                if prow and prow.get("id"):
+                                    ids.append(int(prow.get("id")))
+                                    continue
+                                # Try resolving as user ID
+                                urow = _fetch_one("SELECT id, username FROM users WHERE id=%s", (int(it),))
+                                if urow and urow.get("id"):
+                                    erow = _fetch_one("SELECT id FROM performers WHERE user_id=%s", (int(it),))
+                                    if erow and erow.get("id"):
+                                        ids.append(int(erow.get("id")))
+                                    else:
+                                        try:
+                                            from server.db.db_crud import create_performer_with_user
+                                            new_pid = create_performer_with_user(int(it), urow.get("username") or f"user_{it}")
+                                            if new_pid:
+                                                ids.append(int(new_pid))
+                                        except Exception as e:
+                                            print(f"[DEBUG][update_object] failed to create performer for user id {it}: {e}")
+                                    continue
+                                print(f"[DEBUG][update_object] provided performer id={it} not found, skipping")
+                                continue
+                            except Exception as e:
+                                print(f"[DEBUG][update_object] performer-id resolution failed for {it}: {e}")
+                                continue
+                        else:
+                            # For genres, instruments: just verify and use the ID
+                            ids.append(int(it))
+                            continue
+                    
+                    # Handle dict form like {type:'user', id: ...}
                     if isinstance(it, dict):
                         if "id" in it and it["id"]:
                             ids.append(int(it["id"]))
                             continue
+                        
                         name = it.get("name") or it.get("username") or it.get("performer")
-                    else:
-                        name = str(it).strip()
-                    if not name:
+                        if name:
+                            # Treat dict with name as a string name entry
+                            entry_id = None
+                            
+                            # Step 1: Try to fetch
+                            try:
+                                from server.db.db_crud import fetch_dict_entry_by_name
+                                row = fetch_dict_entry_by_name(table_name, name)
+                                if row and row.get("id"):
+                                    entry_id = row["id"]
+                                    ids.append(entry_id)
+                                    print(f"[DEBUG][update_object] found dict entry {table_name} '{name}' -> id={entry_id}")
+                                    continue
+                            except Exception as e:
+                                print(f"[DEBUG][update_object] fetch dict entry error: {e}")
+                            
+                            # Step 2: Create if not found
+                            if entry_id is None:
+                                try:
+                                    nid = db_create_dict_entry(table_name, name)
+                                    if nid:
+                                        entry_id = nid
+                                        print(f"[DEBUG][update_object] created dict entry {table_name} '{name}' -> id={entry_id}")
+                                    else:
+                                        print(f"[WARNING][update_object] create_dict_entry returned None for dict {it}")
+                                except Exception as e:
+                                    print(f"[ERROR][update_object] create dict entry error: {e}")
+                            
+                            # Step 3: Refetch if creation failed
+                            if entry_id is None:
+                                try:
+                                    from server.db.db_crud import fetch_dict_entry_by_name
+                                    row = fetch_dict_entry_by_name(table_name, name)
+                                    if row and row.get("id"):
+                                        entry_id = row["id"]
+                                        print(f"[DEBUG][update_object] refetched dict entry {table_name} '{name}' -> id={entry_id}")
+                                except Exception:
+                                    pass
+                            
+                            # Step 4: Only add if we have ID
+                            if entry_id is not None:
+                                ids.append(entry_id)
+                                print(f"[DEBUG][update_object] added id={entry_id} to ids list for dict {it}")
+                            else:
+                                print(f"[WARNING][update_object] skipping dict entry - could not obtain ID")
                         continue
-                    # create/fetch dict entry
-                    nid = db_create_dict_entry(table_name, name)
-                    if nid:
-                        ids.append(nid)
+                    
+                    # Fallback: convert to string and retry
+                    name = str(it).strip()
+                    if name:
+                        entry_id = None
+                        
+                        # Step 1: Try to fetch
+                        try:
+                            from server.db.db_crud import fetch_dict_entry_by_name
+                            row = fetch_dict_entry_by_name(table_name, name)
+                            if row and row.get("id"):
+                                entry_id = row["id"]
+                                print(f"[DEBUG][update_object] found fallback entry {table_name} '{name}' -> id={entry_id}")
+                        except Exception as e:
+                            print(f"[DEBUG][update_object] fallback fetch error: {e}")
+                        
+                        # Step 2: Create if not found
+                        if entry_id is None:
+                            try:
+                                nid = db_create_dict_entry(table_name, name)
+                                if nid:
+                                    entry_id = nid
+                                    print(f"[DEBUG][update_object] created fallback entry {table_name} '{name}' -> id={entry_id}")
+                                else:
+                                    print(f"[WARNING][update_object] create_dict_entry returned None for fallback '{name}'")
+                            except Exception as e:
+                                print(f"[ERROR][update_object] fallback create error for '{name}': {e}")
+                        
+                        # Step 3: Refetch if creation failed
+                        if entry_id is None:
+                            try:
+                                from server.db.db_crud import fetch_dict_entry_by_name
+                                row = fetch_dict_entry_by_name(table_name, name)
+                                if row and row.get("id"):
+                                    entry_id = row["id"]
+                                    print(f"[DEBUG][update_object] refetched fallback entry {table_name} '{name}' -> id={entry_id}")
+                            except Exception:
+                                pass
+                        
+                        # Step 4: Only add if we have ID
+                        if entry_id is not None:
+                            ids.append(entry_id)
+                            print(f"[DEBUG][update_object] added fallback id={entry_id} to ids list")
+                        else:
+                            print(f"[WARNING][update_object] skipping fallback '{name}' - could not obtain ID")
                 except Exception as e:
-                    print(f"[DEBUG][update_object] failed to normalize relation item {it} for {key}: {e}")
+                    print(f"[ERROR][update_object] failed to normalize relation item {it} for {key}: {e}")
 
             # replace relations in DB: delete existing then insert new ones
             try:
+                print(f"[DEBUG][update_object] Final ids collected for {key}: {ids}")
                 mid = getattr(obj, "id", None)
+                print(f"[DEBUG][update_object] Media id for relations: {mid}")
                 if mid is not None:
+                    print(f"[DEBUG][update_object] Deleting existing relations from {rel_table}")
                     db_delete_relation(rel_table, {"media_id": mid})
+                    print(f"[DEBUG][update_object] Creating {len(ids)} new relations")
                     for iid in ids:
+                        print(f"[DEBUG][update_object] Creating relation: media_id={mid}, {rel_col}={iid}")
                         db_create_relation(rel_table, ("media_id", rel_col), (mid, iid))
                     # update in-memory object
                     setattr(obj, key, ids)
                     print(f"[DEBUG][update_object] Updated {key} relations: {ids}")
+                else:
+                    print(f"[WARNING][update_object] Media id is None, cannot update relations for {key}")
             except Exception as e:
-                print(f"[DEBUG][update_object] failed to update relation table {rel_table}: {e}")
+                print(f"[ERROR][update_object] failed to update relation table {rel_table}: {e}")
+                import traceback
+                traceback.print_exc()
 
             # make sure these are not attempted on media table
             media_updates.pop(key, None)
+
+        # --- SPECIAL: handle 'instruments' field (attach to media_performances.performance_instruments) ---
+        try:
+            if 'instruments' in sanitized:
+                raw = sanitized.get('instruments')
+                items = _flatten_relation(raw)
+
+                instr_ids = []
+                for it in items:
+                    try:
+                        # Handle string names first
+                        if isinstance(it, str):
+                            name = it.strip()
+                            if not name:
+                                continue
+                            
+                            instr_id = None
+                            
+                            # Step 1: Try to fetch existing instrument by name
+                            try:
+                                from server.db.db_crud import fetch_dict_entry_by_name
+                                row = fetch_dict_entry_by_name('instruments', name)
+                                if row and row.get("id"):
+                                    instr_id = row["id"]
+                                    print(f"[DEBUG][update_object] found existing instrument '{name}' -> id={instr_id}")
+                            except Exception as e:
+                                print(f"[DEBUG][update_object] fetch instrument error: {e}")
+                            
+                            # Step 2: Create new instrument if not found
+                            if instr_id is None:
+                                try:
+                                    nid = db_create_dict_entry('instruments', name)
+                                    if nid:
+                                        instr_id = nid
+                                        print(f"[DEBUG][update_object] created instrument '{name}' -> id={instr_id}")
+                                    else:
+                                        print(f"[WARNING][update_object] create_dict_entry returned None for instrument '{name}'")
+                                except Exception as e:
+                                    print(f"[ERROR][update_object] create instrument error: {e}")
+                            
+                            # Step 3: Refetch if creation failed
+                            if instr_id is None:
+                                try:
+                                    from server.db.db_crud import fetch_dict_entry_by_name
+                                    row = fetch_dict_entry_by_name('instruments', name)
+                                    if row and row.get("id"):
+                                        instr_id = row["id"]
+                                        print(f"[DEBUG][update_object] refetched instrument '{name}' -> id={instr_id}")
+                                except Exception:
+                                    pass
+                            
+                            # Step 4: Only add if we have ID
+                            if instr_id is not None:
+                                instr_ids.append(instr_id)
+                                print(f"[DEBUG][update_object] added instrument id={instr_id}")
+                            else:
+                                print(f"[WARNING][update_object] skipping instrument '{name}' - could not obtain ID")
+                            
+                            continue
+                        
+                        # Handle integer IDs
+                        if isinstance(it, int):
+                            instr_ids.append(int(it))
+                            continue
+                        
+                        # Handle dict form
+                        if isinstance(it, dict):
+                            if it.get('id'):
+                                instr_ids.append(int(it.get('id')))
+                                continue
+                            
+                            name = it.get('name')
+                            if name:
+                                instr_id = None
+                                
+                                # Step 1: Try to fetch
+                                try:
+                                    from server.db.db_crud import fetch_dict_entry_by_name
+                                    row = fetch_dict_entry_by_name('instruments', name)
+                                    if row and row.get("id"):
+                                        instr_id = row["id"]
+                                        print(f"[DEBUG][update_object] found dict instrument '{name}' -> id={instr_id}")
+                                except Exception:
+                                    pass
+                                
+                                # Step 2: Create if not found
+                                if instr_id is None:
+                                    try:
+                                        nid = db_create_dict_entry('instruments', name)
+                                        if nid:
+                                            instr_id = nid
+                                            print(f"[DEBUG][update_object] created dict instrument '{name}' -> id={instr_id}")
+                                        else:
+                                            print(f"[WARNING][update_object] create_dict_entry returned None for dict instrument '{name}'")
+                                    except Exception as e:
+                                        print(f"[ERROR][update_object] create dict instrument error: {e}")
+                                
+                                # Step 3: Refetch if creation failed
+                                if instr_id is None:
+                                    try:
+                                        from server.db.db_crud import fetch_dict_entry_by_name
+                                        row = fetch_dict_entry_by_name('instruments', name)
+                                        if row and row.get("id"):
+                                            instr_id = row["id"]
+                                            print(f"[DEBUG][update_object] refetched dict instrument '{name}' -> id={instr_id}")
+                                    except Exception:
+                                        pass
+                                
+                                # Step 4: Only add if we have ID
+                                if instr_id is not None:
+                                    instr_ids.append(instr_id)
+                                    print(f"[DEBUG][update_object] added dict instrument id={instr_id}")
+                                else:
+                                    print(f"[WARNING][update_object] skipping dict instrument - could not obtain ID")
+                            continue
+                        
+                        # Fallback: convert to string
+                        name = str(it).strip()
+                        if not name:
+                            continue
+                        # Try to fetch existing
+                        try:
+                            from server.db.db_crud import fetch_dict_entry_by_name
+                            row = fetch_dict_entry_by_name('instruments', name)
+                            if row and row.get("id"):
+                                instr_ids.append(row["id"])
+                                continue
+                        except Exception:
+                            pass
+                        # Create if not found
+                        try:
+                            nid = db_create_dict_entry('instruments', name)
+                            if nid:
+                                instr_ids.append(nid)
+                        except Exception as e:
+                            print(f"[DEBUG][update_object] fallback instrument create error: {e}")
+                            instr_ids.append(nid)
+                    except Exception as e:
+                        print(f"[DEBUG][update_object] failed to normalize instrument item {it}: {e}")
+
+                # attach instruments to each existing performance for this media
+                mid = getattr(obj, 'id', None)
+                if mid is not None and instr_ids:
+                    from server.db.db_crud import fetch_one as _fetch_one
+                    for pid in getattr(obj, 'performers', []) or []:
+                        try:
+                            row = _fetch_one("SELECT id FROM media_performances WHERE media_id=%s AND performer_id=%s", (mid, pid))
+                            perf_id = row.get('id') if row else None
+                            if perf_id:
+                                # replace existing instruments for performance
+                                db_delete_relation('performance_instruments', {'performance_id': perf_id})
+                                for iid in instr_ids:
+                                    db_create_relation('performance_instruments', ('performance_id','instrument_id'), (perf_id, iid))
+                                print(f"[DEBUG][update_object] Attached instruments {instr_ids} to performance {perf_id} (performer {pid})")
+                        except Exception as e:
+                            print(f"[DEBUG][update_object] failed to attach instruments to performer {pid}: {e}")
+        except Exception as e:
+            print(f"[DEBUG][update_object] instruments handling failed: {e}")
     except Exception as e:
         print(f"[DEBUG][update_object] relation handling failed: {e}")
 
@@ -257,22 +825,37 @@ def update_object(obj: Media, updates: Dict[str, Any]):
             if not result:
                 print(f"[WARNING][update_object] media table update returned False for id={getattr(obj,'id',None)}")
 
-            # If updating a concert link, ensure the concerts row and media.linked_media are kept in sync
+            # If updating a link, ensure linked_media JSON is kept in sync and create concert row when appropriate.
             try:
-                if 'link' in media_updates:
+                if 'link' in media_updates and media_updates.get('link'):
                     mid = getattr(obj, 'id', None)
-                    if mid is not None and getattr(obj, 'type', None) == 'concert':
-                        from server.db.db_crud import create_concert_db, fetch_one, update_media_db as _update_media_db
-                        # upsert concerts table so the latest link/title/description are stored
-                        try:
-                            create_concert_db(mid, media_updates.get('link'), media_updates.get('title') or getattr(obj, 'title', None), media_updates.get('description') or getattr(obj,'description',None))
-                            print(f"[DEBUG][update_object] Updated concerts table for video_id={mid}")
-                        except Exception as e:
-                            print(f"[WARNING][update_object] failed to upsert concerts table: {e}")
+                    link_raw = media_updates.get('link')
 
-                        # merge/update linked_media JSON in media table
+                    # sanitize link similarly to fetch-side logic
+                    try:
+                        cleaned = str(link_raw).strip().strip('"').strip("'")
+                        if cleaned and not cleaned.startswith(("http://","https://")):
+                            cleaned = "https://" + cleaned
+                    except Exception:
+                        cleaned = link_raw
+
+                    # If media is a concert, upsert concerts table as before
+                    try:
+                        if mid is not None and getattr(obj, 'type', None) == 'concert':
+                            from server.db.db_crud import create_concert_db, fetch_one, update_media_db as _update_media_db
+                            try:
+                                create_concert_db(mid, cleaned, media_updates.get('title') or getattr(obj, 'title', None), media_updates.get('description') or getattr(obj,'description',None))
+                                print(f"[DEBUG][update_object] Updated concerts table for video_id={mid}")
+                            except Exception as e:
+                                print(f"[WARNING][update_object] failed to upsert concerts table: {e}")
+                    except Exception as e:
+                        print(f"[WARNING][update_object] concert upsert failed: {e}")
+
+                    # If client explicitly provided 'linked_media' in the update, respect that and do not auto-merge
+                    if 'linked_media' not in sanitized:
                         try:
-                            cur_row = fetch_one("SELECT linked_media FROM media WHERE id=%s", (mid,))
+                            from server.db.db_crud import fetch_one, update_media_db as _update_media_db
+                            cur_row = fetch_one("SELECT linked_media FROM media WHERE id=%s", (mid,)) if mid is not None else None
                             existing = cur_row.get('linked_media') if cur_row else None
                             try:
                                 lm = json.loads(existing) if existing else []
@@ -280,16 +863,29 @@ def update_object(obj: Media, updates: Dict[str, Any]):
                                 lm = []
                             if not isinstance(lm, list):
                                 lm = [lm]
-                            link = media_updates.get('link')
-                            entry = {"type": "link", "source": ("youtube" if "youtube" in (link or "").lower() else "external"), "url": link, "title": media_updates.get('title') or getattr(obj, 'title', None)}
-                            # avoid duplicate by url
-                            if not any(isinstance(i, dict) and i.get('url') == link for i in lm):
+
+                            entry = {"type": "link", "source": ("youtube" if "youtube" in (cleaned or "").lower() else "external"), "url": cleaned, "title": media_updates.get('title') or getattr(obj, 'title', None)}
+
+                            # If an entry with same url exists, update its title/embed fields; otherwise append
+                            found = False
+                            for e in lm:
+                                if isinstance(e, dict) and e.get('url') == cleaned:
+                                    e.update({"title": entry.get('title')})
+                                    found = True
+                                    break
+                            if not found:
                                 lm.append(entry)
+
+                            # persist only if changed
+                            try:
                                 _update_media_db(mid, {'linked_media': json.dumps(lm)})
+                                print(f"[DEBUG][update_object] Synced linked_media for media_id={mid}: {lm}")
+                            except Exception as e:
+                                print(f"[WARNING][update_object] failed to persist linked_media: {e}")
                         except Exception as e:
                             print(f"[WARNING][update_object] failed to sync linked_media: {e}")
             except Exception as e:
-                print(f"[WARNING][update_object] concert link sync failed: {e}")
+                print(f"[WARNING][update_object] link sync failed: {e}")
     except Exception as e:
         print(f"[ERROR][update_object] failed to update media table: {e}")
         # Return object in error state but don't crash
@@ -307,7 +903,7 @@ def update_object(obj: Media, updates: Dict[str, Any]):
             # Return object in error state but don't crash
             return obj
 
-    print(f"[DEBUG][update_object] Object after DB update {obj}")
+    print(f"[DEBUG][update_object] ===== END ===== Object after DB update {obj}")
     return obj
 
 def delete_object(obj: Media):
@@ -355,10 +951,39 @@ def get_media_services(user_obj, media_id: int):
 
 def update_media_services(user_obj, media_id: int, updates: dict):
     """Generic media update."""
-    media = get_object(Media, media_id)
-    if not media:
-        return {"error": "Media not found"}
-    return update_object(media, updates)
+    print(f"[DEBUG][update_media_services] START - media_id={media_id} (type={type(media_id).__name__}), updates keys={list(updates.keys()) if isinstance(updates, dict) else 'not a dict'}")
+    try:
+        # Ensure media_id is an integer
+        if isinstance(media_id, str):
+            try:
+                media_id = int(media_id)
+                print(f"[DEBUG][update_media_services] Converted media_id from string to int: {media_id}")
+            except ValueError as e:
+                print(f"[ERROR][update_media_services] Failed to convert media_id '{media_id}' to int: {e}")
+                return {"error": f"Invalid media_id: {media_id}"}
+        
+        print(f"[DEBUG][update_media_services] Fetching media object for id={media_id}")
+        media = get_object(Media, media_id)
+        print(f"[DEBUG][update_media_services] Fetched media: {media}")
+        if not media:
+            print(f"[ERROR][update_media_services] Media not found for id={media_id}")
+            return {"error": "Media not found"}
+        
+        # CRITICAL FIX: Convert all relation field names to IDs IMMEDIATELY
+        # This ensures update_object ONLY receives integer IDs, not string names
+        print(f"[DEBUG][update_media_services] Converting relation names to IDs")
+        updates = convert_relation_names_to_ids(updates)
+        print(f"[DEBUG][update_media_services] After name→ID conversion, updates: {updates}")
+        
+        print(f"[DEBUG][update_media_services] Calling update_object with {len(updates)} updates (all relations are now IDs)")
+        result = update_object(media, updates)
+        print(f"[DEBUG][update_media_services] update_object returned: {result}")
+        return result
+    except Exception as e:
+        import traceback
+        print(f"[ERROR][update_media_services] Exception: {e}")
+        traceback.print_exc()
+        return {"error": str(e)}
 
 def delete_media_services(user_obj, media_id: int):
     """Generic media delete."""
@@ -413,6 +1038,14 @@ def create_song_services(user_obj, data: dict = None, **kwargs):
             data['genres'] = [s.strip() for s in g.split(',') if s.strip()]
         elif isinstance(g, (list, tuple)):
             data['genres'] = list(g)
+
+    # Normalize 'genres' when provided as a single comma-separated string (client may send this)
+    if 'genres' in data and isinstance(data.get('genres'), str):
+        try:
+            data['genres'] = [s.strip() for s in data.get('genres', '').split(',') if s.strip()]
+        except Exception:
+            # leave as-is on failure; ensure it's not iterated as characters later
+            data['genres'] = [data.get('genres')]
 
     # support publish-on-behalf: map on_behalf_of or target_username -> user_id if present
     behalf_username = data.get('target_username') or data.get('on_behalf_of')
@@ -539,6 +1172,11 @@ def update_song_services(user_obj, song_id: int, updates: dict):
     if not song:
         print("[DEBUG][update_song_services] Song not found")
         return {"error": "Song not found"}
+    try:
+        if isinstance(updates, dict):
+            updates = convert_relation_names_to_ids(updates)
+    except Exception as e:
+        print(f"[WARNING][update_song_services] name->id conversion failed: {e}")
     return update_object(song, updates)
 
 def delete_song_services(user_obj, song_id: int):
@@ -606,6 +1244,13 @@ def create_document_services(user_obj, data: dict = None, **kwargs):
         elif isinstance(g, (list, tuple)):
             data['genres'] = list(g)
 
+    # Normalize 'genres' when provided as a single comma-separated string
+    if 'genres' in data and isinstance(data.get('genres'), str):
+        try:
+            data['genres'] = [s.strip() for s in data.get('genres', '').split(',') if s.strip()]
+        except Exception:
+            data['genres'] = [data.get('genres')]
+
     data["type"] = "document"
     if data.get("stored_at") is None:
         data["stored_at"] = "server/storage/documents"
@@ -619,6 +1264,11 @@ def update_document_services(user_obj, doc_id: int, updates: dict):
     doc_obj = get_object(Media, doc_id)
     if not doc_obj:
         return {"error": "Document not found"}
+    try:
+        if isinstance(updates, dict):
+            updates = convert_relation_names_to_ids(updates)
+    except Exception as e:
+        print(f"[WARNING][update_document_services] name->id conversion failed: {e}")
     return update_object(doc_obj, updates)
 
 def delete_document_services(user_obj, doc_id: int):
@@ -668,6 +1318,21 @@ def create_video_services(user_obj, data: dict = None, **kwargs):
                 data["duration"] = int(round(float(auto.get("duration"))))
             except Exception:
                 pass
+
+    # Normalize single-string genre alias
+    if 'genre' in data and 'genres' not in data:
+        g = data.get('genre')
+        if isinstance(g, str):
+            data['genres'] = [s.strip() for s in g.split(',') if s.strip()]
+        elif isinstance(g, (list, tuple)):
+            data['genres'] = list(g)
+
+    # Normalize 'genres' when provided as a single comma-separated string
+    if 'genres' in data and isinstance(data.get('genres'), str):
+        try:
+            data['genres'] = [s.strip() for s in data.get('genres', '').split(',') if s.strip()]
+        except Exception:
+            data['genres'] = [data.get('genres')]
 
     data["type"] = "video"
     if data.get("stored_at") is None:
@@ -858,6 +1523,11 @@ def update_video_services(user_obj, video_id: int, updates: dict):
     if not video:
         print(f"[DEBUG][update_video_services] video not found for id={video_id}")
         return {"error": "Video not found"}
+    try:
+        if isinstance(updates, dict):
+            updates = convert_relation_names_to_ids(updates)
+    except Exception as e:
+        print(f"[WARNING][update_video_services] name->id conversion failed: {e}")
     res = update_object(video, updates)
     print(f"[DEBUG][update_video_services] update result for video_id={video_id}: {res}")
     return res
@@ -888,6 +1558,11 @@ def update_concert_services(user_obj, concert_id: int, updates: dict):
         safe_updates['type'] = 'concert'
     
     try:
+        try:
+            if isinstance(safe_updates, dict):
+                safe_updates = convert_relation_names_to_ids(safe_updates)
+        except Exception as e:
+            print(f"[WARNING][update_concert_services] name->id conversion failed: {e}")
         res = update_object(concert, safe_updates)
         print(f"[DEBUG][update_concert_services] update_object result: {res}")
         
@@ -1196,35 +1871,20 @@ def get_media_services(user_obj, media_id: int):
         except Exception:
             m["username"] = m.get("username")  # keep existing if present
 
-        # resolve authors -> names
-        try:
-            author_ids = m.get("authors") or []
-            if author_ids:
-                rows = fetch_all("SELECT id, name FROM authors WHERE id = ANY(%s);", (author_ids,))
-                author_names = [r["name"] for r in rows]
-            else:
-                author_names = []
-            m["author_names"] = author_names
-            if not m.get("author"):
-                if author_names:
-                    m["author"] = ", ".join(author_names)
-                else:
-                    m["author"] = m.get("username") or None
-        except Exception:
-            m["author_names"] = m.get("author_names", [])
-            m["author"] = m.get("author") or m.get("username")
+        # author_names and tags are ALREADY resolved by fetch_media_db with JOINs
+        # Just ensure they have sensible defaults
+        if not m.get("author_names"):
+            m["author_names"] = []
+        if not m.get("tags"):
+            m["tags"] = []
 
-        # resolve genre tags -> names
-        try:
-            genre_ids = m.get("genres") or []
-            if genre_ids:
-                rows = fetch_all("SELECT id, name FROM genres WHERE id = ANY(%s);", (genre_ids,))
-                tags = [r["name"] for r in rows]
+        # Build single author/tag display string if needed
+        if not m.get("author"):
+            author_names = m.get("author_names", [])
+            if author_names:
+                m["author"] = ", ".join(str(name) for name in author_names if name)
             else:
-                tags = []
-            m["tags"] = tags
-        except Exception:
-            m["tags"] = m.get("tags", [])
+                m["author"] = m.get("username") or None
 
         # duration formatting (seconds -> M:SS)
         try:
@@ -1243,6 +1903,12 @@ def get_media_services(user_obj, media_id: int):
         # published date: expose year as 'date' (client expects date)
         if m.get("year") is not None and not m.get("date"):
             m["date"] = str(m.get("year"))
+
+        # provide legacy 'tags' alias for client-side that may expect 'tags' instead of 'genres'
+        try:
+            m['tags'] = m.get('genres') if isinstance(m.get('genres'), list) else (m.get('genres') or [])
+        except Exception:
+            m['tags'] = m.get('genres') or []
 
         # If this media is a concert, fetch the full concert row (link, segments)
         try:

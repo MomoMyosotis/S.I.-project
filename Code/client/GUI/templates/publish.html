@@ -68,16 +68,20 @@
       <!-- LINK -->
       <fieldset id="linkFields">
         <legend>Link</legend>
-        <label>Title <input type="text" id="linkTitle" name="title" required /></label>
+        <label>Title <span class="required-mark">*</span><input type="text" id="linkTitle" name="title" required /></label>
         <label>Description <textarea id="linkDesc" name="description" rows="3"></textarea></label>
-        <label>URL <input type="url" id="linkUrl" name="url" required placeholder="https://..." /></label>
+        <label>URL <span class="required-mark">*</span><input type="url" id="linkUrl" name="url" required placeholder="https://..." /></label>
         <div id="linkPreview" style="margin-top:8px"></div>
 
         <label>Publication date <input type="date" id="linkPublicationDate" name="publication_date" /></label>
+        <label>Tags <input type="text" id="linkTags" placeholder="comma separated" /></label>
         <div class="small">Auto-extracted from YouTube: duration=<span id="linkDuration">-</span></div>
 
         <label><input type="checkbox" id="linkIAmAuthor" /> I am author</label>
         <label><input type="checkbox" id="linkIAmPerformer" /> I am performer</label>
+
+        <label>Performers <input type="text" id="linkPerformers" placeholder="comma separated (optional)" /></label>
+        <label>Instruments <input type="text" id="linkInstruments" placeholder="comma separated (optional)" /></label>
 
         <label><input type="checkbox" id="linkIsLive" /> Is Live</label>
         <div id="linkLiveInfo">
@@ -89,11 +93,13 @@
       <!-- DOCUMENT -->
       <fieldset id="docFields" class="hidden">
         <legend>Document</legend>
-        <label>File <input type="file" id="docFile" accept=".pdf,application/pdf, .doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
-        <label>Title <input type="text" id="docTitle" name="docTitle" required /></label>
+        <label>File <span class="required-mark">*</span><input type="file" id="docFile" accept=".pdf,application/pdf, .doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+        <label>Title <span class="required-mark">*</span><input type="text" id="docTitle" name="docTitle" required /></label>
         <label>Description <textarea id="docDesc" rows="3"></textarea></label>
         <label>Genres <input type="text" id="docGenres" placeholder="comma separated" /></label>
         <label>Publication year <input type="number" id="docYear" min="1000" max="3000" /></label>
+        <label>Performers <input type="text" id="docPerformers" placeholder="comma separated (optional)" /></label>
+        <label>Instruments <input type="text" id="docInstruments" placeholder="comma separated (optional)" /></label>
         <div class="linked-uploader" data-type="document" id="docUploader">
           <label>Upload linked files</label>
           <div class="dropzone" id="docDropzone">Drop files here or click to select</div>
@@ -107,8 +113,8 @@
       <!-- AUDIO -->
       <fieldset id="audioFields" class="hidden">
         <legend>Audio / Song</legend>
-        <label>File <input type="file" id="audioFile" accept="audio/*" required /></label>
-        <label>Title <input type="text" id="audioTitle" required /></label>
+        <label>File <span class="required-mark">*</span><input type="file" id="audioFile" accept="audio/*" required /></label>
+        <label>Title <span class="required-mark">*</span><input type="text" id="audioTitle" required /></label>
         <label>Description <textarea id="audioDesc" rows="3"></textarea></label>
         <label>Genres <input type="text" id="audioGenres" placeholder="comma separated" /></label>
         <label>Publication year <input type="number" id="audioYear" min="1000" max="3000" /></label>
@@ -123,10 +129,8 @@
         <label><input type="checkbox" id="audioIAmAuthor" /> I am author</label>
         <label><input type="checkbox" id="audioIAmPerformer" /> I am performer</label>
 
-        <div id="audioPerformerBlock" class="hidden">
-          <label>Performers <input type="text" id="audioPerformers" placeholder="comma separated" /></label>
-          <label>Instruments <input type="text" id="audioInstruments" placeholder="comma separated" /></label>
-        </div>
+        <label>Performers <input type="text" id="audioPerformers" placeholder="comma separated (optional)" /></label>
+        <label>Instruments <input type="text" id="audioInstruments" placeholder="comma separated (optional)" /></label>
 
         <label><input type="checkbox" id="audioIsLive"
   /> Is Live</label>
@@ -141,8 +145,8 @@
       <!-- VIDEO -->
       <fieldset id="videoFields" class="hidden">
         <legend>Video</legend>
-        <label>File <input type="file" id="videoFile" accept="video/*" required /></label>
-        <label>Title <input type="text" id="videoTitle" required /></label>
+        <label>File <span class="required-mark">*</span><input type="file" id="videoFile" accept="video/*" required /></label>
+        <label>Title <span class="required-mark">*</span><input type="text" id="videoTitle" required /></label>
         <label>Description <textarea id="videoDesc" rows="3"></textarea></label>
         <label>Genres <input type="text" id="videoGenres" placeholder="comma separated" /></label>
         <label>Publication year <input type="number" id="videoYear" min="1000" max="3000" /></label>
@@ -157,10 +161,8 @@
         <label><input type="checkbox" id="videoIAmAuthor" /> I am author</label>
         <label><input type="checkbox" id="videoIAmPerformer" /> I am performer</label>
 
-        <div id="videoPerformerBlock" class="hidden">
-          <label>Performers <input type="text" id="videoPerformers" placeholder="comma separated" /></label>
-          <label>Instruments <input type="text" id="videoInstruments" placeholder="comma separated" /></label>
-        </div>
+        <label>Performers <input type="text" id="videoPerformers" placeholder="comma separated (optional)" /></label>
+        <label>Instruments <input type="text" id="videoInstruments" placeholder="comma separated (optional)" /></label>
 
         <label><input type="checkbox" id="videoIsLive" /> Is Live</label>
         <div id="videoLiveInfo">
@@ -186,884 +188,355 @@
     </form>
   </main>
 
-  <script>
-  /************************************************************************
-   * publish.html - client
-   * - auto fills username/lvl from SERVER_USER or body data-attributes
-   * - supports publish-on-behalf toggle
-   * - dynamic fields per media type
-   * - MIME/type checks and automatic extraction (pdf pages, media duration)
-   * - builds FormData in the shape expected by your Flask publish_bp
-   * - on success redirects to /profile?username=<target>
-   ************************************************************************/
+<script>
+(() => {
+  /* ==========================================================
+   * BOOTSTRAP
+   * ========================================================== */
+  const $ = id => document.getElementById(id);
+  const body = document.body;
 
-  (function(){
-    // --- Bootstrap user data ---
-    const body = document.body;
-    const SERVER_USER = window.SERVER_USER || null;
-    const loggedUsername = SERVER_USER?.username || body.dataset.username || '';
-    const loggedLvlRaw = SERVER_USER?.lvl ?? body.dataset.userlvl ?? '';
-    const loggedLvl = (loggedLvlRaw === '' || loggedLvlRaw === undefined) ? null : Number(loggedLvlRaw);
-    const initialTarget = SERVER_USER?.target || body.dataset.target || '';
+  const SERVER = window.SERVER_USER || {};
+  const logged = {
+    username: SERVER.username || body.dataset.username || '',
+    lvl: Number(SERVER.lvl ?? body.dataset.userlvl ?? null),
+    target: SERVER.target || body.dataset.target || ''
+  };
 
-    // --- Elements ---
-    const whoamiEl = document.getElementById('whoami');
-    const btnProfile = document.getElementById('btnProfile');
-    const btnFeed = document.getElementById('btnFeed');
+  $('username').value = logged.username;
+  $('userlvl').value = Number.isFinite(logged.lvl) ? logged.lvl : '';
+  $('whoami').textContent =
+    `${logged.username || 'anonymous'}${Number.isFinite(logged.lvl) ? ` (lvl ${logged.lvl})` : ''}`;
 
-    const usernameInput = document.getElementById('username');
-    const userlvlInput = document.getElementById('userlvl');
+  /* ==========================================================
+   * PERMISSIONS
+   * ========================================================== */
+  const CAN_PUBLISH = {
+    link: lvl => lvl >= 0 && lvl <= 5,
+    document: lvl => [0, 1, 3].includes(lvl),
+    audio: lvl => [0, 1, 3].includes(lvl),
+    video: lvl => [0, 1, 3].includes(lvl)
+  };
 
-    const onBehalfToggle = document.getElementById('onBehalfToggle');
-    const targetLabel = document.getElementById('targetLabel');
-    const targetInput = document.getElementById('targetInput');
+  const canOnBehalf = [0, 1].includes(logged.lvl);
 
-    // --- Helper to resolve target username for navigation ---
-    function resolvedTargetUsername(){
-      // prefer explicitly-entered 'on behalf' username when toggle checked
-      try {
-        const toggleChecked = Boolean(onBehalfToggle && onBehalfToggle.checked);
-        const explicit = onBehalfToggle && targetInput && targetInput.value ? targetInput.value.trim() : '';
-        if (toggleChecked && explicit) return explicit;
-      } catch(e){}
-      // fallback to initialTarget (body data-target) then loggedUsername
-      return initialTarget || loggedUsername || '';
+  /* ==========================================================
+   * MEDIA CONFIG
+   * ========================================================== */
+  const MEDIA = {
+    link: {
+      fs: 'linkFields',
+      title: 'linkTitle',
+      file: null,
+      live: 'linkIsLive',
+      liveInfo: 'linkLiveInfo'
+    },
+    document: {
+      fs: 'docFields',
+      title: 'docTitle',
+      file: 'docFile',
+      auto: { format: 'docFormat', pages: 'docPages' }
+    },
+    audio: {
+      fs: 'audioFields',
+      title: 'audioTitle',
+      file: 'audioFile',
+      live: 'audioIsLive',
+      liveInfo: 'audioLiveInfo',
+      auto: { duration: 'audioDuration', format: 'audioFormat' }
+    },
+    video: {
+      fs: 'videoFields',
+      title: 'videoTitle',
+      file: 'videoFile',
+      live: 'videoIsLive',
+      liveInfo: 'videoLiveInfo',
+      auto: { duration: 'videoDuration', format: 'videoFormat' }
     }
+  };
 
-    // --- Wire navigation buttons ---
-    if (btnProfile){
-      btnProfile.addEventListener('click', (ev) => {
-        const target = resolvedTargetUsername();
-        const url = target ? `/home?form_type=profile&username=${encodeURIComponent(target)}` : `/home?form_type=profile`;
-        window.location.href = url;
-      });
+  /* ==========================================================
+   * VISIBILITY
+   * ========================================================== */
+  function updateVisibility() {
+    const type = $('mediaType').value;
+    Object.entries(MEDIA).forEach(([k, cfg]) => {
+      $(cfg.fs).classList.toggle('hidden', k !== type);
+    });
+    updatePermissions(type);
+    updateLiveRequired(type);
+    validate();
+  }
+
+  function updatePermissions(type) {
+    const allowed = CAN_PUBLISH[type]?.(logged.lvl);
+    $('submitBtn').disabled = !allowed;
+    $('permMsg').textContent = allowed
+      ? ''
+      : `Permission denied: lvl ${logged.lvl} cannot publish ${type}.`;
+  }
+
+  function updateLiveRequired(type) {
+    const cfg = MEDIA[type];
+    if (!cfg?.live) return;
+    const on = $(cfg.live).checked;
+    cfg.liveInfo &&
+      [...$(cfg.liveInfo).querySelectorAll('input')]
+        .forEach(i => (i.required = on));
+  }
+
+  /* ==========================================================
+   * ON BEHALF
+   * ========================================================== */
+  const onBehalf = $('onBehalfToggle');
+  const targetBox = $('targetLabel');
+
+  onBehalf.disabled = !canOnBehalf;
+  if (logged.target) {
+    onBehalf.checked = true;
+    targetBox.classList.remove('hidden');
+    $('targetInput').value = logged.target;
+  }
+
+  onBehalf.addEventListener('change', e => {
+    if (!canOnBehalf && e.target.checked) {
+      e.target.checked = false;
+      alert('Not allowed');
+      return;
     }
+    targetBox.classList.toggle('hidden', !e.target.checked);
+    if (!e.target.checked) $('targetInput').value = '';
+  });
 
-    if (btnFeed){
-      btnFeed.addEventListener('click', (ev) => {
-        const target = resolvedTargetUsername();
-        const url = target ? `/home?form_type=feed&username=${encodeURIComponent(target)}` : `/home?form_type=feed`;
-        window.location.href = url;
-      });
-    }
+  /* ==========================================================
+   * VALIDATION
+   * ========================================================== */
 
-  })();
-  /************************************************************************
-   * publish.html - client
-   * - auto fills username/lvl from SERVER_USER or body data-attributes
-   * - supports publish-on-behalf toggle
-   * - dynamic fields per media type
-   * - MIME/type checks and automatic extraction (pdf pages, media duration)
-   * - builds FormData in the shape expected by your Flask publish_bp
-   * - on success redirects to /profile?username=<target>
-   ************************************************************************/
-
-  (function(){
-    // --- Bootstrap user data ---
-    const body = document.body;
-    const SERVER_USER = window.SERVER_USER || null;
-    const loggedUsername = SERVER_USER?.username || body.dataset.username || '';
-    const loggedLvlRaw = SERVER_USER?.lvl ?? body.dataset.userlvl ?? '';
-    const loggedLvl = (loggedLvlRaw === '' || loggedLvlRaw === undefined) ? null : Number(loggedLvlRaw);
-    const initialTarget = SERVER_USER?.target || body.dataset.target || '';
-
-    // --- Elements ---
-    const whoamiEl = document.getElementById('whoami');
-    const btnProfile = document.getElementById('btnProfile');
-    const btnFeed = document.getElementById('btnFeed');
-
-    const usernameInput = document.getElementById('username');
-    const userlvlInput = document.getElementById('userlvl');
-
-    const onBehalfToggle = document.getElementById('onBehalfToggle');
-    const targetLabel = document.getElementById('targetLabel');
-    const targetInput = document.getElementById('targetInput');
-
-    const mediaType = document.getElementById('mediaType');
-    const permMsg = document.getElementById('permMsg');
-    const submitBtn = document.getElementById('submitBtn');
-
-    const linkFields = document.getElementById('linkFields');
-    const docFields = document.getElementById('docFields');
-    const audioFields = document.getElementById('audioFields');
-    const videoFields = document.getElementById('videoFields');
-
-    const linkIsLive = document.getElementById('linkIsLive');
-    const linkLiveInfo = document.getElementById('linkLiveInfo');
-    const audioIsLive = document.getElementById('audioIsLive');
-    const audioLiveInfo = document.getElementById('audioLiveInfo');
-    const videoIsLive = document.getElementById('videoIsLive');
-    const videoLiveInfo = document.getElementById('videoLiveInfo');
-
-    const audioIAmPerformer = document.getElementById('audioIAmPerformer');
-    const videoIAmPerformer = document.getElementById('videoIAmPerformer');
-    const audioPerformerBlock = document.getElementById('audioPerformerBlock');
-    const videoPerformerBlock = document.getElementById('videoPerformerBlock');
-
-    const docFile = document.getElementById('docFile');
-    const docFormatEl = document.getElementById('docFormat');
-    const docPagesEl = document.getElementById('docPages');
-
-    const audioFile = document.getElementById('audioFile');
-    const audioDurationEl = document.getElementById('audioDuration');
-    const audioFormatEl = document.getElementById('audioFormat');
-
-    const videoFile = document.getElementById('videoFile');
-    const videoDurationEl = document.getElementById('videoDuration');
-    const videoFormatEl = document.getElementById('videoFormat');
-
-    const payloadView = document.getElementById('payloadView');
-    const previewBtn = document.getElementById('previewBtn');
-    const publishForm = document.getElementById('publishForm');
-
-    // lists
-    const docLinkMedia = document.getElementById('docLinkMedia');
-    const audioLinkMedia = document.getElementById('audioLinkMedia');
-    const videoLinkMedia = document.getElementById('videoLinkMedia');
+  function requiredIf(cond, el) {
+    if (!el) return true;
+    if (!cond) return true;
+    return !!el.value.trim();
+  }
 
 
-    // simple media id placeholder (in real app populate from server)
-    const existingMedia = [101,102,203,304,405];
-    function populateMediaSelect(sel){
-      if(!sel) return;
+function validate() {
+  const type = $('mediaType').value;
+  const cfg = MEDIA[type];
+  if (!cfg) return;
 
-      sel.innerHTML = '';
-      existingMedia.forEach(id=>{
-        const o = document.createElement('option');
-        o.value = id;
-        o.textContent = `media(${id})`;
-        sel.appendChild(o);
-      });
-    }
-    [docLinkMedia, audioLinkMedia, videoLinkMedia].forEach(populateMediaSelect);
+  const title = $(cfg.title);
+  const file = cfg.file ? $(cfg.file) : null;
 
-    // --- linked files manager ---
-    const linkedFiles = { document: [], audio: [], video: [] };
-    function initLinkedUploader(selectEl, inputId, dropzoneId, listId, typeKey){
-      const input = document.getElementById(inputId);
-      const dropzone = document.getElementById(dropzoneId);
-      const list = document.getElementById(listId);
-      if(!dropzone || !input || !list) return;
-      function renderList(){
-        list.innerHTML = '';
-        (linkedFiles[typeKey]||[]).forEach((f, idx)=>{
-          const item = document.createElement('div');
-          item.className = 'linked-item';
-          item.innerHTML = `<span class="fname">${f.name}</span> <button type="button" class="btn small-btn remove-link" data-idx="${idx}">Remove</button>`;
-          item.querySelector('.remove-link').addEventListener('click', ()=>{ linkedFiles[typeKey].splice(idx,1); renderList(); });
-          list.appendChild(item);
-        });
+  const okTitle = title?.value.trim();
+  const okFile = !file || file.files.length;
+
+  // --- BASE ---
+  let ok = okTitle && okFile && CAN_PUBLISH[type](logged.lvl);
+
+  // --- CONDITIONAL: IS LIVE ---
+  if (cfg.live && cfg.liveInfo) {
+    const liveOn = $(cfg.live)?.checked;
+
+    [...$(cfg.liveInfo).querySelectorAll('input')].forEach(i => {
+      if (liveOn) {
+        const good = i.value.trim();
+        i.classList.toggle('required-empty', !good);
+        ok = ok && good;
+      } else {
+        i.classList.remove('required-empty'); // <-- QUESTO MANCAVA
       }
-      dropzone.addEventListener('click', ()=> input.click());
-      dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('dragover'); });
-      dropzone.addEventListener('dragleave', e=>{ dropzone.classList.remove('dragover'); });
-      dropzone.addEventListener('drop', e=>{ e.preventDefault(); dropzone.classList.remove('dragover'); const files=Array.from(e.dataTransfer.files||[]); files.forEach(f=> linkedFiles[typeKey].push(f)); renderList(); });
-      input.addEventListener('change', e=>{ const files=Array.from(e.target.files||[]); files.forEach(f=> linkedFiles[typeKey].push(f)); renderList(); input.value=''; });
-    }
-    initLinkedUploader(docLinkMedia, 'docLinkedFiles', 'docDropzone', 'docLinkedList', 'document');
-    initLinkedUploader(audioLinkMedia, 'audioLinkedFiles', 'audioDropzone', 'audioLinkedList', 'audio');
-    initLinkedUploader(videoLinkMedia, 'videoLinkedFiles', 'videoDropzone', 'videoLinkedList', 'video');
+    });
+  }
 
-    // initialize fields
-    usernameInput.value = loggedUsername;
-    userlvlInput.value = (loggedLvl !== null && !Number.isNaN(loggedLvl)) ? String(loggedLvl) : '';
-    
-    // AUTO-ACTIVATE "publish on behalf" when target username is provided
-    if(initialTarget) {
-      onBehalfToggle.checked = true;
-      targetLabel.classList.remove('hidden');
-      targetInput.value = initialTarget;
-      // Trigger change event in case there are listeners
-      onBehalfToggle.dispatchEvent(new Event('change'));
+
+  // --- CONDITIONAL: IS PERFORMER ---
+  const performerMap = {
+    link: ['linkIAmPerformer', 'linkInstruments'],
+    audio: ['audioIAmPerformer', 'audioInstruments'],
+    video: ['videoIAmPerformer', 'videoInstruments']
+  };
+
+  const p = performerMap[type];
+  if (p) {
+    const [chkId, instrId] = p;
+    const chk = $(chkId);
+    const instr = $(instrId);
+
+    if (chk?.checked) {
+      const good = instr.value.trim();
+      instr.classList.toggle('required-empty', !good);
+      ok = ok && good;
     } else {
-      onBehalfToggle.checked = false;
-      targetLabel.classList.add('hidden');
-      targetInput.value = '';
+      instr.classList.remove('required-empty');
     }
-    whoamiEl.textContent = (loggedUsername || 'anonymous') + (loggedLvl !== null ? ` (lvl ${loggedLvl})` : '');
+  }
 
-    // --- Check if user is allowed to publish on behalf (only admins/mods: level 0-1) ---
-    const canPublishOnBehalf = loggedLvl !== null && [0, 1].includes(loggedLvl);
-    if (!canPublishOnBehalf) {
-      onBehalfToggle.disabled = true;
-      targetLabel.classList.add('hidden');
-      // optionally add visual indicator that this feature is not available
-      const toggleLabel = document.querySelector('label[for="onBehalfToggle"]');
-      if (toggleLabel) {
-        toggleLabel.title = 'Only administrators (level 0) and moderators (level 1) can publish on behalf of others';
-        toggleLabel.style.opacity = '0.6';
-        toggleLabel.style.cursor = 'not-allowed';
-      }
+  // --- UI feedback ---
+  title?.classList.toggle('required-empty', !okTitle);
+  file?.classList.toggle('required-empty', !okFile);
+
+  $('submitBtn').disabled = !ok;
+}
+
+  /* ==========================================================
+   * YOUTUBE PREVIEW
+   * ========================================================== */
+  function extractYouTubeId(url) {
+    if (!url) return null;
+    const m = url.match(/(?:v=|\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{11})/i);
+    return m ? m[1] : null;
+  }
+
+  async function fetchYouTubeDuration(videoId) {
+    try {
+      const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+      return res.ok ? await res.json() : null;
+    } catch (e) {
+      return null;
     }
+  }
 
-    // --- Toggle on-behalf ---
-    onBehalfToggle.addEventListener('change', (ev)=>{
-      const on = !!ev.target.checked;
-      if(on){
-        if (!canPublishOnBehalf) {
-          // Prevent toggle if not authorized
-          ev.target.checked = false;
-          alert('You do not have permission to publish on behalf of other users. Only administrators and moderators can use this feature.');
-          return;
-        }
-        targetLabel.classList.remove('hidden');
-      } else {
-        targetLabel.classList.add('hidden');
-        targetInput.value = '';
-      }
-      // update whoami shown (keeps the logged user in place; profile button chooses target at click)
-    });
+  $('linkUrl').addEventListener('input', async e => {
+    const url = e.target.value.trim();
+    const preview = $('linkPreview');
+    const vidId = extractYouTubeId(url);
 
-    // --- permission checks ---
-    function canPublishClient(type, lvl){
-      // Links (including concert links) are allowed to be created by users lvl 0..5 (banned=6 blocked)
-      if(type === 'link') return (lvl !== null) && (lvl >= 0 && lvl <= 5);
-      if(['document','audio','video'].includes(type)) return (lvl !== null) && ([0,1,3].includes(lvl));
-      return false;
+    if (!vidId) {
+      preview.innerHTML = url ? '<div style="color:#a00">Not a valid YouTube URL</div>' : '';
+      $('linkDuration').textContent = '-';
+      return;
     }
 
-    function updateVisibility(){
-      const t = mediaType.value;
-      // show/hide relevant fieldsets
-      // show link fields only for link type
-      linkFields.classList.toggle('hidden', t !== 'link');
-      docFields.classList.toggle('hidden', t !== 'document');
-      audioFields.classList.toggle('hidden', t !== 'audio');
-      videoFields.classList.toggle('hidden', t !== 'video');
+    preview.innerHTML = `<iframe src="https://www.youtube.com/embed/${vidId}?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;height:240px"></iframe>`;
+    
+    $('linkDuration').textContent = '(loading...)';
+    const info = await fetchYouTubeDuration(vidId);
+    $('linkDuration').textContent = info ? 'server will fetch' : '-';
+  });
 
-      // live info always visible; make date/location required only when 'is_live' is checked
-      const linkDateEl = document.getElementById('linkRecDate');
-      const linkLocEl = document.getElementById('linkRecLoc');
-      const audioDateEl = document.getElementById('audioRecDate');
-      const audioLocEl = document.getElementById('audioRecLoc');
-      const videoDateEl = document.getElementById('videoRecDate');
-      const videoLocEl = document.getElementById('videoRecLoc');
-      if(linkDateEl) linkDateEl.required = !!linkIsLive.checked;
-      if(linkLocEl) linkLocEl.required = !!linkIsLive.checked;
-      if(audioDateEl) audioDateEl.required = !!audioIsLive.checked;
-      if(audioLocEl) audioLocEl.required = !!audioIsLive.checked;
-      if(videoDateEl) videoDateEl.required = !!videoIsLive.checked;
-      if(videoLocEl) videoLocEl.required = !!videoIsLive.checked; 
+  /* ==========================================================
+   * FILE METADATA
+   * ========================================================== */
+  async function extractPdf(file) {
+    if (!file) return { format: '-', pages: '-' };
+    const buf = await file.arrayBuffer();
+    const text = new TextDecoder().decode(buf);
+    const pages = Math.max(...[...text.matchAll(/\/Count\s+(\d+)/g)].map(m => +m[1]), 0);
+    return { format: 'pdf', pages: pages || '-' };
+  }
 
-      // performer blocks
-      audioPerformerBlock.classList.toggle('hidden', !audioIAmPerformer.checked);
-      videoPerformerBlock.classList.toggle('hidden', !videoIAmPerformer.checked);
-
-      // perms
-      const allowed = canPublishClient(t, loggedLvl);
-      if(!allowed){
-        permMsg.textContent = `Permission denied: lvl ${loggedLvl} cannot publish ${t} media.`;
-        submitBtn.disabled = true;
-      } else {
-        permMsg.textContent = '';
-        submitBtn.disabled = false;
-      }
-    }
-
-    mediaType.addEventListener('change', updateVisibility);
-    linkIsLive.addEventListener('change', ()=> {
-      const date = document.getElementById('linkRecDate');
-      const loc = document.getElementById('linkRecLoc');
-      if(date) date.required = linkIsLive.checked;
-      if(loc) loc.required = linkIsLive.checked;
-    });
-    audioIsLive.addEventListener('change', ()=> {
-      const date = document.getElementById('audioRecDate');
-      const loc = document.getElementById('audioRecLoc');
-      if(date) date.required = audioIsLive.checked;
-      if(loc) loc.required = audioIsLive.checked;
-    });
-    videoIsLive.addEventListener('change', ()=> {
-      const date = document.getElementById('videoRecDate');
-      const loc = document.getElementById('videoRecLoc');
-      if(date) date.required = videoIsLive.checked;
-      if(loc) loc.required = videoIsLive.checked;
-    });
-    audioIAmPerformer.addEventListener('change', ()=> audioPerformerBlock.classList.toggle('hidden', !audioIAmPerformer.checked));
-    videoIAmPerformer.addEventListener('change', ()=> videoPerformerBlock.classList.toggle('hidden', !videoIAmPerformer.checked));
-
-    // initial visibility
-    updateVisibility();
-
-    // --- helpers ---
-    function splitListInput(str){
-      if(!str) return [];
-      return str.split(',').map(s=>s.trim()).filter(Boolean);
-    }
-
-    function getSelectedMediaIds(sel){
-      if(!sel) return [];
-      return Array.from(sel.selectedOptions).map(o=>Number(o.value));
-    }
-
-    // --- segments/subtracks dynamic UI ---
-
-
-
-
-    // --- automatic metadata extraction ---
-
-    // PDF page extraction heuristic
-    async function extractPdfInfo(file){
-      if(!file) return {format: '-', pages: '-'};
-      const name = file.name || '';
-      const type = file.type || '';
-      let format = type || (name.split('.').pop() || '-');
-      if(type.includes('pdf') || name.toLowerCase().endsWith('.pdf')){
-        try{
-          const ab = await file.arrayBuffer();
-          // decode as latin1-safe by using TextDecoder with 'utf-8' (best effort)
-          const text = new TextDecoder('utf-8', {fatal:false}).decode(ab);
-          // find /Count <num> occurrences and pick max
-          const re = /\/Count\s+(\d+)/g;
-          let match, max = 0;
-          while((match = re.exec(text)) !== null){
-            const v = Number(match[1]);
-            if(!Number.isNaN(v) && v > max) max = v;
-          }
-          const pages = max > 0 ? max : '-';
-          return { format: 'pdf', pages: pages };
-        }catch(err){
-          return { format, pages: '-' };
-        }
-      } else {
-        // non-pdf doc heuristics not implemented
-        return { format, pages: '-' };
-      }
-    }
-
-    docFile?.addEventListener('change', async (ev) => {
-      const f = ev.target.files[0];
-      if(!f){ docFormatEl.textContent = '-'; docPagesEl.textContent = '-'; return; }
-      const info = await extractPdfInfo(f);
-      docFormatEl.textContent = info.format || '-';
-      docPagesEl.textContent = info.pages ?? '-';
-    });
-
-    // Audio/video duration extraction and format
-    function setupMediaDurationExtraction(inputEl, durationEl, formatEl, isAudio=true){
-      if(!inputEl) return;
-      inputEl.addEventListener('change', (ev)=>{
-        const f = ev.target.files[0];
-        if(!f){ if(durationEl) durationEl.textContent='-'; if(formatEl) formatEl.textContent='-'; return; }
-        if(formatEl) formatEl.textContent = f.type || (f.name.split('.').pop() || '-');
-        const url = URL.createObjectURL(f);
-     
-   const media = isAudio ? new Audio() : document.createElement('video');
-        media.preload = 'metadata';
-        media.src = url;
-        media.onloadedmetadata = () => {
-          if(durationEl) durationEl.textContent = Math.round(media.duration) + 's';
-          URL.revokeObjectURL(url);
-        };
-        media.onerror = () => {
-          if(durationEl) durationEl.textContent = 'unknown';
-          URL.revokeObjectURL(url);
-        };
-      });
-    }
-    setupMediaDurationExtraction(audioFile, audioDurationEl, audioFormatEl, true);
-    setupMediaDurationExtraction(videoFile, videoDurationEl, videoFormatEl, false);
-
-    // --- mime/type validation helpers ---
-    function checkFileMatchesType(mediaType, file){
-      if(!file) return false;
-      const name = file.name.toLowerCase();
-      const mime = (file.type || '').toLowerCase();
-
-      if(mediaType === 'document'){
-        if(mime.includes('pdf') || name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx') || mime.includes('msword') || mime.includes('wordprocessingml')) return true;
-        return false;
-      }
-      if(mediaType === 'audio'){
-        if(mime.startsWith('audio')) return true;
-        if(name.match(/\.(mp3|wav|m4a|flac|aac|ogg)$/)) return true;
-        return false;
-      }
-      if(mediaType === 'video'){
-        if(mime.startsWith('video')) return true;
-        if(name.match(/\.(mp4|mkv|webm|mov|avi)$/)) return true;
-        return false;
-      }
-      return true;
-    }
-
-    // --- Build payload (client preview object) ---
-    function buildPreviewPayload(){
-      const t = mediaType.value;
-      const base = {
-        from: usernameInput.value || '',
-        on_behalf_of: (onBehalfToggle.checked && targetInput.value.trim()) ? targetInput.value.trim() : null,
-        type: t,
+  function extractDuration(input, outDur, outFmt, isAudio) {
+    input.addEventListener('change', () => {
+      const f = input.files[0];
+      if (!f) return;
+      outFmt.textContent = f.type || '-';
+      const el = isAudio ? new Audio() : document.createElement('video');
+      el.src = URL.createObjectURL(f);
+      el.onloadedmetadata = () => {
+        outDur.textContent = Math.round(el.duration) + 's';
+        URL.revokeObjectURL(el.src);
       };
+    });
+  }
 
-      if(t === 'link'){
-        return {
-          ...base,
-          title: document.getElementById('linkTitle').value.trim(),
-          description: document.getElementById('linkDesc').value.trim(),
-          link: document.getElementById('linkUrl').value.trim(),
-          publication_date: document.getElementById('linkPublicationDate').value || null,
-          is_author: document.getElementById('linkIAmAuthor').checked,
-          is_performer: document.getElementById('linkIAmPerformer').checked,
-          is_live: document.getElementById('linkIsLive').checked,
-          recording_date: document.getElementById('linkRecDate').value || null,
-          location: document.getElementById('linkRecLoc').value || null,
-          auto_extracted: {
-            duration: linkDurationEl?.textContent || '-'
-          }
-        };
-      }
-      if(t === 'document'){
-        const f = docFile?.files[0] || null;
-        const drafts = (linkedFiles['document']||[]).map(x=>({ filename: x.name }));
-        return {
-          ...base,
-          title: document.getElementById('docTitle').value.trim(),
-          description: document.getElementById('docDesc').value.trim(),
-          genres: splitListInput(document.getElementById('docGenres').value),
-          year: document.getElementById('docYear').value || null,
-          linked_media: {
-            selected: getSelectedMediaIds(docLinkMedia),
-            drafts: drafts
-          },
-          is_author: document.getElementById('docIAmAuthor').checked,
-          automatic: {
-            format: docFormatEl.textContent || '-',
-            pages: docPagesEl.textContent || '-'
-          }
-        };
-      }
-      if(t === 'audio' || t === 'video'){
-        const isAudio = t === 'audio';
-        const f = isAudio ? audioFile?.files[0] : videoFile?.files[0];
-        const durationEl = isAudio ? audioDurationEl : videoDurationEl;
-        const formatEl = isAudio ? audioFormatEl : videoFormatEl;
-        const drafts = (linkedFiles[isAudio?'audio':'video']||[]).map(x=>({ filename: x.name,}));
-        return {
-          ...base,
-          title: document.getElementById((isAudio?'audioTitle':'videoTitle')).value.trim(),
-          description: document.getElementById((isAudio?'audioDesc':'videoDesc')).value.trim(),
-          genres: splitListInput(document.getElementById((isAudio?'audioGenres':'videoGenres')).value),
-          year: document.getElementById((isAudio?'audioYear':'videoYear')).value || null,
-          authors: splitListInput(document.getElementById((isAudio?'audioAuthors':'videoAuthors')).value),
-          linked_media: {
-            selected: getSelectedMediaIds(isAudio?audioLinkMedia:videoLinkMedia),
-            drafts: drafts
-          },
-          is_author: document.getElementById((isAudio?'audioIAmAuthor':'videoIAmAuthor')).checked,
-          is_performer: document.getElementById((isAudio?'audioIAmPerformer':'videoIAmPerformer')).checked,
-          performers: splitListInput(document.getElementById((isAudio?'audioPerformers':'videoPerformers'))?.value),
-          instruments: splitListInput(document.getElementById((isAudio?'audioInstruments':'videoInstruments'))?.value),
-          is_live: document.getElementById((isAudio?'audioIsLive':'videoIsLive')).checked,
-          recording_date: document.getElementById((isAudio?'audioRecDate':'videoRecDate')).value || null,
-          location: document.getElementById((isAudio?'audioRecLoc':'videoRecLoc')).value || null,
-          automatic: {
-            duration: durationEl?.textContent || '-',
-            format: formatEl?.textContent || '-'
-          },
-          segments: gatherSegments(),
-          subtracks: gatherSubtracks()
-        };
-      }
-      return {...base};
+  $('docFile')?.addEventListener('change', async e => {
+    const info = await extractPdf(e.target.files[0]);
+    $('docFormat').textContent = info.format;
+    $('docPages').textContent = info.pages;
+  });
+
+  extractDuration($('audioFile'), $('audioDuration'), $('audioFormat'), true);
+  extractDuration($('videoFile'), $('videoDuration'), $('videoFormat'), false);
+
+  /* ==========================================================
+   * PAYLOAD PREVIEW
+   * ========================================================== */
+  function list(v) {
+    return v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
+  }
+
+  function payload() {
+    const type = $('mediaType').value;
+    const base = {
+      from: logged.username,
+      on_behalf_of: onBehalf.checked ? $('targetInput').value.trim() : null,
+      type
+    };
+
+    if (type === 'link') {
+      return {
+        ...base,
+        title: $('linkTitle').value.trim(),
+        description: $('linkDesc').value.trim(),
+        link: $('linkUrl').value.trim(),
+        tags: list($('linkTags').value),
+        is_live: $('linkIsLive').checked
+      };
     }
 
-    // --- Link preview helpers (YouTube) ---
-    const extractYouTubeId = url => {
-      if(!url) return null;
-      try {
-        const s = String(url);
-        const m = s.match(/(?:v=|\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{11})/i) || s.match(/youtube\.com\/watch\?[^#]*v=([A-Za-z0-9_-]{11})/i);
-        return m ? m[1] : null;
-      } catch(e) { return null; }
+    const cfg = MEDIA[type];
+    return {
+      ...base,
+      title: $(cfg.title).value.trim(),
+      automatic: cfg.auto
+        ? Object.fromEntries(Object.entries(cfg.auto).map(([k, id]) => [k, $(id).textContent]))
+        : {}
     };
+  }
 
-    // --- YouTube duration extraction via direct API call ---
-    const fetchYouTubeDuration = async (videoId) => {
-      try {
-        // Use YouTube oEmbed endpoint which provides video info
-        const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
-        if (!response.ok) return null;
-        const data = await response.json();
-        
-        // Try to extract duration from title or use alternative method
-        // Note: oEmbed doesn't directly provide duration, so we use a workaround
-        // by parsing video info from an iframe or using external service
-        
-        // Alternative: Try to fetch from YouTube's internal API
-        try {
-          const infoResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}&format=json`);
-          if (infoResponse.ok) {
-            const html = await infoResponse.text();
-            // Look for duration in the HTML (rough extraction)
-            const durationMatch = html.match(/"duration":"?(\d+)"?/);
-            if (durationMatch) {
-              return parseInt(durationMatch[1], 10);
-            }
-          }
-        } catch (e) {}
-        
-        // If all else fails, return null and let server fetch it
-        return null;
-      } catch (e) {
-        console.log('[DEBUG] fetchYouTubeDuration error:', e);
-        return null;
-      }
-    };
+  $('previewBtn').addEventListener('click', e => {
+    e.preventDefault();
+    $('payloadView').textContent = JSON.stringify(payload(), null, 2);
+  });
 
-    const linkUrlInput = document.getElementById('linkUrl');
-    const linkPreviewContainer = document.getElementById('linkPreview');
-    
-    // Add hidden input for YouTube duration (if needed for display)
-    let linkDurationStorage = null;
+  /* ==========================================================
+   * EVENTS
+   * ========================================================== */
+  $('mediaType').addEventListener('change', updateVisibility);
+  document.querySelectorAll('input,select,textarea')
+    .forEach(el => el.addEventListener('input', validate));
 
-    const linkDurationEl = document.getElementById('linkDuration');
-    
-    const updateLinkPreview = async () => {
-      if(!linkPreviewContainer) return;
-      const url = linkUrlInput ? (linkUrlInput.value || '').trim() : '';
-      const vid = extractYouTubeId(url);
-      if(vid){
-        linkPreviewContainer.innerHTML = `<iframe src="https://www.youtube.com/embed/${vid}?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;height:240px" id="youtubePreview"></iframe>`;
-        
-        // Try to fetch duration from YouTube
-        console.log('[DEBUG] Attempting to fetch YouTube duration for:', vid);
-        const duration = await fetchYouTubeDuration(vid);
-        console.log('[DEBUG] fetchYouTubeDuration returned:', duration);
-        
-        if(duration && duration > 0){
-          linkDurationStorage = duration;
-          if(linkDurationEl) linkDurationEl.textContent = duration + 's';
-          console.log('[DEBUG] YouTube duration extracted:', duration);
-        } else {
-          // Fallback: try to extract from iframe (limited by CORS)
-          console.log('[DEBUG] Falling back to iframe-based extraction (may be limited by CORS)');
-          linkDurationStorage = null;
-          if(linkDurationEl) linkDurationEl.textContent = '(fetching...)';
-          
-          // Set a timeout to mark as unavailable if fetch doesn't work
-          setTimeout(() => {
-            if(linkDurationStorage === null) {
-              if(linkDurationEl) linkDurationEl.textContent = 'server will fetch';
-              console.log('[DEBUG] Duration extraction timed out; will be fetched by server');
-            }
-          }, 3000);
+  // go to self profile
+  $('btnProfile')?.addEventListener('click', () => {
+    window.location.href = `/home?form_type=profile`;
+  });
+
+  // go to feed
+  $('btnFeed')?.addEventListener('click', () => {
+    window.location.href = '/home?form_type=feed';
+  });
+
+  // if is_performer is true instruments is required
+  $('linkIAmPerformer')?.addEventListener('change', e => {
+    const required = e.target.checked;
+    $('linkInstruments').required = required;
+    if (!required) $('linkInstruments').value = '';
+  });
+
+  // if is_live is true recording date and location are required
+  ['linkIsLive', 'audioIsLive', 'videoIsLive'].forEach(id => {
+    $(id)?.addEventListener('change', e => {
+      const type = id.replace('IsLive', '');
+      const liveInfo = MEDIA[type]?.liveInfo;
+      if (liveInfo) {
+        [...$(liveInfo).querySelectorAll('input')]
+          .forEach(i => (i.required = e.target.checked));
+        if (!e.target.checked) {
+          [...$(liveInfo).querySelectorAll('input')].forEach(i => i.value = '');
         }
-      } else if(url){
-        linkPreviewContainer.innerHTML = `<div style="color:#a00">Link non riconosciuto come YouTube</div>`;
-        linkDurationStorage = null;
-        if(linkDurationEl) linkDurationEl.textContent = '-';
-      } else { 
-        linkPreviewContainer.innerHTML = '';
-        linkDurationStorage = null;
-        if(linkDurationEl) linkDurationEl.textContent = '-';
-      }
-    };
-    if(linkUrlInput) linkUrlInput.addEventListener('input', updateLinkPreview);
-
-    // --- Preview button ---
-    if(previewBtn){
-      previewBtn.addEventListener('click', (ev)=>{
-        ev.preventDefault();
-        try{
-          const p = buildPreviewPayload();
-          if(payloadView){
-            payloadView.textContent = JSON.stringify(p, null, 2);
-            payloadView.style.display = 'block';
-            console.log('[DEBUG] Payload preview:', p);
-          }
-        } catch(err){
-          console.error('[DEBUG] Error building payload preview:', err);
-          if(payloadView) payloadView.textContent = 'Error: ' + err.message;
-        }
-      });
-    }
-
-    // --- Submit handler ---
-    publishForm.addEventListener('submit', async (ev)=>{
-      ev.preventDefault();
-
-      // Basic client-side validation before sending
-      const type = mediaType.value;
-
-      // permission check
-      if(!canPublishClient(type, loggedLvl)){
-        alert(`Permission denied: lvl ${loggedLvl} cannot publish ${type} media.`);
-        return;
-      }
-
-      // required fields check per type
-      if(type === 'link'){
-        const title = document.getElementById('linkTitle').value.trim();
-        const url = document.getElementById('linkUrl').value.trim();
-        if(!title){ alert('Title required'); return; }
-        if(!url){ alert('URL required'); return; }
-        // require a YouTube link when using link->concert flow
-        if(!extractYouTubeId(url)){
-          alert('Per il tipo "Link" è richiesto un URL YouTube valido (es. https://www.youtube.com/watch?v=VIDEOID)');
-          return;
-        }
-        if(linkIsLive.checked){
-          if(!document.getElementById('linkRecDate').value || !document.getElementById('linkRecLoc').value.trim()){
-            alert('Recording date & location required for live link'); return;
-          }
-        }
-      } else if(type === 'document'){
-        const title = document.getElementById('docTitle').value.trim();
-        const f = docFile?.files[0];
-        if(!title){ alert('Title required'); return; }
-        if(!f){ alert('Document file required'); return; }
-        if(!checkFileMatchesType('document', f)){ alert('Uploaded file does not look like a document (pdf/doc)'); return; }
-      } else if(type === 'audio' || type === 'video'){
-        const isAudio = type === 'audio';
-        const title = document.getElementById((isAudio?'audioTitle':'videoTitle')).value.trim();
-        const authors = splitListInput(document.getElementById((isAudio?'audioAuthors':'videoAuthors')).value);
-        const genre = document.getElementById((isAudio?'audioGenres':'videoGenres')).value.trim();
-        const f = (isAudio?audioFile:videoFile)?.files[0];
-        if(!title){ alert('Title required'); return; }
-        if(!authors || authors.length === 0){ alert('At least one author is required'); return; }
-        if(!genre){ alert('Genre required'); return; }
-        if(!f){ alert('File required'); return; }
-        if(!checkFileMatchesType(type, f)){ alert(`Uploaded file does not match ${type} type`); return; }
-        // performer instruments required if performer box is checked
-        const performerChecked = document.getElementById((isAudio?'audioIAmPerformer':'videoIAmPerformer')).checked;
-        const instr = document.getElementById((isAudio?'audioInstruments':'videoInstruments')).value.trim();
-        if(performerChecked && !instr){ alert('You declared yourself performer: instruments field is required'); return; }
-        if(document.getElementById((isAudio?'audioIsLive':'videoIsLive')).checked){
-          if(!document.getElementById((isAudio?'audioRecDate':'videoRecDate')).value || !document.getElementById((isAudio?'audioRecLoc':'videoRecLoc')).value.trim()){
-            alert('Recording date & location required for live performance'); return;
-          }
-        }
-      }
-
-      // build FormData expected by publish_bp
-      const fd = new FormData();
-
-      // server1 expects 'type' values mapping client 'link' -> server 'concert'
-      const serverType = (type === 'link') ? 'concert' : type;
-      fd.append('type', serverType);
-
-      // common fields: title/description/genres/year
-      if(type === 'link'){
-        fd.append('title', document.getElementById('linkTitle').value || '');
-        fd.append('description', document.getElementById('linkDesc').value || '');
-        fd.append('link', document.getElementById('linkUrl').value || '');
-        
-        // Extract publication_date and year for concerts
-        const pubDate = document.getElementById('linkPublicationDate').value;
-        if(pubDate) {
-          fd.append('publication_date', pubDate);
-          // Extract year from publication_date if not explicitly set
-          const yearFromDate = pubDate.split('-')[0]; // YYYY-MM-DD -> YYYY
-          fd.append('year', parseInt(yearFromDate, 10));
-          console.log('[DEBUG] Concert: extracted year from publication_date:', yearFromDate);
-        }
-        
-        // Append extracted YouTube duration if available
-        if(linkDurationStorage && linkDurationStorage > 0) {
-          fd.append('duration', linkDurationStorage);
-          console.log('[DEBUG] Concert: appending duration from YouTube:', linkDurationStorage);
-        } else {
-          console.log('[DEBUG] Concert: duration not available (linkDurationStorage=' + linkDurationStorage + ')');
-        }
-      } else if(type === 'document'){
-        fd.append('title', document.getElementById('docTitle').value || '');
-        fd.append('description', document.getElementById('docDesc').value || '');
-        const genres = splitListInput(document.getElementById('docGenres').value);
-        fd.append('genres', genres.join(', '));
-        if(document.getElementById('docYear').value) fd.append('year', document.getElementById('docYear').value);
-        // automatic metadata (format/pages) - send as fields so server can store them if needed
-        fd.append('format', docFormatEl.textContent || '');
-        fd.append('additional_info', '');
-      } else if(type === 'audio' || type === 'video'){
-        const isAudio = type === 'audio';
-        fd.append('title', document.getElementById((isAudio?'audioTitle':'videoTitle')).value || '');
-        fd.append('description', document.getElementById((isAudio?'audioDesc':'videoDesc')).value || '');
-        const genres = splitListInput(document.getElementById((isAudio?'audioGenres':'videoGenres')).value);
-
-        fd.append('genres', genres.join(', '));
-        if(document.getElementById((isAudio?'audioYear':'videoYear')).value) fd.append('year', document.getElementById((isAudio?'audioYear':'videoYear')).value);
-        // authors + performers arrays as JSON strings (publish_bp expects JSON)
-        const authorsArr = splitListInput(document.getElementById((isAudio?'audioAuthors':'videoAuthors')).value);
-        fd.append('authors', JSON.stringify(authorsArr));
-        // performers (extra field)
-        const performersArr = splitListInput(document.getElementById((isAudio?'audioPerformers':'videoPerformers')).value);
-        if(performersArr.length) fd.append('performers', JSON.stringify(performersArr));
-
-        // CRITICAL: Extract and send duration from extracted metadata
-        const durationEl = isAudio ? audioDurationEl : videoDurationEl;
-        const durationText = durationEl?.textContent || '';
-        // Extract numeric value from duration string (e.g., "120s" -> 120, or "120" -> 120)
-        if(durationText && durationText !== '-' && durationText !== 'unknown'){
-          const durationMatch = durationText.match(/^(\d+)/);
-          if(durationMatch){
-            const durationSeconds = parseInt(durationMatch[1], 10);
-            if(durationSeconds > 0){
-              fd.append('duration', durationSeconds);
-              console.log(`[DEBUG] ${isAudio ? 'Audio' : 'Video'}: appending duration: ${durationSeconds}s`);
-            }
-          }
-        } else {
-          console.log(`[DEBUG] ${isAudio ? 'Audio' : 'Video'}: duration not available (durationText='${durationText}')`);
-        }
-      }
-
-      // flags/checkboxes: is_author, is_performer, is_live
-      let isAuthor = false, isPerformer = false, isLive = false;
-      if(type === 'link'){
-        isAuthor = document.getElementById('linkIAmAuthor').checked;
-        isPerformer = document.getElementById('linkIAmPerformer').checked;
-        isLive = document.getElementById('linkIsLive').checked;
-      } else if(type === 'document'){
-        isAuthor = document.getElementById('docIAmAuthor').checked;
-      } else if(type === 'audio'){
-        isAuthor = document.getElementById('audioIAmAuthor').checked;
-        isPerformer = document.getElementById('audioIAmPerformer').checked;
-        isLive = document.getElementById('audioIsLive').checked;
-      } else if(type === 'video'){
-        isAuthor = document.getElementById('videoIAmAuthor').checked;
-        isPerformer = document.getElementById('videoIAmPerformer').checked;
-        isLive = document.getElementById('videoIsLive').checked;
-      }
-      if(isAuthor) fd.append('is_author', 'on');
-      if(isPerformer) fd.append('is_performer', 'on');
-      if(isLive) fd.append('is_live', 'on');
-
-      // recording info
-      if(type === 'link'){
-        const rd = document.getElementById('linkRecDate').value; if(rd) fd.append('recording_date', rd);
-        const rl = document.getElementById('linkRecLoc').value; if(rl) fd.append('location', rl);
-      } else if(type === 'audio'){
-        const rd = document.getElementById('audioRecDate').value; if(rd) fd.append('recording_date', rd);
-        const rl = document.getElementById('audioRecLoc').value; if(rl) fd.append('location', rl);
-      } else if(type === 'video'){
-        const rd = document.getElementById('videoRecDate').value; if(rd) fd.append('recording_date', rd);
-        const rl = document.getElementById('videoRecLoc').value; if(rl) fd.append('location', rl);
-      }
-
-      // files: append actual File objects under name "files"
-      if(type === 'document'){
-        const f = docFile?.files[0];
-        if(f) fd.append('files', f, f.name);
-      } else if(type === 'audio'){
-        const f = audioFile?.files[0];
-        if(f) fd.append('files', f, f.name);
-      } else if(type === 'video'){
-        const f = videoFile?.files[0];
-        if(f) fd.append('files', f, f.name);
-      }
-
-      // append linked files (from the Linked upload widgets) under 'linked_files'
-      const linkedMeta = [];
-      Object.keys(linkedFiles).forEach(k=>{
-        (linkedFiles[k]||[]).forEach(f=>{
-          fd.append('linked_files', f, f.name);
-          linkedMeta.push({ filename: f.name});
-        });
-      });
-      if(linkedMeta.length) {
-        fd.append('linked_files_meta', JSON.stringify(linkedMeta));
-        // include a helpful 'linked_media' field with draft entries so server can consume metadata immediately
-        const linked_media_payload = {
-          selected: {
-            document: getSelectedMediaIds(docLinkMedia),
-            audio: getSelectedMediaIds(audioLinkMedia),
-            video: getSelectedMediaIds(videoLinkMedia)
-          },
-          drafts: linkedMeta.map(x=>({ filename: x.filename}))
-        };
-        fd.append('linked_media', JSON.stringify(linked_media_payload));
-      }
-
-      // add client-side authors/instruments/perf lists as fields if present
-      if(type === 'audio' || type === 'video'){
-        const isAudio = type === 'audio';
-        const instruments = splitListInput(document.getElementById((isAudio?'audioInstruments':'videoInstruments')).value);
-        if(instruments.length) fd.append('instruments_used', instruments.join(', '));
-      }
-
-      // include optional target username so backend services can publish on behalf when allowed
-      // IMPORTANT: publish_bp uses request.form.get("username") or request.form.get("target_username") to decide target
-      const targetUsername = (onBehalfToggle.checked && targetInput.value.trim()) 
-                              ? targetInput.value.trim() 
-                              : null;
-
-      if (targetUsername) {
-        // resolve target user ID via resolve_user endpoint before submitting
-        try {
-          const resolveRes = await fetch(`/resolve_user`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: targetUsername })
-          });
-          const resolveData = await resolveRes.json();
-          
-          if (resolveData.status === 'OK' && resolveData.id) {
-            fd.append('user_id', resolveData.id);
-            fd.append('target_username', targetUsername);
-          } else {
-            console.error('[publish.html] failed to resolve target user:', resolveData.error_msg);
-            alert('Error: ' + (resolveData.error_msg || 'Could not find target user'));
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit';
-            return;
-          }
-        } catch (err) {
-          console.error('[publish.html] failed to resolve target user:', err);
-          alert('Error resolving target user: ' + err.message);
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Submit';
-          return;
-        }
-      } else {
-        // publish as logged user
-        const loggedUserId = SERVER_USER?.id || body.dataset.userId;
-        if (loggedUserId) {
-          fd.append('user_id', loggedUserId);
-        }
-      }
-
-      // append other small fields expected
-      // description already appended for link/document/audio/video above
-
-      // send POST
-      try {
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Publishing...';
-        const res = await fetch('/content/publish', { method: 'POST', body: fd });
-        const j = await res.json().catch(()=>({status:'ERROR', error_msg:'Invalid JSON response'}));
-        if(!res.ok || (j.status && j.status === 'ERROR')){
-          const err = j.error_msg || JSON.stringify(j);
-          alert('Publish failed: ' + err);
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Submit';
-          return;
-        }
-        // success: redirect to profile of finalTarget (or feed fallback)
-        const finalTarget = (onBehalfToggle.checked && targetInput.value.trim())
-                              ? targetInput.value.trim()
-                              : usernameInput.value || '';
-        if (finalTarget) {
-          window.location.href = `/home?form_type=profile&username=${encodeURIComponent(finalTarget)}`;
-        } else {
-          window.location.href = '/home/?form_type=feed';
-        }
-      } catch(err){
-        alert('Network error while publishing: ' + (err && err.message ? err.message : err));
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Submit';
       }
     });
+  });
 
-    // expose a few utility functions to console for debugging
-    window.__publish_debug = {
-      buildPreviewPayload,
-      gatherSegments,
-      gatherSubtracks
-    };
+  // if other fields are required the submit botton is disabled
+  // until they are filled, but if the user checks
+  // as already doing for title and file, the submit button should be enabled immediately
+  $('conditional_block')?.addEventListener('change', validate);
 
-  })();
-  </script>
+
+  updateVisibility();
+})();
+</script>
+
 </body>
 </html>

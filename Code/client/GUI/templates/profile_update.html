@@ -51,6 +51,12 @@
   </main>
 
 <script type="module">
+  // Extract target username from Flask template variable or URL query parameter
+  const targetUsername = "{{ username }}" || null;
+  const pageTargetUsername = new URLSearchParams(window.location.search).get("username") || null;
+  const usernameToEdit = targetUsername || pageTargetUsername || null;
+  console.log('[DEBUG] profile_update.html: usernameToEdit =', usernameToEdit);
+
   const fileInput = document.getElementById('file-input');
   const uploadBtn = document.getElementById('upload-btn');
   const uploadStatus = document.getElementById('upload-status');
@@ -62,7 +68,10 @@
 
   async function fetchProfile() {
     try {
-      const res = await fetch('/profile/data');
+      // Fetch the target user's profile (or own if no target specified)
+      const endpoint = usernameToEdit ? `/profile/data?username=${encodeURIComponent(usernameToEdit)}` : '/profile/data';
+      console.log('[DEBUG] fetchProfile calling', endpoint);
+      const res = await fetch(endpoint);
       if (!res.ok) throw new Error('Impossibile caricare i dati');
       const data = await res.json();
       const user = data.user || {};
@@ -110,9 +119,16 @@
       full_bio: document.getElementById('bio').value || undefined,
       profile_pic: profilePicInput.value || undefined
     };
+    // Include target username if editing another user's profile
+    if (usernameToEdit) {
+      payload.username = usernameToEdit;
+    }
     msgEl.textContent = 'Salvataggio...';
     try {
-      const res = await fetch('/profile/update', {
+      // POST to /profile/update with optional target username
+      const updateEndpoint = usernameToEdit ? `/profile/update?username=${encodeURIComponent(usernameToEdit)}` : '/profile/update';
+      console.log('[DEBUG] saveBtn calling', updateEndpoint, 'with payload:', payload);
+      const res = await fetch(updateEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

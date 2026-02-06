@@ -21,4 +21,8 @@ class Assistance(FlaskForm):
     identifier = StringField("Username/Email", validators=[DataRequired()])
     message = TextAreaField("Message", validators=[DataRequired(), Length(min=10)])
 
+class ChangePassword(FlaskForm):
+    new_password = PasswordField("New Password", validators=[DataRequired(), Length(min=6)])
+    confirm_password = PasswordField("Confirm Password", validators=[DataRequired(), Length(min=6)])
+
 # last line

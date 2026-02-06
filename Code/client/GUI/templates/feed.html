@@ -41,6 +41,107 @@
   let endReached = false;
   let loadToken = 0;
 
+  // Global metadata for autocomplete/suggestions
+  window.appMetadata = {
+    instruments: [],
+    genres: [],
+    authors: [],
+    performers: [],
+    media_titles: []
+  };
+
+  // Function to load metadata from server
+  async function loadMetadata() {
+    try {
+      const apiBase = window.SERVER_API_BASE || 'http://127.0.0.1:8000';
+      const apiUrl = (apiBase.endsWith('/') ? apiBase.slice(0,-1) : apiBase) + '/api';
+      console.log('[DEBUG] feed.html calling API at', apiUrl, 'window.SERVER_API_BASE=', window.SERVER_API_BASE);
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          command: 'GET_METADATA',
+          args: [],
+          token: sessionStorage.getItem('session_token') || ''
+        })
+      });
+      const data = await response.json();
+      if (data && (data.status === 'OK' || data.response)) {
+        const metadata = data.response || data;
+        window.appMetadata = {
+          instruments: metadata.instruments || [],
+          genres: metadata.genres || [],
+          authors: metadata.authors || [],
+          performers: metadata.performers || [],
+          media_titles: metadata.media_titles || []
+        };
+        console.log('[DEBUG] Metadata loaded:', window.appMetadata);
+      }
+    } catch (err) {
+      console.error('[ERROR] Failed to load metadata:', err);
+    }
+  }
+
+  // Load metadata before rendering feed
+  loadMetadata();
+
+  /**
+   * METADATA USAGE GUIDE:
+   * window.appMetadata contains:
+   * - instruments: array of instrument names (for filtering)
+   * - genres: array of genre/tag names (for filtering)
+   * - authors: array of author names (for filtering)
+   * - performers: array of performer names (for filtering)
+   * - media_titles: array of recent media titles (for filtering)
+   * 
+   * Use these in search filters or autocomplete inputs:
+   * Example: const genres = window.appMetadata.genres;
+   */
+
+  // Setup datalists for autocomplete
+  function setupMetadataAutocomplete() {
+    const searchInput = document.getElementById('search');
+    if (!searchInput) return;
+
+    // Create combined datalist with all metadata
+    let datalistHTML = '';
+    const allMetadata = new Set([
+      ...(window.appMetadata.genres || []),
+      ...(window.appMetadata.authors || []),
+      ...(window.appMetadata.performers || []),
+      ...(window.appMetadata.instruments || []),
+      ...(window.appMetadata.media_titles || [])
+    ]);
+    
+    Array.from(allMetadata).forEach(item => {
+      datalistHTML += `<option value="${escapeHtml(item)}"></option>`;
+    });
+    
+    let datalist = document.getElementById('metadata-suggestions');
+    if (!datalist) {
+      datalist = document.createElement('datalist');
+      datalist.id = 'metadata-suggestions';
+      datalist.innerHTML = datalistHTML;
+      document.body.appendChild(datalist);
+      searchInput.setAttribute('list', 'metadata-suggestions');
+    } else {
+      datalist.innerHTML = datalistHTML;
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Setup autocomplete after metadata loads
+  const originalLoadMetadata = loadMetadata;
+  loadMetadata = async function() {
+    await originalLoadMetadata.call(this);
+    setupMetadataAutocomplete();
+  };
+
   const feedEl = document.getElementById('feed');
   const loadingEl = document.getElementById('loading');
   const sentinel = document.getElementById('feed-sentinel');

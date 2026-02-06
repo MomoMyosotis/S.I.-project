@@ -73,20 +73,7 @@ class ProfileService:
             if not isinstance(p, dict):
                 continue
             
-            # ===== DEBUG: Log publication fields from backend =====
-            print(f"\n[DEBUG][ProfileService.get_profile] ===== PROCESSING PUBLICATION =====")
-            print(f"[DEBUG][ProfileService.get_profile] Publication keys from server: {list(p.keys())}")
-            print(f"[DEBUG][ProfileService.get_profile] Critical fields in publication:")
-            print(f"[DEBUG][ProfileService.get_profile]   - year: {p.get('year')}")
-            print(f"[DEBUG][ProfileService.get_profile]   - description: {p.get('description')}")
-            print(f"[DEBUG][ProfileService.get_profile]   - recording_date: {p.get('recording_date')}")
-            print(f"[DEBUG][ProfileService.get_profile]   - location: {p.get('location')}")
-            print(f"[DEBUG][ProfileService.get_profile]   - is_author: {p.get('is_author')}")
-            print(f"[DEBUG][ProfileService.get_profile]   - is_performer: {p.get('is_performer')}")
-            print(f"[DEBUG][ProfileService.get_profile]   - additional_info: {p.get('additional_info')}")
-            print(f"[DEBUG][ProfileService.get_profile] Full publication: {p}")
-            print(f"[DEBUG][ProfileService.get_profile] ===== END PUBLICATION =====\n")
-            
+
             normalized_pubs.append({
                 "id": p.get("id") or p.get("media_id"),
                 "title": p.get("title") or p.get("name") or "Untitled",

@@ -27,6 +27,11 @@
   {% endif %}
   
   <title>{% if content_template %}{{ title or "Home" }}{% else %}Start Page{% endif %}</title>
+  <script>
+    // Expose server API base early so content scripts can use it immediately
+    window.SERVER_API_BASE = window.SERVER_API_BASE || 'http://127.0.0.1:8000';
+    console.log('[DEBUG] SERVER_API_BASE (head) =', window.SERVER_API_BASE);
+  </script>
 </head>
 <body>
 
@@ -66,4 +71,14 @@
   {% endif %}
 
 </body>
+
+{% if metadata is defined and metadata %}
+  <script>
+    // Inject server-provided metadata into client global for immediate use
+    window.appMetadata = {{ metadata | tojson }};
+    console.log('[DEBUG] server-injected appMetadata', window.appMetadata);
+  </script>
+{% endif %}
+<!-- Typeahead/tokenized autocomplete script (loads after metadata injection) -->
+<script src="{{ url_for('static', filename='typeahead.js') }}"></script>
 </html>
