@@ -11,7 +11,8 @@ FOLDERS = {
     "image": "images",
     "document": "documents",
     "song": "songs",
-    "video": "videos"
+    "video": "videos",
+    "notes": "notes"
 }
 
 # Assicura che tutte le cartelle esistano

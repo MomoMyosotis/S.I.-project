@@ -213,6 +213,22 @@ class Media:
         }
         return result
 
+    @staticmethod
+    def sanitize_for_client(m: Optional[Dict[str, Any]]):
+        """
+        Return a shallow copy of a media dict with sensitive storage/display-only fields removed
+        (filename, stored_at, format). Tolerant to non-dict input.
+        """
+        if not isinstance(m, dict):
+            return m
+        try:
+            md = dict(m)
+            for k in ("filename", "stored_at", "format"):
+                md.pop(k, None)
+            return md
+        except Exception:
+            return m
+
     # Network helper methods (optional; call RPCs via shared http_client)
     def upload_media(self) -> Dict[str, Any]:
         """

@@ -147,6 +147,44 @@ video, iframe{
   transform:translateY(-2px);
 }
 
+/* Ensure Set start / Set end buttons have consistent size across media (use concert play button dimensions as reference) */
+#note-set-start, #note-set-end{
+  height: 48px; /* reduced size for compact UI */
+  min-width: 100px; /* wide enough for text */
+  padding: 0 12px;
+  border-radius:10px;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(90deg,var(--accent-2),#2fe0e9);
+  color: #071018;
+  font-weight:700;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 6px 18px rgba(69,243,255,0.10);
+}
+#note-set-start:hover, #note-set-end:hover{ transform: translateY(-2px); }
+
+/* time-selection layout: each button has its input below */
+#time-selection .time-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+#time-selection .time-cell{ display:flex; flex-direction:column; gap:8px; align-items:stretch; }
+#time-selection .time-cell button{ width:100%; }
+@media (max-width:520px){
+  #time-selection .time-grid{ grid-template-columns:1fr; }
+  #time-selection .time-cell button{ height:40px; }
+}
+
+/* Mobile / narrow screens: scale down the Set buttons */
+@media (max-width:520px){
+  #note-set-start, #note-set-end{
+    height:40px;
+    min-width:88px;
+    padding:0 8px;
+    border-radius:8px;
+    font-size:0.95rem;
+  }
+}
+
 /* DETAILS */
 .meta-section{
   margin-top:26px;
@@ -416,6 +454,7 @@ video, iframe{
 
 /* panel inside modal to resemble profile_update.form-wrap inner layer */
 .form-modal .modal-panel{
+  position: relative;
   border-radius: 10px;
   padding: 18px;
   background: #2d2d39;
@@ -425,6 +464,40 @@ video, iframe{
   max-height: 90vh;
   overflow: auto;
 }
+
+/* Add-note panel slides in from the right and does not block page interactions */
+#addNoteForm {
+  left: auto;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%) translateX(100%) scale(.98);
+  width: 380px;
+  max-width: calc(100% - 40px);
+  pointer-events: none;
+}
+#addNoteForm .modal-panel {
+  max-height: 76vh;
+  overflow: auto;
+}
+#addNoteForm.open {
+  transform: translateY(-50%) translateX(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+/* close button inside add note panel */
+#addnote-close {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+}
+#addnote-close:hover { transform: translateY(-2px); }
 
 /* header */
 .form-modal h3{
@@ -509,3 +582,105 @@ video, iframe{
   background: #c33;
   color: #fff;
 }
+
+#document-wrapper {
+  position: relative;
+  width: 100%;
+  height: 80vh;
+}
+
+#document-viewer {
+  width: 100%;
+  height: 100%;
+}
+
+#doc-overlay {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  z-index: 10;
+  /* Allow clicks to pass through to iframe content so text selection works */
+  pointer-events: none;
+}
+
+.doc-selection {
+  position: absolute;
+  border: 2px solid var(--accent-2);
+  background: rgba(255, 165, 0, 0.25);
+}
+
+.doc-highlight {
+  position: absolute;
+  background: rgba(255, 255, 0, 0.3);
+}
+
+/* Canvas used for graphic notes: sits above highlights and accepts pointer events for drawing */
+.doc-canvas {
+  position: absolute;
+  z-index: 25;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  background: rgba(255,255,255,0.02);
+  pointer-events: auto;
+}
+
+/* Remove-area button shown when a canvas is active */
+.doc-remove-area-btn{
+  position: absolute;
+  z-index: 40;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.56);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.doc-remove-area-btn:hover{ opacity: 0.95; transform: translateY(-1px); }
+
+/* popup shown when clicking "Show area" on a document note; contains note text (non-positional data) */
+.doc-note-popup {
+  position: absolute;
+  background: rgba(10,12,16,0.92);
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 8px;
+  max-width: 340px;
+  z-index: 30;
+  font-size: 0.95rem;
+  border: 1px solid rgba(255,255,255,0.06);
+  pointer-events: auto;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+}
+
+/* Inline image popup that matches the document note rectangle exactly */
+.doc-note-image-popup{
+  border-radius: 6px;
+  overflow: hidden;
+  z-index: 32; /* sit above highlights */
+  box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+  background: #0b0b0b;
+}
+.doc-note-image-popup img{ width:100%; height:100%; display:block; object-fit:cover; }
+
+/* Note image thumbnail inside note card */
+.note-thumb{ max-width:220px; display:block; border-radius:6px; }
+
+/* Full-screen image popup styles */
+.note-image-backdrop{}
+.note-image-popup{ text-align:center; }
+.note-image-popup img{ max-width:100%; height:auto; }
+
+.doc-note-popup div { line-height: 1.3; }
+
+/* transparent backdrop that blocks interactions with the document while a note popup is open */
+.doc-popup-backdrop{
+  position: absolute;
+  inset: 0;
+  z-index: 20; /* sit above highlights but beneath popup (popup z-index:30) */
+  background: rgba(0,0,0,0); /* transparent but captures pointer events */
+  cursor: default;
+  pointer-events: auto;
+}
+
+

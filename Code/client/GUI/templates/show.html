@@ -34,7 +34,10 @@
         <audio id="audio-player" controls><source id="audio-source"></source></audio>
       </div>
       <div id="document-box" class="hidden">
-        <iframe id="document-viewer" src="" frameborder="0"></iframe>
+        <div id="document-wrapper">
+          <iframe id="document-viewer" src="" frameborder="0"></iframe>
+          <div id="doc-overlay"></div>
+        </div>
       </div>
       <div id="concert-box" class="hidden">
         <iframe id="concert-iframe" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen title="Concert video"></iframe>
@@ -58,6 +61,99 @@
     <div id="open-with-area" style="margin-top:12px">
       <strong>Apri con:</strong>
       <div id="open-with-buttons" style="margin-top:8px"></div>
+    </div>
+
+    <!-- ADD NOTE BUTTON -->
+    <div id="note-actions" style="margin-top:12px;display:none;">
+      <button id="add-note-btn" class="btn" style="padding:8px 16px;background:var(--accent-2);color:white;border:none;border-radius:4px;cursor:pointer;">Aggiungi nota</button>
+    </div>
+
+    <!-- ADD NOTE MODAL (for text notes and segments) -->
+    <div id="addNoteForm" class="form-modal" role="dialog" aria-modal="false" aria-labelledby="addnote-title-h">
+      <div class="modal-panel">
+        <h3 id="addnote-title-h" style="display:inline-block;margin:0;">Aggiungi una nota</h3><button id="addnote-close" aria-label="Chiudi" type="button" style="position:absolute;right:14px;top:14px;border:none;background:transparent;color:#fff;font-size:1.2rem;cursor:pointer;padding:6px;border-radius:6px;">×</button>
+        
+        <!-- Note type selector (text, graphic, segment) -->
+        <div style="margin-bottom:12px;">
+          <label>Tipo di nota:</label>
+          <div style="margin-top:6px;">
+            <label style="margin-right:16px;"><input type="radio" name="note-type" value="text" checked> Testo</label>
+            <label style="margin-right:16px;"><input type="radio" name="note-type" value="libero"> Libero</label>
+            <label id="graphic-label" style="margin-right:16px;display:none;"><input type="radio" name="note-type" value="graphic"> Grafica</label>
+          </div>
+        </div>
+
+        <!-- Time/Position selection (for video/audio/segment) -->
+        <div id="time-selection" style="margin-bottom:12px;display:none;">
+          <h4>Posizione</h4>
+          <div class="time-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div class="time-cell" style="display:flex;flex-direction:column;gap:8px;align-items:stretch;">
+              <button id="note-set-start">Set start</button>
+              <label style="display:block">Inizio (sec):<br><input id="note-start" type="number" step="0.01" min="0" style="width:100%;"></label>
+            </div>
+            <div class="time-cell" style="display:flex;flex-direction:column;gap:8px;align-items:stretch;">
+              <button id="note-set-end">Set end</button>
+              <label style="display:block">Fine (sec):<br><input id="note-end" type="number" step="0.01" min="0" style="width:100%;"></label>
+            </div>
+          </div>
+          <div style="color:var(--muted);font-size:0.9em;">Clicca sul lettore per impostare automaticamente start/end</div>
+        </div>
+
+        <!-- Document position selection (documents only) -->
+        <div id="document-position" style="margin-bottom:12px;display:none;">
+          <h4>Posizione nel documento</h4>
+          <!-- Hidden field to store spatial anchor JSON when user makes a box selection or clicks a word -->
+          <input id="note-doc-anchor" type="hidden">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <div style="color:var(--muted);font-size:0.9em;">Usa il pulsante "Seleziona area" per tracciare un'area o clicca su una parola del documento per selezionarla.</div>
+            <button id="doc-select-toggle" type="button" style="margin-left:auto;padding:6px 10px;border-radius:8px;border:none;cursor:pointer;background:var(--accent-2);color:#071018;font-weight:700;">Seleziona area</button>
+          </div>
+          <div id="doc-graphic-hint" style="display:none;color:var(--muted);font-size:0.9em;margin-top:8px;">Per note grafiche: seleziona un'area, poi disegna con il cursore nell'area. Doppio click per cancellare il disegno.</div>
+        </div>
+
+        <!-- Text content fields (JSON structure) -->
+        <div id="text-fields" style="margin-bottom:12px;display:none;">
+          <h4>Dettagli nota</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <label>Performer:<br><input id="note-performers" style="width:100%;"></label>
+            <label>Strumenti:<br><input id="note-instruments" style="width:100%;"></label>
+            <label>Lunghezza brano (sec):<br><input id="note-length" type="number" step="0.01" style="width:100%;"></label>
+            <label>Titolo brano:<br><input id="note-title" style="width:100%;"></label>
+            <label>Ritmo:<br><input id="note-rhythm" style="width:100%;"></label>
+            <label>Intensità:<br><input id="note-intensity" style="width:100%;"></label>
+            <label>Assoli:<br><input id="note-solos" style="width:100%;"></label>
+            <label>Qualità esecuzione:<br><input id="note-quality" style="width:100%;"></label>
+            <label>Data registrazione:<br><input id="note-recording-date" type="date" style="width:100%;"></label>
+            <label>Luogo registrazione:<br><input id="note-recording-location" style="width:100%;"></label>
+          </div>
+          <label style="display:block;margin-top:12px;">Info aggiuntive:<br><textarea id="note-additional-info" style="width:100%;height:80px;"></textarea></label>
+        </div>
+
+        <!-- Free-form note field (for libero notes) -->
+        <div id="libero-field" style="margin-bottom:12px;display:none;">
+          <h4>Testo libero</h4>
+          <textarea id="note-libero-text" style="width:100%;height:120px;border:1px solid #ccc;padding:8px;border-radius:4px;font-family:monospace;"></textarea>
+        </div>
+
+        <!-- Private checkbox -->
+        <div style="margin-bottom:12px;">
+          <label><input type="checkbox" id="note-private"> Privata</label>
+        </div>
+
+        <div class="modal-actions">
+          <button id="addnote-cancel" type="button">Annulla</button>
+          <button id="addnote-save" type="button" style="margin-left:8px">Salva nota</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GRAPHIC NOTE WIP POPUP -->
+    <div id="graphicNoteWip" class="form-modal" role="dialog" aria-modal="true">
+      <div class="modal-panel" style="text-align:center;padding:30px;">
+        <h3 style="margin-top:0;color:var(--accent-2);">Nota grafica - In sviluppo</h3>
+        <p style="font-size:1.1em;color:var(--muted);margin:20px 0;">Questa funzionalità sarà disponibile a breve.</p>
+        <button id="wip-close" type="button" style="padding:8px 16px;background:var(--accent-2);color:white;border:none;border-radius:4px;cursor:pointer;">Chiudi</button>
+      </div>
     </div>
 
     <!-- EDIT FORM (hidden) -->
@@ -238,13 +334,30 @@
     if(!el) return;
     if(show){
       el.classList.add('open');
-      if(backdrop) backdrop.style.display = 'block';
+      // do not show a blocking backdrop for the side-panel addNoteForm so users can still interact with the page
+      if(id !== 'addNoteForm' && backdrop) backdrop.style.display = 'block';
       el.setAttribute('aria-hidden', 'false');
     } else {
       el.classList.remove('open');
-      if(backdrop) backdrop.style.display = 'none';
+      if(id !== 'addNoteForm' && backdrop) backdrop.style.display = 'none';
       el.setAttribute('aria-hidden', 'true');
     }
+  }
+
+  // Show a full-size image in a centered popup (used by graphic note thumbnails)
+  function showImageModal(imgUrl){
+    try{
+      // remove any existing image popups
+      const prev = document.querySelectorAll('.note-image-backdrop'); if(prev) prev.forEach(p=>p.remove());
+      const bd = document.createElement('div'); bd.className = 'note-image-backdrop'; bd.style.position = 'fixed'; bd.style.inset = '0'; bd.style.background = 'rgba(0,0,0,0.8)'; bd.style.zIndex = '60'; bd.style.display = 'flex'; bd.style.alignItems = 'center'; bd.style.justifyContent = 'center'; bd.style.cursor = 'default';
+      const imgWrap = document.createElement('div'); imgWrap.className = 'note-image-popup'; imgWrap.style.position = 'relative'; imgWrap.style.maxWidth = '90%'; imgWrap.style.maxHeight = '90%'; imgWrap.style.borderRadius = '8px'; imgWrap.style.overflow = 'auto';
+      const img = document.createElement('img'); img.src = imgUrl; img.style.maxWidth = '100%'; img.style.maxHeight = '80vh'; img.style.display = 'block'; img.style.borderRadius = '8px'; img.style.boxShadow = '0 12px 30px rgba(0,0,0,0.6)';
+      const closeBtn = document.createElement('button'); closeBtn.textContent = '\u2716'; closeBtn.style.position = 'absolute'; closeBtn.style.right = '8px'; closeBtn.style.top = '8px'; closeBtn.style.padding = '6px 10px'; closeBtn.style.border = 'none'; closeBtn.style.borderRadius = '6px'; closeBtn.style.background = 'rgba(0,0,0,0.6)'; closeBtn.style.color = '#fff'; closeBtn.style.cursor = 'pointer';
+      closeBtn.addEventListener('click', ()=>{ try{ bd.remove(); }catch(e){} });
+      bd.addEventListener('click', (ev)=>{ if(ev.target === bd) bd.remove(); });
+      document.addEventListener('keydown', function escHandler(ev){ if(ev.key === 'Escape'){ try{ bd.remove(); }catch(e){} document.removeEventListener('keydown', escHandler); } });
+      imgWrap.appendChild(closeBtn); imgWrap.appendChild(img); bd.appendChild(imgWrap); document.body.appendChild(bd);
+    }catch(e){ console.error('showImageModal failed', e); alert('Impossibile mostrare immagine'); }
   }
 
   // Click outside modal to close it (click on backdrop)
@@ -340,6 +453,12 @@
     const loggedId = LOGGED.id !== undefined && LOGGED.id !== null ? String(LOGGED.id) : null;
     const pubId = SERVER_PUBLISHER && SERVER_PUBLISHER.id ? String(SERVER_PUBLISHER.id) : null;
     return (loggedId && pubId && loggedId === pubId);
+  };
+
+  const canAddNotes = () => {
+    if(!LOGGED || LOGGED.lvl === undefined || LOGGED.lvl === null) return false;
+    const lvl = Number(LOGGED.lvl);
+    return lvl < 5; // users with level < 5 can add notes
   };
 
   const extractYouTubeId = url => {
@@ -855,6 +974,28 @@
     media.user_id = media.user_id || media.uploader_id || media.owner_id || media.owner || media.uploader || media.publisher || null;
     media.username = media.username || media.uploader || media.owner || media.user || null;
 
+    // If this is a document and pages/format are missing, ask server to probe and persist metadata, then refresh
+    try {
+      if (media.type === 'document' && (media.pages == null || media.format == null)) {
+        try {
+          const fixRes = await fetch('/show/fix_metadata', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ media_id: mediaId }) });
+          if (fixRes && fixRes.ok) {
+            const fj = await fixRes.json().catch(()=>null);
+            if (fj && fj.media) {
+              media = fj.media || media;
+            } else {
+              // fallback: re-fetch data endpoint
+              const r2 = await fetch(`/show/data?media_id=${encodeURIComponent(mediaId)}`);
+              if (r2 && r2.ok) {
+                const j2 = await r2.json().catch(()=>null);
+                if (j2 && j2.media) media = j2.media || media;
+              }
+            }
+          }
+        } catch(e) { console.debug('fix metadata request failed', e); }
+      }
+    } catch(e){ console.debug('metadata auto-fix check failed', e); }
+
     // Resolve numeric genre/tag ids to human-readable names (use metadata map when available)
     try {
       const resolveIdArray = (arr) => {
@@ -1028,6 +1169,8 @@
       // set iframe src and prefer embedding when allowed; otherwise show thumbnail as fallback
       if(embedSrc && /\/embed\//i.test(embedSrc) && media.embed_ok !== false){
         try{
+          // ensure enablejsapi=1 so we can control the player via the IFrame API
+          if(!/enablejsapi=1/i.test(embedSrc)) embedSrc = embedSrc + (embedSrc.indexOf('?')!==-1 ? '&' : '?') + 'enablejsapi=1';
           iframe.src = embedSrc;
           iframe.style.display = '';
           if(thumb) thumb.classList.add('hidden');
@@ -1038,7 +1181,32 @@
         const loadTimeout = setTimeout(()=>{
           if(!loaded){ if(errorEl){ errorEl.textContent = 'Video could not be loaded. Showing thumbnail fallback (embed may be blocked).'; errorEl.style.display = 'block'; } if(iframe) iframe.style.display='none'; if(thumb) thumb.classList.remove('hidden'); }
         }, 8000);
-        iframe.addEventListener('load', ()=>{ loaded = true; clearTimeout(loadTimeout); if(errorEl) errorEl.style.display = 'none'; if(thumb) thumb.classList.add('hidden'); });
+        iframe.addEventListener('load', ()=>{ loaded = true; clearTimeout(loadTimeout); if(errorEl) errorEl.style.display = 'none'; if(thumb) thumb.classList.add('hidden');
+          // initialize YouTube IFrame API player when iframe successfully loads
+          try {
+            const initYouTubePlayer = () => {
+              try {
+                if(!youtubeId) return;
+                // load API script if needed
+                if(!window.YT || !window.YT.Player){
+                  if(!document.getElementById('yt-api')){
+                    const tag = document.createElement('script'); tag.id = 'yt-api'; tag.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(tag);
+                  }
+                  const prev = window.onYouTubeIframeAPIReady;
+                  window.onYouTubeIframeAPIReady = () => {
+                    try{ if(typeof prev === 'function') prev(); }catch(e){}
+                    try{ window._concertYT = new YT.Player('concert-iframe', { events: { 'onReady': function(){ window._concertYT_ready = true; try{ const dur = this.getDuration(); if(dur && !isNaN(dur) && dur > 0){ const endInput = el('note-end'); const infoEl = el('note-duration-info'); if(endInput) endInput.max = Number(dur).toFixed(2); if(infoEl) infoEl.textContent = 'Durata massima: ' + Number(dur).toFixed(2) + 's'; } }catch(e){} }, 'onError': function(e){ console.warn('YT player error', e); } } }); }catch(e){ console.warn('YT Player init failed', e); }
+                  };
+                } else {
+                  // API already present
+                  try{ window._concertYT = new YT.Player('concert-iframe', { events: { 'onReady': function(){ window._concertYT_ready = true; try{ const dur = this.getDuration(); if(dur && !isNaN(dur) && dur > 0){ const endInput = el('note-end'); const infoEl = el('note-duration-info'); if(endInput) endInput.max = Number(dur).toFixed(2); if(infoEl) infoEl.textContent = 'Durata massima: ' + Number(dur).toFixed(2) + 's'; } }catch(e){} }, 'onError': function(e){ console.warn('YT player error', e); } } }); }catch(e){ console.warn('YT Player init failed', e); }
+                }
+              } catch(e){ console.warn('initYouTubePlayer failure', e); }
+            };
+            // schedule init to run after load event handling finishes
+            setTimeout(initYouTubePlayer, 0);
+          } catch(e){ console.warn('YT init scheduling failed', e); }
+        });
         // onerror may not always fire for cross-origin iframe loads, but attach it for best-effort
         iframe.addEventListener('error', ()=>{ loaded = false; clearTimeout(loadTimeout); if(errorEl){ errorEl.textContent = 'Video failed to load. Showing thumbnail fallback.'; errorEl.style.display = 'block'; } if(iframe) iframe.style.display='none'; if(thumb) thumb.classList.remove('hidden'); });
       } else {
@@ -1088,11 +1256,7 @@
       const concertSubtracks = el('concert-subtracks');
       if(concertSubtracks){
         concertSubtracks.innerHTML = '<h3>Concert segments</h3><div id="concert-segment-list"></div>';
-        if(canComment()){
-          const addBtn = document.createElement('button'); addBtn.textContent = 'Add segment'; addBtn.className='btn'; addBtn.style.marginTop='8px';
-          addBtn.addEventListener('click', ()=> showAddSegmentForm(null));
-          concertSubtracks.appendChild(addBtn);
-        }
+        // segment creation UI removed — keep segment list and data fetching, but do not expose "Add segment"
       }
 
       // fetch and render segments
@@ -1145,55 +1309,7 @@
         segs.forEach(s=>{ listWrap.appendChild(makeSegmentNode(s)); });
       }
 
-      // show a small inline form to add/edit a segment. if seg is null -> add new, else edit
-      function showAddSegmentForm(seg){
-        const parent = el('concert-subtracks'); if(!parent) return;
-        // simple modal-like block
-        let form = document.getElementById('segment-form-inline');
-        if(form) form.remove();
-        form = document.createElement('div'); form.id='segment-form-inline'; form.style.border='1px solid var(--muted)'; form.style.padding='8px'; form.style.marginTop='8px';
-        form.innerHTML = `
-          <label>Start (sec) <input type="number" id="seg-start" step="0.01" /></label>
-          <label>End (sec) <input type="number" id="seg-end" step="0.01" /></label>
-          <label>Song title <input type="text" id="seg-title" /></label>
-          <label>Performers (comma) <input type="text" id="seg-perf" placeholder="comma separated"/></label>
-          <label>Instruments (comma) <input type="text" id="seg-inst" placeholder="comma separated"/></label>
-          <label>Comment <input type="text" id="seg-comment" /></label>
-        `;
-        const saveBtn = document.createElement('button'); saveBtn.textContent = seg ? 'Save' : 'Add'; saveBtn.className='btn'; saveBtn.style.marginRight='8px';
-        const cancelBtn = document.createElement('button'); cancelBtn.textContent='Cancel'; cancelBtn.className='btn';
-        form.appendChild(saveBtn); form.appendChild(cancelBtn);
-        parent.appendChild(form);
 
-        if(seg){ document.getElementById('seg-start').value = seg.start_time || seg.start || ''; document.getElementById('seg-end').value = seg.end_time || seg.end || ''; document.getElementById('seg-title').value = seg.song_title || seg.title || ''; document.getElementById('seg-perf').value = Array.isArray(seg.performers) ? seg.performers.map(p=>p.name||p.performer||p).join(', ') : ''; document.getElementById('seg-inst').value = Array.isArray(seg.instruments) ? seg.instruments.map(i=>i.name||i).join(', ') : ''; document.getElementById('seg-comment').value = seg.comment || seg.note_text || '' }
-
-        cancelBtn.addEventListener('click', ()=>{ form.remove(); });
-        saveBtn.addEventListener('click', async ()=>{
-          try{
-            const payload = {
-              start_time: Number(document.getElementById('seg-start').value) || 0,
-              end_time: Number(document.getElementById('seg-end').value) || 0,
-              song_title: (document.getElementById('seg-title').value || '').trim(),
-              performers: (document.getElementById('seg-perf').value || '').split(',').map(s=>s.trim()).filter(Boolean),
-              instruments: (document.getElementById('seg-inst').value || '').split(',').map(s=>s.trim()).filter(Boolean),
-              comment: (document.getElementById('seg-comment').value || '').trim()
-            };
-            let res;
-            if(seg && seg.id){ // update
-              const r = await fetch(`/show/segments/${encodeURIComponent(seg.id)}`, {method:'PUT', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
-              res = await r.json().catch(()=>null);
-              if(!r.ok || (res && res.error)) throw new Error((res && res.error) || 'Update failed');
-            } else { // create
-              const r = await fetch('/show/segments', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({video_id: mediaId, segment: payload})});
-              res = await r.json().catch(()=>null);
-              if(!r.ok || (res && res.error)) throw new Error((res && res.error) || 'Create failed');
-            }
-            form.remove(); await renderSegments();
-          }catch(e){ console.error(e); alert('Failed to save segment: '+(e.message||e)); }
-        });
-      }
-
-      await renderSegments();
     }
 
     // ---------- DETAILS ----------
@@ -1346,6 +1462,322 @@
       container.appendChild(ltitle); container.appendChild(llist);
     })();
 
+    // ---------- NOTES ----------
+    (function(){
+      const ntitle = document.createElement('div'); ntitle.className='list-title'; ntitle.textContent='Notes';
+      const nlist = document.createElement('div'); nlist.id = 'notes-list'; nlist.style.marginTop = '8px'; nlist.textContent = 'Caricamento note...';
+      container.appendChild(ntitle); container.appendChild(nlist);
+
+      async function fetchNotes(){
+        try{
+          const res = await fetch(`/show/notes?media_id=${encodeURIComponent(mediaId)}`);
+          if(!res.ok) return [];
+          const j = await res.json();
+          if(!j) return [];
+          if(Array.isArray(j.notes)) return j.notes;
+          // fallback shapes
+          if(Array.isArray(j.response)) return j.response;
+          if(Array.isArray(j.results)) return j.results;
+          return [];
+        }catch(e){ console.error('fetchNotes error', e); return []; }
+      }
+
+      function parseNoteText(text){
+        if(!text) return {};
+        try{ return JSON.parse(text); }catch(e){ return { raw_text: String(text) }; }
+      }
+
+      function renderNote(n){
+        const card = document.createElement('div'); card.className = 'note-card'; card.style.border = '1px solid rgba(255,255,255,0.04)'; card.style.borderRadius = '8px'; card.style.padding = '8px'; card.style.marginTop = '8px';
+        const header = document.createElement('div'); header.style.display = 'flex'; header.style.alignItems = 'center';
+        const who = document.createElement('div'); who.style.marginRight = '8px'; who.style.color = 'var(--muted)';
+        const username = (n.username || (n.user && n.user.username) || n.user_id);
+        if (username) {
+          const a = document.createElement('a');
+          a.href = `/home/?form_type=profile&username=${encodeURIComponent(String(username))}`;
+          a.textContent = `By: ${username}`;
+          a.style.color = 'var(--muted)'; a.style.textDecoration = 'none'; a.target = '_blank';
+          who.appendChild(a);
+        } else {
+          who.textContent = 'By: anonymous';
+        }
+        const when = document.createElement('div'); when.style.marginLeft = 'auto'; when.style.color = 'var(--muted)'; when.textContent = n.created_at ? formatTimestamp(n.created_at) : '';
+        header.appendChild(who); header.appendChild(when);
+
+        const body = document.createElement('div'); body.style.marginTop = '8px';
+        // time / doc position (documents: do NOT show raw coordinates)
+        if(media.type === 'document'){
+          // For document notes we intentionally do not print anchors/coords.
+          // Instead, we only show human-readable content extracted from note.text below.
+        } else {
+          const s = Number(n.start) || 0; const e = Number(n.end) || 0;
+          const timeEl = document.createElement('div'); timeEl.innerHTML = `<strong>${formatTime(s)} — ${formatTime(e)}</strong>`; body.appendChild(timeEl);
+        }
+
+        // parsed text fields summary (exclude any positional/anchor data)
+        const parsed = parseNoteText(n.text);
+        const summary = document.createElement('div'); summary.style.marginTop = '6px'; summary.style.color = 'var(--muted)';
+        if(parsed && typeof parsed === 'object'){
+          // Work on a shallow copy and remove positional keys
+          const copy = Object.assign({}, parsed);
+          delete copy.anchor; delete copy.start; delete copy.end; delete copy.page;
+
+          const pieces = [];
+          if(copy.title) pieces.push(`Title: ${copy.title}`);
+          if(copy.performers) pieces.push(`Performers: ${Array.isArray(copy.performers) ? copy.performers.join(', ') : copy.performers}`);
+          if(copy.additional_info) pieces.push(`Info: ${copy.additional_info}`);
+          // If parsing yielded only positional data, try to show any free text fields
+          if(copy.raw_text) pieces.push(copy.raw_text);
+
+          const textSummary = pieces.join(' — ');
+          if(textSummary) summary.textContent = textSummary;
+          else {
+            // Fallback: if original n.text is a JSON string that only contained anchor, show a generic label
+            if(media.type === 'document') summary.textContent = '';
+            else summary.textContent = n.text || '';
+          }
+        } else {
+          summary.textContent = n.text || '';
+        }
+        body.appendChild(summary);
+
+        // actions: Jump to time / Show area
+        const actions = document.createElement('div'); actions.style.marginTop = '8px';
+
+        // If the note has an associated image (graphic note stored_at), show a thumbnail
+        try{
+          if(n.stored_at){
+            const fname = String(n.stored_at).split('/').pop();
+            const imgUrl = '/show/file?file_type=notes&filename=' + encodeURIComponent(fname || '');
+            const thumbWrap = document.createElement('div'); thumbWrap.style.marginTop = '8px';
+            const thumb = document.createElement('img');
+            thumb.className = 'note-thumb';
+            thumb.style.maxWidth = '220px';
+            thumb.style.borderRadius = '6px';
+            thumb.style.cursor = 'pointer';
+            thumb.style.display = 'block';
+            thumb.style.boxShadow = '0 6px 18px rgba(0,0,0,0.45)';
+            thumb.src = imgUrl;
+            thumb.addEventListener('click', ()=>{ showImageModal(imgUrl); });
+            thumbWrap.appendChild(thumb);
+            body.appendChild(thumbWrap);
+          }
+        }catch(e){}
+
+        if(media.type !== 'document'){
+          const jump = document.createElement('button'); jump.textContent = 'Jump'; jump.className='btn';
+          jump.addEventListener('click', ()=>{
+            try{
+              const t = Number(n.start) || 0;
+              // video/audio element
+              const videoPlayer = el('video-player'); const audioPlayer = el('audio-player'); const videoBox = el('video-box'); const audioBox = el('audio-box');
+              if(videoPlayer && videoBox && !videoBox.classList.contains('hidden')){ videoPlayer.currentTime = t; videoPlayer.play(); return; }
+              if(audioPlayer && audioBox && !audioBox.classList.contains('hidden')){ audioPlayer.currentTime = t; audioPlayer.play(); return; }
+              // YouTube player
+              if(media.type === 'concert' && window._concertYT_ready && window._concertYT && typeof window._concertYT.seekTo === 'function'){ try{ window._concertYT.seekTo(t, true); }catch(e){}} else {
+                alert('No playable player available to jump');
+              }
+            }catch(e){ console.error(e); alert('Jump failed'); }
+          });
+          actions.appendChild(jump);
+        } else {
+          // document: show anchor data if present
+          const parsed = parseNoteText(n.text);
+          if(parsed && parsed.anchor){
+            const showA = document.createElement('button'); showA.textContent = 'Show area'; showA.className='btn';
+            showA.addEventListener('click', ()=>{
+              try{
+                // If doc overlay exists, render highlight boxes
+                const docOverlay = document.getElementById('doc-overlay');
+                if(!docOverlay) return alert('Document overlay not available');
+                // remove existing highlights, popups and backdrops
+                const hs = docOverlay.querySelectorAll('.doc-highlight'); if(hs) hs.forEach(h=>h.remove());
+                const prevPops = docOverlay.querySelectorAll('.doc-note-popup'); if(prevPops) prevPops.forEach(p=>p.remove());
+                const prevBacks = docOverlay.querySelectorAll('.doc-popup-backdrop'); if(prevBacks) prevBacks.forEach(b=>b.remove());
+
+                // ensure overlay captures events so we can freeze interactions while popup is open
+                docOverlay.style.pointerEvents = 'auto';
+
+                const rects = parsed.anchor.rects || (parsed.anchor.start && parsed.anchor.end ? [{ x: parsed.anchor.start.x, y: parsed.anchor.start.y, w: (parsed.anchor.end.x - parsed.anchor.start.x), h: (parsed.anchor.end.y - parsed.anchor.start.y) }] : []);
+                const r = docOverlay.getBoundingClientRect();
+                rects.forEach(a=>{ const d = document.createElement('div'); d.className = 'doc-highlight'; d.style.left = (a.x * r.width) + 'px'; d.style.top = (a.y * r.height) + 'px'; d.style.width = (a.w * r.width) + 'px'; d.style.height = (a.h * r.height) + 'px'; docOverlay.appendChild(d); });
+
+                // If the note contains a stored image, show it in a popup inside the document overlay sized to the note rect(s)
+                try{
+                  if(n.stored_at){
+                    const fname = String(n.stored_at).split('/').pop();
+                    const imgUrl = '/show/file?file_type=notes&filename=' + encodeURIComponent(fname || '');
+                    try{
+                      // Prefer rendering the saved image directly inside the overlay at the original rect dimensions
+                      const rectsToUse = rects && rects.length ? rects : (parsed && parsed.anchor && parsed.anchor.start && parsed.anchor.end ? [{ x: parsed.anchor.start.x, y: parsed.anchor.start.y, w: (parsed.anchor.end.x - parsed.anchor.start.x), h: (parsed.anchor.end.y - parsed.anchor.start.y) }] : []);
+                      rectsToUse.forEach(a => {
+                        const imgWrap = document.createElement('div');
+                        imgWrap.className = 'doc-note-popup doc-note-image-popup';
+                        imgWrap.style.left = (a.x * r.width) + 'px';
+                        imgWrap.style.top = (a.y * r.height) + 'px';
+                        imgWrap.style.width = (a.w * r.width) + 'px';
+                        imgWrap.style.height = (a.h * r.height) + 'px';
+                        imgWrap.style.overflow = 'hidden';
+                        imgWrap.style.pointerEvents = 'auto';
+
+                        const img = document.createElement('img');
+                        img.src = imgUrl;
+                        img.style.width = '100%';
+                        img.style.height = '100%';
+                        img.style.display = 'block';
+                        img.style.objectFit = 'cover';
+
+                        imgWrap.appendChild(img);
+                        docOverlay.appendChild(imgWrap);
+                      });
+                    }catch(err){
+                      console.error('Failed to render inline note image:', err);
+                      // fallback to full-screen modal if inline render fails
+                      showImageModal(imgUrl);
+                    }
+                  }
+                }catch(e){}
+
+                // create a transparent backdrop that captures clicks outside the popup
+                const backdrop = document.createElement('div'); backdrop.className = 'doc-popup-backdrop';
+
+                // key handler to close on Escape
+                const keyHandler = (ev) => { if(ev && (ev.key === 'Escape' || ev.key === 'Esc')) closePopup(); };
+
+                // close helper
+                const closePopup = () => {
+                  try{
+                    const hs2 = docOverlay.querySelectorAll('.doc-highlight'); if(hs2) hs2.forEach(h=>h.remove());
+                    const pops2 = docOverlay.querySelectorAll('.doc-note-popup'); if(pops2) pops2.forEach(p=>p.remove());
+                    const backs2 = docOverlay.querySelectorAll('.doc-popup-backdrop'); if(backs2) backs2.forEach(b=>b.remove());
+                    // restore overlay interactivity to allow normal interactions
+                    docOverlay.style.pointerEvents = 'none';
+                    document.removeEventListener('keydown', keyHandler);
+                  }catch(e){/* ignore */}
+                };
+
+                backdrop.addEventListener('click', (ev)=>{ ev.preventDefault(); closePopup(); });
+                docOverlay.appendChild(backdrop);
+                document.addEventListener('keydown', keyHandler);
+
+                // create a popup containing note text (parsed fields) and place it near the first highlight
+                try{
+                  const contents = [];
+                  // parsed is already available in surrounding scope
+                  if(parsed && typeof parsed === 'object'){
+                    if(parsed.title) contents.push(parsed.title);
+                    if(parsed.performers) contents.push(Array.isArray(parsed.performers) ? parsed.performers.join(', ') : parsed.performers);
+                    if(parsed.additional_info) contents.push(parsed.additional_info);
+                    if(parsed.raw_text) contents.push(parsed.raw_text);
+                    // avoid including positional/anchor info
+                  } else if(n.text) {
+                    contents.push(n.text);
+                  }
+
+                  if(contents.length){
+                    const popup = document.createElement('div'); popup.className = 'doc-note-popup';
+                    // prevent clicks inside popup from closing it
+                    popup.addEventListener('click', (ev)=>{ ev.stopPropagation(); });
+
+                    // populate safely as text nodes
+                    if(parsed && parsed.title){ const h = document.createElement('div'); h.style.fontWeight='700'; h.style.marginBottom='6px'; h.textContent = parsed.title; popup.appendChild(h); }
+                    const bodyText = contents.filter(c => !(parsed && parsed.title && c === parsed.title)).join(' — ');
+                    const body = document.createElement('div'); body.textContent = bodyText; popup.appendChild(body);
+
+                    // optional close button
+                    const closeBtn = document.createElement('button'); closeBtn.textContent = '\u2716'; closeBtn.title = 'Close'; closeBtn.style.position = 'absolute'; closeBtn.style.right = '8px'; closeBtn.style.top = '6px'; closeBtn.style.background = 'transparent'; closeBtn.style.border = 'none'; closeBtn.style.color = '#bbb'; closeBtn.style.cursor = 'pointer'; closeBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); closePopup(); });
+                    popup.style.position = 'absolute'; popup.appendChild(closeBtn);
+
+                    // position near first rect (adjust after append to avoid overflow)
+                    const first = rects && rects.length ? rects[0] : { x: 0.02, y: 0.02, w: 0.1, h: 0.08 };
+                    popup.style.left = (first.x * r.width) + 'px';
+                    popup.style.top = (first.y * r.height) + 'px';
+                    docOverlay.appendChild(popup);
+
+                    // reposition if it overflows top or right
+                    const pr = popup.getBoundingClientRect();
+                    const popupHeight = pr.height || (popup.offsetHeight || 40);
+                    const popupWidth = pr.width || (popup.offsetWidth || 220);
+                    // prefer placing above highlight if space allows
+                    const preferTop = (first.y * r.height) - popupHeight - 8;
+                    if(preferTop > 8){ popup.style.top = preferTop + 'px'; } else { popup.style.top = Math.max((first.y * r.height) + 8, 8) + 'px'; }
+                    // adjust horizontal overflow
+                    if((first.x * r.width) + popupWidth + 12 > r.width){ popup.style.left = Math.max(r.width - popupWidth - 12, 8) + 'px'; }
+                  }
+                }catch(e){ console.error('Failed to render note popup', e); }
+
+                // scroll iframe into view
+                const iframe = document.getElementById('document-viewer'); if(iframe) iframe.scrollIntoView({behavior:'smooth', block:'center'});
+              }catch(e){ console.error(e); alert('Failed to show area'); }
+            });
+            actions.appendChild(showA);
+          }
+        }
+
+        // delete button: visible and enabled if owner OR lvl < 2
+        try{
+          const loggedId = LOGGED && (LOGGED.id !== undefined && LOGGED.id !== null) ? String(LOGGED.id) : null;
+          const viewerLvl = LOGGED && (LOGGED.lvl !== undefined && LOGGED.lvl !== null) ? Number(LOGGED.lvl) : null;
+          const isOwner = loggedId && String(n.user_id) === String(loggedId);
+          const isAdminLvl = (viewerLvl !== null && viewerLvl < 2);
+          const canDelete = isOwner || isAdminLvl;
+          if(canDelete){
+            const delBtn = document.createElement('button'); delBtn.textContent = 'Delete note'; delBtn.className='btn'; delBtn.style.marginLeft='8px'; delBtn.style.background = '#c33'; delBtn.style.color = '#fff';
+            delBtn.addEventListener('click', async ()=>{
+              if(!confirm('Sei sicuro di voler eliminare questa nota?')) return;
+              try{
+                delBtn.disabled = true;
+                const r = await fetch('/show/note/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ note_id: n.id }) });
+                const j = await r.json().catch(()=>null);
+                if(r.ok && j && j.status === 'OK'){
+                  alert('Nota eliminata');
+                  await loadNotes();
+                } else {
+                  alert('Delete failed: ' + (j && j.error_msg ? j.error_msg : 'Unknown'));
+                }
+              }catch(e){ console.error(e); alert('Network error'); }
+              finally{ delBtn.disabled = false; }
+            });
+            actions.appendChild(delBtn);
+          }
+        }catch(e){}
+
+        // private badge
+        if(n.private){ const badge = document.createElement('span'); badge.textContent='Private'; badge.style.marginLeft='8px'; badge.style.background='rgba(255,39,112,0.12)'; badge.style.padding='2px 6px'; badge.style.borderRadius='6px'; badge.style.color='var(--muted)'; actions.appendChild(badge); }
+
+        card.appendChild(header); card.appendChild(body); card.appendChild(actions);
+        return card;
+      }
+
+      async function loadNotes(){
+        const list = document.getElementById('notes-list'); if(!list) return;
+        list.textContent = 'Caricamento note...';
+        try{
+          const notes = await fetchNotes();
+          list.innerHTML = '';
+          if(!notes || !notes.length){ list.textContent = 'Nessuna nota'; return; }
+
+          // Filter visibility: show if not private OR owned by logged user OR viewer lvl < 2
+          const visible = notes.filter(n => {
+            if(!n.private) return true;
+            try{
+              const loggedId = LOGGED && (LOGGED.id !== undefined && LOGGED.id !== null) ? String(LOGGED.id) : null;
+              const isOwner = loggedId && String(n.user_id) === String(loggedId);
+              const isPrivileged = LOGGED && (Number(LOGGED.lvl) < 2);
+              return isOwner || isPrivileged;
+            } catch(e){ return false; }
+          });
+
+          visible.forEach(n => { const node = renderNote(n); list.appendChild(node); });
+        }catch(e){ console.error('loadNotes error', e); list.textContent = 'Errore nel caricamento note'; }
+      }
+
+      // expose for debugging
+      window._loadNotes = loadNotes;
+      // call now
+      loadNotes();
+    })();
+
     // download (direct)
     if(downloadUrl){
       const dl = document.createElement('a'); dl.id='download-btn'; dl.href = downloadUrl; dl.textContent='Download'; dl.style.marginTop='12px'; dl.style.display='inline-block'; dl.style.marginRight='8px';
@@ -1491,7 +1923,1004 @@
        });
  
      })();
- 
+
+    // ---------- NOTE HANDLING ----------
+    (function initNoteHandling(){
+      const mediaType = (media.type || '').toLowerCase();
+      const noteActionsDiv = el('note-actions');
+      const addNoteBtn = el('add-note-btn');
+      
+      // Show note button if user can add notes
+      if(canAddNotes() && noteActionsDiv){
+        noteActionsDiv.style.display = 'block';
+      }
+
+      if(!addNoteBtn) return;
+
+      // Update form visibility based on media type
+      const updateNoteFormForMediaType = () => {
+        const timeSelection = el('time-selection');
+        const docPosition = el('document-position');
+        const textFields = el('text-fields');
+        const liberoField = el('libero-field');
+        const graphicLabel = el('graphic-label');
+
+        // Reset note type selection
+        const defaultRadio = document.querySelector('input[name="note-type"][value="text"]');
+        if (defaultRadio) defaultRadio.checked = true;
+        // Ensure libero option is visible/enabled (available also for concert/video/audio)
+        try {
+          const liberoRadio = document.querySelector('input[name="note-type"][value="libero"]');
+          if (liberoRadio && liberoRadio.parentElement) {
+            liberoRadio.parentElement.style.display = 'inline-block';
+            liberoRadio.removeAttribute('disabled');
+          }
+        } catch(e){}
+
+        if(mediaType === 'document'){
+          // Documents have text and graphic notes
+          if (graphicLabel) graphicLabel.style.display = 'block';
+          if (docPosition) docPosition.style.display = 'block';
+          // For documents we hide the time-selection (no Set start / Set end options)
+          if (timeSelection) timeSelection.style.display = 'none';
+          // initialize document selection helpers
+          try{ initDocumentNotes(); }catch(e){}
+          // if a spatial anchor was previously captured, render its highlight
+          try{ if (currentDocAnchor) { drawDocHighlight(currentDocAnchor); } }catch(e){}
+        } else {
+          // Video/Audio/Concert have time-based notes
+          if (graphicLabel) graphicLabel.style.display = 'none';
+          if (docPosition) docPosition.style.display = 'none';
+          if (timeSelection) timeSelection.style.display = 'block';
+          // destroy any document helpers if switching from document
+          try{ destroyDocumentNotes(); }catch(e){}
+        }
+
+
+        function drawDocHighlight(anchor) {
+          const r = docOverlay.getBoundingClientRect();
+          anchor.rects.forEach(a => {
+            const d = document.createElement("div");
+            d.className = "doc-highlight";
+            d.style.left = (a.x * r.width) + "px";
+            d.style.top = (a.y * r.height) + "px";
+            d.style.width = (a.w * r.width) + "px";
+            d.style.height = (a.h * r.height) + "px";
+            docOverlay.appendChild(d);
+          });
+        }
+
+        // Always show text fields initially, hide libero field
+        if (textFields) textFields.style.display = 'block';
+        if (liberoField) liberoField.style.display = 'none';
+
+
+
+        // Show Set start / Set end buttons only for time-based media (hide for documents)
+        try {
+          const setStartBtn = el('note-set-start');
+          const setEndBtn = el('note-set-end');
+          if (setStartBtn) setStartBtn.style.display = (mediaType === 'document' ? 'none' : '');
+          if (setEndBtn) setEndBtn.style.display = (mediaType === 'document' ? 'none' : '');
+        } catch(e){}
+      };
+
+      // Handle note type selection changes
+      const noteTypeRadios = document.querySelectorAll('input[name="note-type"]');
+      noteTypeRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+          const selectedType = e.target.value;
+          const textFields = el('text-fields');
+          const liberoField = el('libero-field');
+          const timeSelection = el('time-selection');
+          const docPosition = el('document-position');
+
+          const graphicWipModal = el('graphicNoteWip');
+
+          if(selectedType === 'graphic'){
+            // Graphic notes: for documents allow area selection and drawing; for other media show WIP
+            textFields.style.display = 'none';
+            liberoField.style.display = 'none';
+            timeSelection.style.display = (mediaType === 'document' ? 'none' : 'block');
+            docPosition.style.display = (mediaType === 'document' ? 'block' : 'none');
+
+            if(mediaType === 'document'){
+              // initialize document selection helpers (these show the "Seleziona area" button)
+              try{ initDocumentNotes(); }catch(e){}
+              // give the user a hint in the doc-position area
+              try{ const hint = el('doc-graphic-hint'); if(hint) hint.style.display = 'block'; }catch(e){}
+            } else {
+              // fallback: show WIP popup for unsupported media types
+              if(graphicWipModal){ showModal('graphicNoteWip', true); }
+              // revert to text if not supported
+              try{ document.querySelector('input[name="note-type"][value="text"]').checked = true; }catch(e){}
+            }
+          } else if(selectedType === 'libero'){
+            // Libero notes: show only free text; for documents show document position instead of time-selection
+            textFields.style.display = 'none';
+            liberoField.style.display = 'block';
+            timeSelection.style.display = (mediaType === 'document' ? 'none' : 'block');
+            docPosition.style.display = (mediaType === 'document' ? 'block' : 'none');
+            try{ const hint = el('doc-graphic-hint'); if(hint) hint.style.display = 'none'; }catch(e){}
+          } else if(selectedType === 'text'){
+            // Text notes: show structured fields and appropriate position fields
+            textFields.style.display = 'block';
+            liberoField.style.display = 'none';
+            timeSelection.style.display = (mediaType === 'document' ? 'none' : 'block');
+            docPosition.style.display = (mediaType === 'document' ? 'block' : 'none');
+            try{ const hint = el('doc-graphic-hint'); if(hint) hint.style.display = 'none'; }catch(e){}
+          }
+        });
+      });
+
+      // Close WIP popup
+      const wipCloseBtn = el('wip-close');
+      if(wipCloseBtn){
+        wipCloseBtn.addEventListener('click', () => {
+          showModal('graphicNoteWip', false);
+        });
+      }
+
+      // Open add note form
+      addNoteBtn.addEventListener('click', () => {
+        updateNoteFormForMediaType();
+        showModal('addNoteForm', true);
+      });
+
+      // Cancel button
+      const cancelBtn = el('addnote-cancel');
+      if(cancelBtn){
+        cancelBtn.addEventListener('click', () => {
+          try{ destroyDocumentNotes(); }catch(e){}
+          showModal('addNoteForm', false);
+        });
+      }
+
+      // Add close-button handler for non-modal add note panel (no backdrop click)
+      const addNoteCloseBtn = el('addnote-close');
+      if(addNoteCloseBtn){
+        addNoteCloseBtn.addEventListener('click', () => {
+          try{ destroyDocumentNotes(); }catch(e){}
+          showModal('addNoteForm', false);
+        });
+      }
+
+      // Helper to get current time from media player
+      const getCurrentTime = () => {
+        const videoPlayer = el('video-player');
+        const audioPlayer = el('audio-player');
+        const videoBox = el('video-box');
+        const audioBox = el('audio-box');
+        if (videoPlayer && videoBox && !videoBox.classList.contains('hidden')) return (typeof videoPlayer.currentTime === 'number' ? videoPlayer.currentTime : 0);
+        if (audioPlayer && audioBox && !audioBox.classList.contains('hidden')) return (typeof audioPlayer.currentTime === 'number' ? audioPlayer.currentTime : 0);
+        const player = videoPlayer || audioPlayer;
+        return player ? (typeof player.currentTime === 'number' ? player.currentTime : 0) : 0;
+      };
+      // ---------- MEDIA METADATA (DURATION / LIMITS) ----------
+      const setupMediaDurationAndDefaults = () => {
+        const videoPlayer = el('video-player');
+        const audioPlayer = el('audio-player');
+        const videoBox = el('video-box');
+        const audioBox = el('audio-box');
+        let player = null;
+        if (videoPlayer && videoBox && !videoBox.classList.contains('hidden')) player = videoPlayer;
+        else if (audioPlayer && audioBox && !audioBox.classList.contains('hidden')) player = audioPlayer;
+        else player = videoPlayer || audioPlayer;
+        if (!player) return;
+
+        const applyDuration = () => {
+          const duration = player.duration;
+          if (!isNaN(duration) && isFinite(duration)) {
+            const endInput = el('note-end');
+            if (endInput) {
+              try { endInput.max = duration.toFixed(2); } catch(e){}
+              if (!endInput.value) endInput.value = duration.toFixed(2);
+            }
+          }
+        };
+
+        player.addEventListener('loadedmetadata', applyDuration);
+        // if metadata already available, apply immediately
+        if (typeof player.duration === 'number' && !isNaN(player.duration)) applyDuration();
+      };
+      setupMediaDurationAndDefaults();
+
+      // show duration/pages info inside the note form
+      try {
+        const timeSelection = el('time-selection');
+        if (timeSelection) {
+          let info = el('note-duration-info');
+          if (!info) { info = document.createElement('div'); info.id = 'note-duration-info'; info.style.color = 'var(--muted)'; info.style.fontSize = '0.9em'; info.style.marginTop = '6px'; timeSelection.appendChild(info); }
+          const updateInfo = () => {
+            const videoPlayer = el('video-player');
+            const audioPlayer = el('audio-player');
+            const videoBox = el('video-box');
+            const audioBox = el('audio-box');
+            const player = (videoPlayer && videoBox && !videoBox.classList.contains('hidden')) ? videoPlayer : ((audioPlayer && audioBox && !audioBox.classList.contains('hidden')) ? audioPlayer : (videoPlayer || audioPlayer));
+            let dur = media.duration_seconds || media.duration || null;
+            // prefer YouTube iframe duration when available
+            try{
+              if((!dur || dur === 0) && mediaType === 'concert' && window._concertYT_ready && window._concertYT && typeof window._concertYT.getDuration === 'function'){
+                const ytd = window._concertYT.getDuration();
+                if(ytd && !isNaN(ytd) && ytd > 0) dur = ytd;
+              }
+            }catch(e){ }
+            if ((!dur || dur === 0) && player && typeof player.duration === 'number' && !isNaN(player.duration)) dur = player.duration;
+            if (dur) info.textContent = 'Durata massima: ' + Number(dur).toFixed(2) + 's'; else info.textContent = '';
+            // set input max if available
+            const endInput = el('note-end'); if (endInput && dur) endInput.max = Number(dur).toFixed(2);
+          };
+          updateInfo();
+        }
+
+        const docPos = el('document-position');
+        if (docPos) {
+          let pinfo = el('note-pages-info');
+          if (!pinfo) { pinfo = document.createElement('div'); pinfo.id = 'note-pages-info'; pinfo.style.color = 'var(--muted)'; pinfo.style.fontSize = '0.9em'; pinfo.style.marginTop = '6px'; docPos.appendChild(pinfo); }
+          const pagesTotal = media.pages || media.page_count || media.pages_count || media.pageCount || null;
+          if (pagesTotal) pinfo.textContent = 'Pagine totali: ' + pagesTotal; else pinfo.textContent = '';
+          // also set max attributes on page inputs
+          try { const ps = el('doc-page-start'); const pe = el('doc-page-end'); if (ps && pagesTotal) ps.max = pagesTotal; if (pe && pagesTotal) pe.max = pagesTotal; } catch(e){}
+        }
+      } catch(e){}
+
+      const setupDocumentClickHandlers = () => {
+        if (mediaType !== 'document') return;
+
+        // Try to attach inside iframe if same-origin, otherwise fall back to host document
+        const iframe = el('document-viewer');
+        const attachToNodeList = (nodeList) => {
+          if(!nodeList) return;
+          nodeList.forEach(word => {
+            try {
+              word.addEventListener('click', (event) => {
+                try{
+                  // compute bounding rect relative to docOverlay and store as spatial anchor
+                  const wRect = word.getBoundingClientRect();
+                  const ovRect = docOverlay.getBoundingClientRect();
+                  const left = wRect.left - ovRect.left;
+                  const top = wRect.top - ovRect.top;
+                  const anchor = { type: 'spatial', page: parseInt(word.dataset.page,10) || 1, rects: [{ x: left / ovRect.width, y: top / ovRect.height, w: wRect.width / ovRect.width, h: wRect.height / ovRect.height }] };
+                  currentDocAnchor = anchor;
+                  // persist anchor to hidden field
+                  try{ const ai = el('note-doc-anchor'); if(ai) ai.value = JSON.stringify(anchor); }catch(e){}
+                  // render highlight
+                  try{ const hs = docOverlay.querySelectorAll('.doc-highlight'); if(hs) hs.forEach(h=>h.remove()); const r = docOverlay.getBoundingClientRect(); anchor.rects.forEach(a=>{ const d = document.createElement('div'); d.className = 'doc-highlight'; d.style.left = (a.x * r.width) + 'px'; d.style.top = (a.y * r.height) + 'px'; d.style.width = (a.w * r.width) + 'px'; d.style.height = (a.h * r.height) + 'px'; docOverlay.appendChild(d); }); }catch(e){}
+                }catch(e){/* ignore */}
+              });
+            } catch(e){ /* ignore */ }
+          });
+        };
+
+        try {
+          if (iframe && iframe.contentDocument) {
+            const docWords = iframe.contentDocument.querySelectorAll('.doc-word');
+            attachToNodeList(docWords || []);
+
+            // attach a selection handler inside the iframe to detect user text selections
+            try{
+              // remove previous handler if any
+              try{ if(docIframeSelectionHandler && iframe.contentDocument && typeof iframe.contentDocument.removeEventListener === 'function') iframe.contentDocument.removeEventListener('mouseup', docIframeSelectionHandler); }catch(e){}
+
+              docIframeSelectionHandler = function(ev){
+                try{
+                  const sel = iframe.contentDocument.getSelection();
+                  if(!sel || sel.isCollapsed) return;
+                  const range = sel.rangeCount ? sel.getRangeAt(0) : null;
+                  if(!range) return;
+                  const rect = range.getBoundingClientRect();
+                  if(!rect || rect.width === 0 || rect.height === 0) return;
+                  // compute normalized rect relative to overlay
+                  const iframeRect = iframe.getBoundingClientRect();
+                  const overlayRect = docOverlay.getBoundingClientRect();
+                  const left = (rect.left + iframeRect.left) - overlayRect.left;
+                  const top = (rect.top + iframeRect.top) - overlayRect.top;
+                  const anchor = { type: 'spatial', page: 1, rects: [{ x: left / overlayRect.width, y: top / overlayRect.height, w: rect.width / overlayRect.width, h: rect.height / overlayRect.height }] };
+                  currentDocAnchor = anchor;
+                  // persist anchor to form hidden field
+                  try{ const ai = el('note-doc-anchor'); if(ai) ai.value = JSON.stringify(anchor); }catch(e){}
+                  // render highlight
+                  try{ const hs = docOverlay.querySelectorAll('.doc-highlight'); if(hs) hs.forEach(h=>h.remove()); const r = docOverlay.getBoundingClientRect(); anchor.rects.forEach(a=>{ const d = document.createElement('div'); d.className = 'doc-highlight'; d.style.left = (a.x * r.width) + 'px'; d.style.top = (a.y * r.height) + 'px'; d.style.width = (a.w * r.width) + 'px'; d.style.height = (a.h * r.height) + 'px'; docOverlay.appendChild(d); }); }catch(e){}
+                  // populate page fields if modal open or not
+                  try{ const ps = el('doc-page-start'); const pe = el('doc-page-end'); if(ps && (!ps.value || ps.value === '')) ps.value = anchor.page; else if(pe) pe.value = anchor.page; }catch(e){}
+                }catch(e){}
+              };
+
+              iframe.contentDocument.addEventListener('mouseup', docIframeSelectionHandler);
+            }catch(e){}
+
+            return;
+          }
+        } catch(e){ /* cross-origin or not ready */ }
+
+        // fallback to current document
+        const hostWords = document.querySelectorAll('.doc-word');
+        attachToNodeList(hostWords || []);
+      };
+      setupDocumentClickHandlers();
+
+      // Wire Set start / Set end buttons so they work for audio/video and documents
+      try {
+        const setStartBtn = el('note-set-start');
+        const setEndBtn = el('note-set-end');
+        if (setStartBtn) setStartBtn.addEventListener('click', () => {
+          // For audio/video players (not YouTube) - prefer visible player
+          const videoPlayer = el('video-player');
+          const audioPlayer = el('audio-player');
+          const videoBox = el('video-box');
+          const audioBox = el('audio-box');
+          if (videoPlayer && videoBox && !videoBox.classList.contains('hidden') && typeof videoPlayer.currentTime === 'number') {
+            const t = videoPlayer.currentTime;
+            const s = el('note-start');
+            if (s) s.value = t.toFixed(2);
+            return;
+          }
+          if (audioPlayer && audioBox && !audioBox.classList.contains('hidden') && typeof audioPlayer.currentTime === 'number') {
+            const t = audioPlayer.currentTime;
+            const s = el('note-start');
+            if (s) s.value = t.toFixed(2);
+            return;
+          }
+          // For documents
+          if (mediaType === 'document') {
+            const anchor = currentDocAnchor;
+            if (anchor) {
+              // prefer spatial anchor when available
+              const page = anchor.page || 1;
+              const ps = el('doc-page-start');
+              const ls = el('doc-line-start');
+              const cs = el('doc-char-start');
+              if (ps && (!ps.value || ps.value === '')) {
+                ps.value = page;
+                // no reliable line/char from spatial anchor; leave them to user or clicks
+                if (ls) ls.value = '';
+                if (cs) cs.value = '';
+              } else {
+                const pe = el('doc-page-end'); const le = el('doc-line-end'); const ce = el('doc-char-end');
+                if (pe) pe.value = page; if (le) le.value = ''; if (ce) ce.value = '';
+              }
+              return;
+            }
+            if (window._lastDocClick) {
+              const v = window._lastDocClick;
+              const ps = el('doc-page-start');
+              const ls = el('doc-line-start');
+              const cs = el('doc-char-start');
+              if (ps) ps.value = v.page;
+              if (ls) ls.value = v.line;
+              if (cs) cs.value = v.char;
+              return;
+            }
+          }
+          // For YouTube or no media loaded
+          if (mediaType === 'concert') {
+            const yt = window._concertYT;
+            if(yt && typeof yt.getCurrentTime === 'function' && window._concertYT_ready){
+              const t = yt.getCurrentTime();
+              const s = el('note-start'); if(s) s.value = (Number(t)||0).toFixed(2);
+            } else {
+              alert('YouTube player not ready yet. Please wait a moment or enter the start time manually.');
+            }
+          } else {
+            if (mediaType === 'document'){
+              alert('Nessuna selezione: clicca una parola o seleziona un\'area nel documento, poi premi Set start');
+            } else {
+              alert('No player available: clicca sul documento o riproduci il media, poi premi Set start');
+            }
+          }
+        });
+        if (setEndBtn) setEndBtn.addEventListener('click', () => {
+          // For audio/video players (not YouTube) - prefer visible player
+          const videoPlayer = el('video-player');
+          const audioPlayer = el('audio-player');
+          const videoBox = el('video-box');
+          const audioBox = el('audio-box');
+          if (videoPlayer && videoBox && !videoBox.classList.contains('hidden') && typeof videoPlayer.currentTime === 'number') {
+            const t = videoPlayer.currentTime;
+            const e = el('note-end');
+            if (e) e.value = t.toFixed(2);
+            return;
+          }
+          if (audioPlayer && audioBox && !audioBox.classList.contains('hidden') && typeof audioPlayer.currentTime === 'number') {
+            const t = audioPlayer.currentTime;
+            const e = el('note-end');
+            if (e) e.value = t.toFixed(2);
+            return;
+          }
+          // For documents
+          if (mediaType === 'document') {
+            const anchor = currentDocAnchor;
+            if (anchor) {
+              const page = anchor.page || 1;
+              const pe = el('doc-page-end');
+              const le = el('doc-line-end');
+              const ce = el('doc-char-end');
+              if (pe && (!pe.value || pe.value === '')) {
+                pe.value = page;
+                if (le) le.value = '';
+                if (ce) ce.value = '';
+              } else {
+                const ps = el('doc-page-start'); const ls = el('doc-line-start'); const cs = el('doc-char-start');
+                if (ps) ps.value = page; if (ls) ls.value = ''; if (cs) cs.value = '';
+              }
+              return;
+            }
+            if (window._lastDocClick) {
+              const v = window._lastDocClick;
+              const pe = el('doc-page-end');
+              const le = el('doc-line-end');
+              const ce = el('doc-char-end');
+              if (pe) pe.value = v.page;
+              if (le) le.value = v.line;
+              if (ce) ce.value = v.char;
+              return;
+            }
+          }
+          // For YouTube or no media loaded
+          if (mediaType === 'concert') {
+            const yt = window._concertYT;
+            if(yt && typeof yt.getCurrentTime === 'function' && window._concertYT_ready){
+              const t = yt.getCurrentTime();
+              const e = el('note-end'); if(e) e.value = (Number(t)||0).toFixed(2);
+            } else {
+              alert('YouTube player not ready yet. Please wait a moment or enter the end time manually.');
+            }
+          } else {
+            if (mediaType === 'document'){
+              alert('Nessuna selezione: clicca una parola o seleziona un\'area nel documento, poi premi Set end');
+            } else {
+              alert('No player available: clicca sul documento o riproduci il media, poi premi Set end');
+            }
+          }
+        });
+      } catch(e){}
+
+      // Ensure start/end fields accept only numeric input (digits and a single dot)
+      try{
+        const enforceNumericInput = (inputId) => {
+          const inp = el(inputId);
+          if (!inp) return;
+          inp.addEventListener('input', () => {
+            try{
+              let v = String(inp.value || '');
+              // remove anything that's not digit or dot
+              let cleaned = v.replace(/[^0-9\.]/g, '');
+              // collapse multiple dots into a single one
+              const parts = cleaned.split('.');
+              if (parts.length > 2) cleaned = parts.shift() + '.' + parts.join('');
+              if (cleaned.startsWith('.')) cleaned = '0' + cleaned.replace(/^\.+/, '');
+              if (cleaned !== v) inp.value = cleaned;
+            }catch(e){}
+          });
+          inp.addEventListener('keypress', (ev) => {
+            try{
+              const ch = ev.key || String.fromCharCode(ev.which || ev.keyCode);
+              if (!/[0-9.]/.test(ch)) { ev.preventDefault(); return; }
+              // disallow second dot
+              if (ch === '.' && inp.value && inp.value.indexOf('.') !== -1) ev.preventDefault();
+            }catch(e){}
+          });
+          inp.addEventListener('paste', (ev) => {
+            try{
+              ev.preventDefault();
+              const txt = (ev.clipboardData || window.clipboardData).getData('text') || '';
+              let cleaned = txt.replace(/[^0-9\.]/g, '');
+              const parts = cleaned.split('.');
+              cleaned = parts.length > 1 ? parts.shift() + '.' + parts.join('') : parts[0] || '';
+              if (cleaned.startsWith('.')) cleaned = '0' + cleaned.replace(/^\.+/, '');
+              inp.value = cleaned;
+            }catch(e){}
+          });
+        };
+        enforceNumericInput('note-start');
+        enforceNumericInput('note-end');
+      }catch(e){}
+
+      // Click on media player to set start/end time
+      const setupMediaClickHandlers = () => {
+        const videoPlayer = el('video-player');
+        const audioPlayer = el('audio-player');
+        const videoBox = el('video-box');
+        const audioBox = el('audio-box');
+        // prefer currently visible player (video if visible, else audio), fall back to whichever exists
+        let player = null;
+        if (videoPlayer && videoBox && !videoBox.classList.contains('hidden')) player = videoPlayer;
+        else if (audioPlayer && audioBox && !audioBox.classList.contains('hidden')) player = audioPlayer;
+        else player = videoPlayer || audioPlayer;
+        if(!player) return;
+
+        // Clicking on the visual area will set a time proportional to click X position
+        player.addEventListener('click', (ev) => {
+          try {
+            const rect = player.getBoundingClientRect();
+            const x = (ev.clientX || 0) - rect.left;
+            const pct = Math.max(0, Math.min(1, x / (rect.width || 1)));
+            const duration = Number(player.duration) || 0;
+            const clickedTime = duration ? (pct * duration) : (player.currentTime || 0);
+
+            const startInput = el('note-start');
+            const endInput = el('note-end');
+
+            if (startInput && (!startInput.value || startInput.value === '')) {
+              startInput.value = clickedTime.toFixed(2);
+            } else if (endInput && (!endInput.value || endInput.value === '')) {
+              endInput.value = clickedTime.toFixed(2);
+            } else if (startInput) {
+              startInput.value = clickedTime.toFixed(2);
+              if (endInput) endInput.value = '';
+            }
+          } catch(e){
+            // fallback: use currentTime
+            const currentTime = player.currentTime || 0;
+            const startInput = el('note-start');
+            const endInput = el('note-end');
+            if (startInput && (!startInput.value || startInput.value === '')) startInput.value = currentTime.toFixed(2);
+            else if (endInput && (!endInput.value || endInput.value === '')) endInput.value = currentTime.toFixed(2);
+            else if (startInput) { startInput.value = currentTime.toFixed(2); if (endInput) endInput.value = ''; }
+          }
+        });
+      };
+      function docMouseDown(e) {
+        // only start selection when overlay selection mode is enabled
+        if (!docSelectionMode) return;
+        // prevent creating a new selection if an area/canvas already exists (only one allowed at a time)
+        try{
+          const existing = docOverlay && (docOverlay.querySelector('.doc-canvas') || docOverlay.querySelector('.doc-highlight'));
+          if(existing){ try{ alert("Una sola area per nota. Rimuovere l'area esistente prima di crearne una nuova."); }catch(e){}; return; }
+        }catch(e){}
+
+        const r = docOverlay.getBoundingClientRect();
+        docStartX = e.clientX - r.left;
+        docStartY = e.clientY - r.top;
+
+        docSelection = document.createElement("div");
+        docSelection.className = "doc-selection";
+        docOverlay.appendChild(docSelection);
+      }
+
+      function docMouseMove(e) {
+        if (!docSelection) return;
+
+        const r = docOverlay.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        const y = e.clientY - r.top;
+
+        docSelection.style.left = Math.min(docStartX, x) + "px";
+        docSelection.style.top = Math.min(docStartY, y) + "px";
+        docSelection.style.width = Math.abs(x - docStartX) + "px";
+        docSelection.style.height = Math.abs(y - docStartY) + "px";
+      }
+
+      function docMouseUp() {
+        if (!docSelection) return;
+        const rect = normalizeDocRect(docSelection)
+        currentDocAnchor = {
+          type: "spatial",
+          page: rect.page ?? 1,
+          start: { x: rect.rects[0].x, y: rect.rects[0].y },
+          end: {
+            x: rect.rects[0].x + rect.rects[0].w,
+            y: rect.rects[0].y + rect.rects[0].h
+          }
+        };
+        // store anchor JSON into hidden input so save can include it or UI can show it
+        try{ const anchorInput = el('note-doc-anchor'); if(anchorInput) anchorInput.value = JSON.stringify(currentDocAnchor); }catch(e){}
+
+        // If the user has selected a graphic note type, replace the selected rectangle with a canvas to draw on
+        try{
+          const selectedRadio = document.querySelector('input[name="note-type"]:checked');
+          if(selectedRadio && selectedRadio.value === 'graphic'){
+            try{
+              const b = docSelection.getBoundingClientRect();
+              const o = docOverlay.getBoundingClientRect();
+              // create a hi-dpi aware canvas
+              const canvas = document.createElement('canvas');
+              canvas.className = 'doc-canvas';
+              canvas.style.position = 'absolute';
+              canvas.style.left = (b.left - o.left) + 'px';
+              canvas.style.top = (b.top - o.top) + 'px';
+              const dpr = window.devicePixelRatio || 1;
+              canvas.width = Math.max(1, Math.round(b.width * dpr));
+              canvas.height = Math.max(1, Math.round(b.height * dpr));
+              canvas.style.width = b.width + 'px';
+              canvas.style.height = b.height + 'px';
+
+              // remove transient selection box and append canvas
+              docSelection.remove();
+              docOverlay.appendChild(canvas);
+              currentDocCanvas = canvas;
+
+              // prepare context for drawing
+              const ctx = canvas.getContext('2d');
+              try{ ctx.scale(dpr, dpr); }catch(e){}
+              enableCanvasDrawing(canvas);
+
+              // disable selection toggle button so user cannot start another area while a canvas exists
+              try{ const tbtn = el('doc-select-toggle'); if(tbtn){ tbtn.disabled = true; tbtn.textContent = 'Area selezionata'; } }catch(e){}
+
+              // add a small remove-area button to allow replacing the area
+              try{
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'doc-remove-area-btn';
+                removeBtn.textContent = 'Rimuovi area';
+                removeBtn.style.position = 'absolute';
+                removeBtn.style.zIndex = '40';
+                removeBtn.style.padding = '6px 10px';
+                removeBtn.style.border = 'none';
+                removeBtn.style.borderRadius = '6px';
+                removeBtn.style.background = 'rgba(0,0,0,0.6)';
+                removeBtn.style.color = '#fff';
+                removeBtn.style.cursor = 'pointer';
+                removeBtn.style.left = (b.left - o.left + b.width - 100) + 'px';
+                removeBtn.style.top = (b.top - o.top + 6) + 'px';
+                docOverlay.appendChild(removeBtn);
+                removeBtn.addEventListener('click', ()=>{
+                  try{
+                    if(currentDocCanvas){ currentDocCanvas.remove(); currentDocCanvas = null; }
+                    removeBtn.remove();
+                    const t = el('doc-select-toggle'); if(t){ t.disabled = false; t.textContent = 'Seleziona area'; }
+                  }catch(e){ }
+                });
+              }catch(e){}
+
+            }catch(e){ console.error('Failed to create drawing canvas', e); }
+          } else {
+            try{ docSelection.classList.remove('doc-selection'); docSelection.classList.add('doc-highlight'); }catch(e){}
+          }
+        }catch(e){ console.error(e); }
+
+        // clear transient selection reference so a new selection can be started
+        docSelection = null;
+        // if we were in overlay selection mode, automatically turn it off so iframe interactions resume
+        try{
+          const btn = el('doc-select-toggle');
+          if (btn) btn.textContent = 'Seleziona area';
+          if (docOverlay) docOverlay.style.pointerEvents = 'none';
+          docSelectionMode = false;
+        }catch(e){}
+      }
+
+      let docStartX, docStartY;
+      let docSelection = null;
+      let docOverlay = null;
+      let docNotesInitialized = false;
+      let currentDocAnchor = null;
+      let docIframeSelectionHandler = null;
+      let docSelectionMode = false; // true when user toggles overlay selection mode
+
+      // Canvas used for graphic notes (when user draws inside selected area)
+      let currentDocCanvas = null;
+
+      function enableCanvasDrawing(canvas){
+        if(!canvas) return;
+        canvas.style.cursor = 'crosshair';
+        let drawing = false; let lastX = 0; let lastY = 0;
+        const ctx = canvas.getContext('2d');
+        const getPos = (e) => {
+          const r = canvas.getBoundingClientRect();
+          const clientX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+          const clientY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+          // map to canvas coordinate space (accounting for CSS scaling)
+          const x = (clientX - r.left) * (canvas.width / r.width);
+          const y = (clientY - r.top) * (canvas.height / r.height);
+          return {x,y};
+        };
+
+        canvas.addEventListener('mousedown', (ev)=>{ ev.preventDefault(); drawing = true; const p = getPos(ev); lastX = p.x; lastY = p.y; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#ff3b76'; ctx.lineWidth = 3; });
+        canvas.addEventListener('mousemove', (ev)=>{ if(!drawing) return; const p = getPos(ev); ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke(); lastX = p.x; lastY = p.y; });
+        canvas.addEventListener('mouseup', (ev)=>{ drawing = false; });
+        canvas.addEventListener('mouseleave', (ev)=>{ drawing = false; });
+
+        // touch support
+        canvas.addEventListener('touchstart', (ev)=>{ ev.preventDefault(); drawing = true; const p = getPos(ev); lastX = p.x; lastY = p.y; });
+        canvas.addEventListener('touchmove', (ev)=>{ ev.preventDefault(); if(!drawing) return; const p = getPos(ev); ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(p.x,p.y); ctx.stroke(); lastX = p.x; lastY = p.y; });
+        canvas.addEventListener('touchend', (ev)=>{ drawing = false; });
+
+        // double-click clears drawing
+        canvas.addEventListener('dblclick', ()=>{ try{ ctx.clearRect(0,0,canvas.width,canvas.height); }catch(e){} });
+      }
+      function initDocumentNotes() {
+        if (docNotesInitialized) return;
+        docOverlay = document.getElementById("doc-overlay");
+        if (!docOverlay) return;
+
+        // overlay starts in pass-through mode so iframe selections work. The user can toggle selection mode to enable overlay dragging
+        docOverlay.addEventListener("mousedown", docMouseDown);
+        docOverlay.addEventListener("mousemove", docMouseMove);
+        docOverlay.addEventListener("mouseup", docMouseUp);
+
+        // setup toggle button for overlay selection mode
+        try{
+          const toggle = el('doc-select-toggle');
+          if(toggle){
+            toggle.addEventListener('click', ()=>{
+              try{
+                // if enabling selection, ensure no existing persistent area/canvas is present
+                if(!docSelectionMode){
+                  const existing = docOverlay && (docOverlay.querySelector('.doc-canvas') || docOverlay.querySelector('.doc-highlight'));
+                  if(existing){ try{ alert("Una sola area per nota. Rimuovere l'area esistente prima di crearne una nuova."); }catch(e){}; return; }
+                }
+
+                docSelectionMode = !docSelectionMode;
+                if(docSelectionMode){
+                  // enable overlay to capture mouse events for drag selection
+                  if(docOverlay) docOverlay.style.pointerEvents = 'auto';
+                  toggle.textContent = 'Annulla selezione';
+                } else {
+                  if(docOverlay) docOverlay.style.pointerEvents = 'none';
+                  toggle.textContent = 'Seleziona area';
+                  // remove any transient selection box
+                  if(docOverlay){ const sel = docOverlay.querySelector('.doc-selection'); if(sel) sel.remove(); }
+                }
+              }catch(e){}
+            });
+          }
+        }catch(e){}
+
+        el("note-actions").style.display = "block";
+        docNotesInitialized = true;
+      }
+
+      function destroyDocumentNotes(){
+        try{
+          if (!docNotesInitialized) return;
+          if (docOverlay){
+            docOverlay.removeEventListener('mousedown', docMouseDown);
+            docOverlay.removeEventListener('mousemove', docMouseMove);
+            docOverlay.removeEventListener('mouseup', docMouseUp);
+            // remove any transient selection box
+            const sel = docOverlay.querySelector('.doc-selection'); if(sel) sel.remove();
+            // remove persistent highlights
+            const hs = docOverlay.querySelectorAll('.doc-highlight'); if(hs) hs.forEach(h=>h.remove());
+            // remove any canvas used for graphic notes
+            try{ const canv = docOverlay.querySelectorAll('.doc-canvas'); if(canv) canv.forEach(c=>c.remove()); currentDocCanvas = null; }catch(e){}
+            // remove any remove-area buttons
+            try{ const rbs = docOverlay.querySelectorAll('.doc-remove-area-btn'); if(rbs) rbs.forEach(b=>b.remove()); }catch(e){}
+            // clear stored anchor
+            const a = el('note-doc-anchor'); if(a) a.value = '';
+            // remove selection handler from iframe if present
+            try{ const iframe = el('document-viewer'); if(docIframeSelectionHandler && iframe && iframe.contentDocument && typeof iframe.contentDocument.removeEventListener === 'function'){ iframe.contentDocument.removeEventListener('mouseup', docIframeSelectionHandler); } docIframeSelectionHandler = null; }catch(e){}
+            // ensure overlay returns to pass-through state
+            try{ if(docOverlay) docOverlay.style.pointerEvents = 'none'; }catch(e){}
+            // reset toggle button text and enable it if necessary
+            try{ const tbtn = el('doc-select-toggle'); if(tbtn){ tbtn.textContent = 'Seleziona area'; tbtn.disabled = false; } }catch(e){}
+          }
+        }catch(e){}
+        docSelection = null; docOverlay = null; docNotesInitialized = false; currentDocAnchor = null; docSelectionMode = false;
+      }
+
+      function normalizeDocRect(box) {
+        const o = docOverlay.getBoundingClientRect();
+        const b = box.getBoundingClientRect();
+
+        return {
+          type: "spatial",
+          page: 1, // se un domani PDF multipagina
+          rects: [{
+            x: (b.left - o.left) / o.width,
+            y: (b.top - o.top) / o.height,
+            w: b.width / o.width,
+            h: b.height / o.height
+          }]
+        };
+      }
+
+
+      // Save note
+      const saveBtn = el('addnote-save');
+      if(saveBtn){
+        saveBtn.addEventListener('click', async () => {
+          const noteType = document.querySelector('input[name="note-type"]:checked').value;
+          const isPrivate = el('note-private').checked;
+
+          // Build payload based on media type
+          let payload = {
+            media_id: mediaId,
+            type: noteType === 'graphic' ? 0 : 1, // 0=graphic, 1=text
+            text: '',
+            private: isPrivate
+          };
+
+          // For video/audio/concert
+          if(mediaType !== 'document'){
+            const startRaw = (el('note-start') && String(el('note-start').value || '').trim()) || '';
+            const endRaw = (el('note-end') && String(el('note-end').value || '').trim()) || '';
+            if (startRaw === '' || endRaw === '') return alert('Inserire sia inizio che fine della nota (usa i pulsanti Set start/Set end o inserisci i secondi)');
+            // ensure only numeric characters (digits and optional single decimal point) are present
+            try{ const numericRe = /^\d+(\.\d+)?$/; if(!numericRe.test(startRaw) || !numericRe.test(endRaw)) return alert('I valori di inizio/fine devono contenere solo cifre e un punto decimale (es. 12.34)'); }catch(e){}
+            payload.start = parseFloat(startRaw);
+            payload.end = parseFloat(endRaw);
+            if (isNaN(payload.start) || isNaN(payload.end)) return alert('I valori di inizio/fine non sono numerici validi');
+            payload.media_type = mediaType;
+          } else {
+            // For documents: require a spatial anchor (from selection or word click)
+            try{
+              if (!currentDocAnchor) {
+                return alert('Selezionare un area o cliccare una parola del documento prima di salvare la nota');
+              }
+            }catch(e){ return alert('Selezionare un area o cliccare una parola del documento prima di salvare la nota'); }
+
+            // For documents: use start/end = 0 and save spatial anchor inside text (client will embed coords in the text JSON)
+            payload.start = 0; // document notes use 0/0 for time/page fields
+            payload.end = 0;
+            payload.media_type = 'document';
+          }
+
+          // --------- VALIDATIONS ---------
+          // Validation 1: Ensure start <= end (start cannot be bigger than end)
+          if (payload.start > payload.end) {
+            return alert('Errore: Il punto di inizio non può essere successivo al punto di fine');
+          }
+
+          // Validation 2: For video/audio/concert, end cannot exceed total duration
+          if (mediaType !== 'document'){
+            let totalDuration = null;
+            try { totalDuration = media.duration_seconds || media.duration; } catch(e) { totalDuration = null; }
+
+            // Prefer YouTube iframe player duration for concerts if available
+            try{
+              if(mediaType === 'concert' && window._concertYT_ready && window._concertYT && typeof window._concertYT.getDuration === 'function'){
+                const ytd = window._concertYT.getDuration();
+                if(ytd && !isNaN(ytd) && ytd > 0) totalDuration = ytd;
+              }
+            }catch(e){}
+
+            // try to read from element if not present (audio/video tag)
+            try {
+              const videoPlayer = el('video-player');
+              const audioPlayer = el('audio-player');
+              const videoBox = el('video-box');
+              const audioBox = el('audio-box');
+              const player = (videoPlayer && videoBox && !videoBox.classList.contains('hidden')) ? videoPlayer : ((audioPlayer && audioBox && !audioBox.classList.contains('hidden')) ? audioPlayer : (videoPlayer || audioPlayer));
+              if ((!totalDuration || totalDuration === 0) && player && typeof player.duration === 'number' && !isNaN(player.duration)) totalDuration = player.duration;
+            } catch(e){}
+
+            if (totalDuration !== null && totalDuration !== undefined && !isNaN(Number(totalDuration))) {
+              const td = Number(totalDuration);
+              if (payload.end > td + 0.001) {
+                return alert('Errore: Il punto di fine supera la durata totale del media (' + td.toFixed(2) + 's)');
+              }
+              if (payload.start < 0 || payload.end < 0) return alert('I tempi non possono essere negativi');
+            }
+          } else {
+            // Validation 2b: For documents, end page cannot exceed total pages
+            const pagesTotal = media.pages || media.page_count || null;
+            if (pagesTotal !== null && pagesTotal !== undefined) {
+              const endPage = _doc_end_components.page;
+              if (endPage > Number(pagesTotal)) return alert('Errore: La pagina di fine supera il numero totale di pagine del documento');
+            }
+            // If per-page line/char metadata available, validate those too
+            // Expecting e.g. media.page_lines = { '1': 40, '2': 32, ... }
+            const pageLines = media.page_lines || media.page_line_counts || null;
+            if (pageLines && typeof pageLines === 'object'){
+              const endPage = String(_doc_end_components.page);
+              const maxLines = pageLines[endPage] || pageLines[Number(endPage)];
+              if (maxLines !== undefined && _doc_end_components.line > Number(maxLines)) return alert('Errore: La riga di fine supera il numero di righe della pagina selezionata');
+              // if char counts per line available as media.page_char_counts = { '1': { '1': 120, ... }, ... }
+              const pageChars = media.page_char_counts || null;
+              if (pageChars && pageChars[endPage] && pageChars[endPage][_doc_end_components.line]){
+                const maxChars = pageChars[endPage][_doc_end_components.line];
+                if (_doc_end_components.char > Number(maxChars)) return alert('Errore: La posizione di carattere supera il numero di caratteri della riga selezionata');
+              }
+            }
+          }
+
+          // Build text field based on note type
+          let textData;
+          if(noteType === 'libero'){
+            // For libero notes: just save the free-text content
+            payload.text = el('note-libero-text').value || '';
+          } else {
+            // For testo notes: build JSON structure with metadata
+            textData = {
+              performers: el('note-performers').value || '',
+              instruments: el('note-instruments').value || '',
+              length: el('note-length').value ? parseFloat(el('note-length').value) : null,
+              title: el('note-title').value || '',
+              rhythms: el('note-rhythm').value || '',
+              intensity: el('note-intensity').value || '',
+              solos: el('note-solos').value || '',
+              quality_of_execution: el('note-quality').value || '',
+              recording_date: el('note-recording-date').value || '',
+              recording_location: el('note-recording-location').value || '',
+              additional_info: el('note-additional-info').value || ''
+            }; 
+            payload.text = JSON.stringify(textData);
+          }
+
+          // Validation 3: Ensure note details are not completely empty. Skip this validation for graphic notes.
+          try {
+            if (noteType === 'libero'){
+              if (!payload.text || !String(payload.text).trim()) return alert('Errore: Dettagli nota vuoti. Inserire il testo della nota.');
+            } else if (noteType !== 'graphic' && typeof textData !== 'undefined'){
+              // Only validate text details for non-graphic notes
+              const td = textData;
+              const hasText = (s) => (typeof s === 'string' && s.trim().length > 0);
+              const hasDetails = hasText(td.performers) || hasText(td.instruments) || (td.length !== null && !isNaN(Number(td.length)) && Number(td.length) > 0) || hasText(td.title) || hasText(td.rhythms) || hasText(td.intensity) || hasText(td.solos) || hasText(td.quality_of_execution) || hasText(td.recording_date) || hasText(td.recording_location) || hasText(td.additional_info);
+              if (!hasDetails) return alert('Errore: Inserire almeno un dettaglio nella sezione "Dettagli nota".');
+            }
+          } catch(e){}
+
+          try {
+            // For document notes, embed spatial anchor inside the text JSON so server and clients can extract coords
+            try{
+              if (mediaType === 'document' && currentDocAnchor){
+                try{
+                  let obj;
+                  if(noteType === 'libero'){
+                    obj = { raw_text: payload.text || '' };
+                  } else {
+                    obj = (typeof textData !== 'undefined' && textData && typeof textData === 'object') ? textData : {};
+                  }
+                  obj.anchor = currentDocAnchor;
+                  payload.text = JSON.stringify(obj);
+
+                  // If we have a canvas drawing for a graphic note, embed its data URL so server can save the image
+                  try{
+                    if(noteType === 'graphic' && currentDocCanvas && typeof currentDocCanvas.toDataURL === 'function'){
+                      payload.stored_at = currentDocCanvas.toDataURL('image/png');
+                    }
+                  }catch(e){ console.warn('Failed to capture canvas data', e); }
+
+                  // Also expose common text fields at top-level so proxy/endpoints that
+                  // look for top-level keys (anchor/performers/etc.) get them too.
+                  try{
+                    const keys = ['performers','instruments','length','title','rhythms','intensity','solos','quality_of_execution','recording_date','recording_location','additional_info','raw_text'];
+                    if(typeof obj === 'object'){
+                      keys.forEach(k => {
+                        if(obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== ''){
+                          payload[k] = obj[k];
+                        }
+                      });
+                    }
+                  }catch(e){}
+                }catch(e){}
+              }
+            }catch(e){}
+
+            const resp = await fetch('/show/note/create', {
+              method: 'POST',
+              headers: {'Content-Type':'application/json'},
+              body: JSON.stringify(payload)
+            });
+
+            const result = await resp.json().catch(() => ({}));
+
+            if(resp.ok && (result.status === 'OK' || result.status === undefined)){
+              alert('Nota salvata');
+              try{ destroyDocumentNotes(); }catch(e){}
+              showModal('addNoteForm', false);
+              // Reset form
+              el('note-performers').value = '';
+              el('note-instruments').value = '';
+              el('note-length').value = '';
+              el('note-title').value = '';
+              el('note-rhythm').value = '';
+              el('note-intensity').value = '';
+              el('note-solos').value = '';
+              el('note-quality').value = '';
+              el('note-recording-date').value = '';
+              el('note-recording-location').value = '';
+              el('note-additional-info').value = '';
+              el('note-libero-text').value = '';
+              el('note-start').value = '';
+              el('note-end').value = '';
+              el('note-private').checked = false;
+              try{ const ai = el('note-doc-anchor'); if(ai) ai.value = ''; }catch(e){}
+            } else {
+              alert('Errore: ' + (result.error_msg || JSON.stringify(result)));
+            }
+          } catch(e){
+            console.error(e);
+            alert('Errore di rete');
+          }
+        });
+      }
+
+      // Initialize media click handlers
+      setupMediaClickHandlers();
+    })();
+
      await loadComments();
  
    } catch(err){

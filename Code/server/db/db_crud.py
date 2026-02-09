@@ -397,14 +397,13 @@ def create_media_db(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             # --- DOCUMENTI (solo se type=document) ---
             if data.get("type") == "document":
                 cur.execute("""
-                    INSERT INTO documents (media_id, format, pages, caption)
+                    INSERT INTO documents (media_id, format, pages)
                     VALUES (%s,%s,%s,%s)
                     ON CONFLICT DO NOTHING;
                 """, (
                     media_id,
                     data.get("format"),
-                    data.get("pages"),
-                    data.get("caption"),
+                    data.get("pages")
                 ))
                 debug(f"[DB][DOC] document for media_id={media_id}")
 
@@ -465,7 +464,14 @@ def fetch_media_db(media_id: int) -> Optional[Dict[str, Any]]:
     try:
         conn = connection.connect()
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM media WHERE id=%s;", (media_id,))
+            # For documents, join the documents table to get pages/format
+            cur.execute(
+                "SELECT m.*, COALESCE(d.pages, m.duration) as pages, d.format "
+                "FROM media m "
+                "LEFT JOIN documents d ON d.media_id = m.id "
+                "WHERE m.id=%s;",
+                (media_id,)
+            )
             row = cur.fetchone()
             if not row:
                 return None
@@ -998,11 +1004,9 @@ def fetch_all_dict_entries(table: str) -> List[Dict[str, Any]]:
 # ---------------------
 # PERFORMER helpers
 # ---------------------
-
 def get_performer_by_user_id(user_id: int) -> Optional[Dict[str, Any]]:
     """Return performer row for a given user_id if exists."""
     return fetch_one("SELECT id, name, user_id FROM performers WHERE user_id=%s", (user_id,))
-
 
 def create_performer_with_user(user_id: int, name: str) -> Optional[int]:
     """Try to create a performer row for a given user. If a performer with the
@@ -1032,15 +1036,12 @@ def create_performer_with_user(user_id: int, name: str) -> Optional[int]:
         if conn:
             connection.close(None, conn)
 
-
 # ---------------------
 # AUTHOR helpers
 # ---------------------
-
 def get_author_by_user_id(user_id: int) -> Optional[Dict[str, Any]]:
     """Return author row for a given user_id if exists."""
     return fetch_one("SELECT id, name, user_id FROM authors WHERE user_id=%s", (user_id,))
-
 
 def create_author_with_user(user_id: int, name: str) -> Optional[int]:
     """Create an author row linked to a user. If an author with same user_id
@@ -1074,7 +1075,6 @@ def create_author_with_user(user_id: int, name: str) -> Optional[int]:
     finally:
         if conn:
             connection.close(None, conn)
-
 
 def get_or_create_performer_for_user(user_id: int, username: str) -> Optional[int]:
     """Ensure a performer entry exists for a given user_id and return performer id."""
@@ -1147,7 +1147,7 @@ def advanced_song_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def advanced_document_search_db(filters: Dict[str, Any]) -> List[Dict[str, Any]]:
     base_query = """
-        SELECT m.id, m.title, m.year, m.description, m.linked_media, d.format, d.pages, d.caption, d.media_id
+        SELECT m.id, m.title, m.year, m.description, m.linked_media, d.format, d.pages, d.media_id
         FROM documents d
         JOIN media m ON d.media_id = m.id
         WHERE m.type = 'document'
@@ -1197,7 +1197,6 @@ def get_commented_medias_db(user_id: int) -> List[Dict[str, Any]]:
 # =====================
 # CONCERTS & SEGMENTS CRUD
 # =====================
-
 def create_concert_db(media_id: int, link: Optional[str] = None, title: Optional[str] = None, description: Optional[str] = None) -> bool:
     """Insert a row in concerts referencing the provided media_id (video)."""
     if not media_id:
@@ -1207,7 +1206,6 @@ def create_concert_db(media_id: int, link: Optional[str] = None, title: Optional
         VALUES (%s,%s,%s,%s)
         ON CONFLICT (video_id) DO UPDATE SET link=EXCLUDED.link, title=EXCLUDED.title, description=EXCLUDED.description;
     """, (media_id, link, title, description))
-
 
 def fetch_concert_by_video_id(video_id: int) -> Optional[Dict[str, Any]]:
     conn = None
@@ -1225,7 +1223,6 @@ def fetch_concert_by_video_id(video_id: int) -> Optional[Dict[str, Any]]:
     finally:
         if conn:
             connection.close(None, conn)
-
 
 def create_concert_segment_db(concert_id: int, media_id: Optional[int] = None, song_title: Optional[str] = None,
                               start_time: Optional[float] = None, end_time: Optional[float] = None,
@@ -1273,7 +1270,6 @@ def create_concert_segment_db(concert_id: int, media_id: Optional[int] = None, s
         if conn:
             connection.close(None, conn)
 
-
 def fetch_concert_segments_db(concert_id: int) -> List[Dict[str, Any]]:
     conn = None
     try:
@@ -1298,7 +1294,6 @@ def fetch_concert_segments_db(concert_id: int) -> List[Dict[str, Any]]:
     finally:
         if conn:
             connection.close(None, conn)
-
 
 def update_concert_segment_db(segment_id: int, updates: Dict[str, Any]) -> bool:
     if not updates:
@@ -1336,10 +1331,134 @@ def update_concert_segment_db(segment_id: int, updates: Dict[str, Any]) -> bool:
         if conn:
             connection.close(None, conn)
 
-
 def delete_concert_segment_db(segment_id: int) -> bool:
     return execute("DELETE FROM concert_segments WHERE id=%s", (segment_id,))
 
+# =====================
+# NOTES
+# =====================
+def create_note_db(user_id: int, media_id: int, note_start: float, note_end: float, type: bool = True, text: Optional[str] = None, stored_at: Optional[str] = None, private: bool = False, page: Optional[int] = None, A_point: Optional[str] = None, B_point: Optional[str] = None) -> Optional[int]:
+    """Insert a note and return the new note id, or None on failure."""
+    conn = None
+
+    # Coerce 'type' to a proper boolean since DB column is BOOLEAN
+    try:
+        if isinstance(type, bool):
+            type_val = type
+        else:
+            try:
+                type_val = bool(int(type))
+            except Exception:
+                s = str(type).strip().lower() if type is not None else ''
+                type_val = s in ('true', 't', '1', 'yes', 'y')
+    except Exception:
+        type_val = True
+
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            cur.execute("""
+            INSERT INTO notes (
+                        user_id,
+                        media_id,
+                        "note_start",
+                        "note_end",
+                        "type",
+                        "text",
+                        "stored_at",
+                        "private",
+                        "page",
+                        "A_point",
+                        "B_point"
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                        (user_id, media_id, note_start, note_end, type_val, text, stored_at, private, page, A_point, B_point))
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            return new_id
+    except Exception as e:
+        debug(f"[ERROR][create_note_db] {e}")
+        if conn:
+            conn.rollback()
+        return None
+
+def fetch_note_db(user_id: int, media_id: int):
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, note_start, note_end, type, text, stored_at, private, page, A_point, B_point
+                FROM notes
+                WHERE media_id=%s
+                AND (user_id=%s OR private=false)
+                """, (media_id, user_id))
+            rows = cur.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        print (f"[ERROR][fetch_notes_db] {e}")
+        return []
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+def update_note_db(note_id: int, start: Optional[float] = None, end: Optional[float] = None, text: Optional[str] = None, private: Optional[bool] = None, stored_at: Optional[str] = None, page: Optional[int] = None, A_point: Optional[str] = None, B_point: Optional[str] = None) -> bool:
+    """Update provided fields on a note. Only non-None args are updated."""
+    conn = None
+    try:
+        updates = []
+        params = []
+        if start is not None:
+            updates.append("start=%s"); params.append(start)
+        if end is not None:
+            updates.append("\"end\"=%s"); params.append(end)
+        if text is not None:
+            updates.append("\"text\"=%s"); params.append(text)
+        if private is not None:
+            updates.append("\"private\"=%s"); params.append(private)
+        if stored_at is not None:
+            updates.append("\"stored_at\"=%s"); params.append(stored_at)
+        if page is not None:
+            updates.append("page=%s"); params.append(page)
+        if A_point is not None:
+            updates.append("A_point=%s"); params.append(A_point)
+        if B_point is not None:
+            updates.append("B_point=%s"); params.append(B_point)
+        if not updates:
+            return True  # nothing to do
+
+        set_clause = ", ".join(updates)
+        params.append(note_id)
+
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE notes SET {set_clause} WHERE id=%s", tuple(params))
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"[ERROR][update_note_db] {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+def delete_note_db(note_id: int):
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM notes WHERE id=%s", (note_id,))
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"[ERROR][delete_note_db] {e}")
+        if conn:
+            conn.rollback()
+        return False
+    finally:
+        if conn:
+            connection.close(None, conn)
 
 # =====================
 # FOLLOWERS

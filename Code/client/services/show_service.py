@@ -91,5 +91,10 @@ class ShowService:
     def delete_concert_segment(segment_id):
         print(f"[DEBUG][ShowService.delete_concert_segment] segment_id={segment_id}")
         return http_client.send_request("DELETE_CONCERT_SEGMENT", [segment_id], require_auth=True)
+    
+        @staticmethod
+        def fix_document_metadata(media_id):
+            """Ask the server to probe the stored document file and persist pages/format if missing."""
+            return http_client.send_request("FIX_DOCUMENT_METADATA", [media_id], require_auth=True)
 
 # last line

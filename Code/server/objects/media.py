@@ -545,7 +545,7 @@ class Media:
                 media_updates = {}
                 doc_updates = {}
                 for k, v in need_update.items():
-                    if k in ("pages", "format", "caption"):
+                    if k in ("pages", "format"):
                         doc_updates[k] = v
                     else:
                         media_updates[k] = v
@@ -695,6 +695,7 @@ class Media:
             "linked_media": self.linked_media,
             "duration": self.duration,
             "pages": getattr(self, "pages", None),
+            "format": getattr(self, "format", None),
             "location": self.location,
             "additional_info": self.additional_info,
             "file_format": getattr(self, "file_format", None),

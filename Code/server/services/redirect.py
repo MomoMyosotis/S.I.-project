@@ -185,6 +185,7 @@ COMMAND_MAP = {
     "delete_song": media_services.delete_song_services,
     "create_document": media_services.create_document_services,
     "get_document": media_services.get_document_services,
+    "fix_document_metadata": media_services.fix_document_metadata_services,
     "update_document": media_services.update_document_services,
     "delete_document": media_services.delete_document_services,
     "create_video": media_services.create_video_services,
@@ -204,6 +205,10 @@ COMMAND_MAP = {
     "fetch_comment" : interventions_services.get_comments,
     "update_comment" : interventions_services.update_comment,
     "delete_comment" : interventions_services.delete_comment,
+    "create_note" : interventions_services.create_note,
+    "fetch_note" : interventions_services.get_notes,
+    "update_note" : interventions_services.update_note,
+    "delete_note" : interventions_services.delete_note,
     # SEARCH/DIZIONARI
     "search_song": interventions_services.search_song,
     "search_document": interventions_services.search_document,
@@ -262,8 +267,8 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
             user_obj_instance = user_services._build_user_obj(full)
             user_obj = user_obj_instance.to_dict_internal() if user_obj_instance else user_obj
 
-    # allow some public commands without authentication (feed browsing, user search, etc.)
-    if user_obj is None and command not in ["login", "register", "recover", "reset_password", "assistance", "change_password", "get_feed", "search_users", "get_metadata"]:
+    # allow some public commands without authentication (feed browsing, user search, media viewing, etc.)
+    if user_obj is None and command not in ["login", "register", "recover", "reset_password", "assistance", "change_password", "get_feed", "search_users", "get_metadata", "get_media", "get_document", "fix_document_metadata"]:
         return json.dumps({"error_msg": "User is not logged in. Please log in to proceed.", "status": "error"}), None, None, "ERROR"
 
     func = COMMAND_MAP.get(command)

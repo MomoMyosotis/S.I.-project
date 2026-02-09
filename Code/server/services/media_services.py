@@ -1,7 +1,8 @@
 # first line
 
 from typing import Type, Optional, Dict, Any
-from server.objects.media import Media
+from server.objects.media import Media, _probe_pdf_pages, _resolve_storage_file
+import os
 from server.utils.media_utils import fetch_dict_entry, create_dict_entry
 import json
 from server.db.db_crud import get_user_id_by_username, create_concert_db, fetch_concert_by_video_id, create_concert_segment_db, fetch_concert_segments_db, update_concert_segment_db, delete_concert_segment_db
@@ -235,6 +236,50 @@ def create_object(cls: Type[Media], user_obj: Optional[Any], data: Dict[str, Any
     obj.save()
     print(f"[DEBUG][create_object] Object saved: {obj}")
     
+    # If this is a document and pages/format are missing, try to probe the stored file and persist
+    try:
+        if getattr(obj, 'type', None) == 'document':
+            missing_pages = getattr(obj, 'pages', None) is None
+            missing_format = getattr(obj, 'format', None) is None
+            if missing_pages or missing_format:
+                try:
+                    path = _resolve_storage_file(getattr(obj, 'stored_at', None), 'document')
+                    doc_updates = {}
+                    if path and os.path.isfile(path):
+                        try:
+                            pages = _probe_pdf_pages(path)
+                            if pages and missing_pages:
+                                doc_updates['pages'] = int(pages)
+                        except Exception as e:
+                            print(f"[DEBUG][create_object] _probe_pdf_pages failed: {e}")
+
+                        # infer format from file extension if possible
+                        try:
+                            _, ext = os.path.splitext(path)
+                            fmt = ext.lower().lstrip('.') if ext else None
+                            if fmt and missing_format:
+                                doc_updates['format'] = fmt
+                        except Exception:
+                            pass
+
+                    # persist updates if any
+                    if doc_updates:
+                        try:
+                            from server.db.db_crud import update_document_db
+                            update_document_db(getattr(obj, 'id', None), doc_updates)
+                            # update in-memory object
+                            for k, v in doc_updates.items():
+                                try:
+                                    setattr(obj, k, v)
+                                except Exception:
+                                    pass
+                            print(f"[DEBUG][create_object] persisted document metadata: {doc_updates}")
+                        except Exception as e:
+                            print(f"[WARNING][create_object] failed to persist document metadata: {e}")
+                except Exception as e:
+                    print(f"[DEBUG][create_object] document metadata probe failed: {e}")
+    except Exception:
+        pass
     # CONCERT-SPECIFIC: Handle concert segments from payload (if provided in initial creation)
     if getattr(obj, 'type', None) == 'concert' and obj.id:
         segments_payload = data.get('segments') or data.get('subtracks')
@@ -262,7 +307,7 @@ def update_object(obj: Media, updates: Dict[str, Any]):
     DISALLOWED_FIELDS = {"references", "raw", "created_at", "id", "media_id", "user_id", "username", "owner", "owner_id", "target_username", "on_behalf_of"} 
     # split keys between media table and document child table
     MEDIA_ONLY_KEYS = set()  # leave empty to default to media updates
-    DOC_KEYS = {"pages", "format", "caption"}
+    DOC_KEYS = {"pages", "format"}
 
     # CRITICAL FIX 1: Convert is_author/is_performer flags to relational data BEFORE processing
     # If is_author=True and no authors list provided, add user_id to authors
@@ -1258,7 +1303,88 @@ def create_document_services(user_obj, data: dict = None, **kwargs):
     return create_object(Media, user_obj, data)
 
 def get_document_services(user_obj, doc_id: int):
-    return get_object(Media, doc_id)
+    # Fetch the object first
+    obj = get_object(Media, doc_id)
+    try:
+        if obj and getattr(obj, 'type', None) == 'document':
+            pages = getattr(obj, 'pages', None)
+            fmt = getattr(obj, 'format', None)
+            if pages is None or fmt is None:
+                # try to probe and persist missing metadata
+                try:
+                    path = _resolve_storage_file(getattr(obj, 'stored_at', None), 'document')
+                    updates = {}
+                    if path and os.path.isfile(path):
+                        try:
+                            probed = _probe_pdf_pages(path)
+                            if probed and pages is None:
+                                updates['pages'] = int(probed)
+                        except Exception as e:
+                            print(f"[DEBUG][get_document_services] _probe_pdf_pages failed: {e}")
+                        try:
+                            _, ext = os.path.splitext(path)
+                            inferred = ext.lower().lstrip('.') if ext else None
+                            if inferred and fmt is None:
+                                updates['format'] = inferred
+                        except Exception:
+                            pass
+
+                    if updates:
+                        try:
+                            from server.db.db_crud import update_document_db
+                            update_document_db(getattr(obj, 'id', None), updates)
+                            for k, v in updates.items():
+                                try:
+                                    setattr(obj, k, v)
+                                except Exception:
+                                    pass
+                            print(f"[DEBUG][get_document_services] persisted fixes: {updates}")
+                        except Exception as e:
+                            print(f"[WARNING][get_document_services] failed to persist fixes: {e}")
+                except Exception as e:
+                    print(f"[DEBUG][get_document_services] probe attempt failed: {e}")
+    except Exception:
+        pass
+    return obj
+
+
+def fix_document_metadata_services(user_obj, media_id: int):
+    """RPC to force probing of a document's stored file and persist pages/format."""
+    try:
+        obj = get_object(Media, media_id)
+        if not obj:
+            return {"status": "ERROR", "error_msg": "Document not found"}
+        if getattr(obj, 'type', None) != 'document':
+            return {"status": "ERROR", "error_msg": "Not a document"}
+        path = _resolve_storage_file(getattr(obj, 'stored_at', None), 'document')
+        updates = {}
+        if path and os.path.isfile(path):
+            try:
+                probed = _probe_pdf_pages(path)
+                if probed and getattr(obj, 'pages', None) is None:
+                    updates['pages'] = int(probed)
+            except Exception as e:
+                print(f"[DEBUG][fix_document_metadata_services] _probe_pdf_pages failed: {e}")
+            try:
+                _, ext = os.path.splitext(path)
+                inferred = ext.lower().lstrip('.') if ext else None
+                if inferred and getattr(obj, 'format', None) is None:
+                    updates['format'] = inferred
+            except Exception:
+                pass
+
+        if updates:
+            try:
+                from server.db.db_crud import update_document_db
+                update_document_db(getattr(obj, 'id', None), updates)
+                return {"status": "OK", "updated": updates}
+            except Exception as e:
+                print(f"[WARNING][fix_document_metadata_services] failed to persist updates: {e}")
+                return {"status": "ERROR", "error_msg": str(e)}
+        return {"status": "OK", "updated": {}}
+    except Exception as e:
+        print(f"[ERROR][fix_document_metadata_services] Exception: {e}")
+        return {"status": "ERROR", "error_msg": str(e)}
 
 def update_document_services(user_obj, doc_id: int, updates: dict):
     doc_obj = get_object(Media, doc_id)

@@ -6,9 +6,9 @@ from server.utils.media_utils import (create_dict_entry,
 from server.utils.generic_utils import get_commented_medias as fetch_commented_medias, get_media_by_users
 from typing import List, Optional, Dict, Any
 from server.objects.media import Media
+from server.objects.note import Note
 from server.objects.user import User
 from datetime import date, datetime
-from decimal import Decimal
 import logging
 
 logging.basicConfig(level=logging.DEBUG)
@@ -316,5 +316,333 @@ def get_followed_media_paginated(user_obj: Any, offset: int = 0, limit: int = 10
     except Exception as e:
         logger.exception("Exception occurred while fetching followed media paginated")
         return {"status": "ERROR", "error_msg": str(e)}
+
+# ====================
+# NOTE
+# ====================
+def create_note(user_obj, media_id=None, start=None, end=None, type=None, text=None, stored_at=None, private=False, page=None, A_point=None, B_point=None, **kwargs):
+
+    # parsing dispatcher dict
+    if isinstance(media_id, dict):
+        payload = media_id
+        media_id = payload.get("media_id")
+        start = payload.get("start", start)
+        end = payload.get("end", end)
+        type = payload.get("type", type)
+        text = payload.get("text", text)
+        stored_at = payload.get("stored_at", stored_at)
+        private = payload.get("private", private)
+        page = payload.get("page", page)
+        A_point = payload.get("A_point", A_point)
+        B_point = payload.get("B_point", B_point)
+
+    # validazione base
+    try:
+        media_id = int(media_id)
+    except (TypeError, ValueError):
+        logger.error("Invalid media_id: %s", media_id)
+        return {"status": "ERROR", "id": None, "error_msg": "INVALID_MEDIA_ID"}
+    if type is None:
+        logger.error("Type is required, but received: %s", type)
+        return {"status": "ERROR", "id": None, "error_msg": "TYPE_REQUIRED"}
+
+    user_id = get_user_id(user_obj)
+
+    # permission: only logged users with lvl < 5 can make a note
+    try:
+        user_row = User.get_user(user_id) if user_id else None
+        lvl = None
+        if isinstance(user_row, dict):
+            lvl = user_row.get('lvl')
+        # coerce to int when possible
+        try:
+            lvl = int(lvl) if lvl is not None else None
+        except Exception:
+            pass
+        if lvl is None or lvl >= 5:
+            logger.error("User not allowed to create note: lvl=%s", lvl)
+            return {"status": "ERROR", "id": None, "error_msg": "PERMISSION_DENIED"}
+    except Exception:
+        logger.exception("Failed to resolve user or level for permission check")
+        return {"status": "ERROR", "id": None, "error_msg": "PERMISSION_CHECK_FAILED"}
+
+    media = Media.fetch(media_id)
+    if not media:
+        logger.error("Media not found with media_id: %s", media_id)
+        return {"status": "ERROR", "id": None, "error_msg": "ERR_404_MEDIA_NOT_FOUND"}
+
+    # If media is a document, normalize start/end to 0 and embed spatial anchor into text when provided
+    try:
+        media_type = getattr(media, 'type', None) if media else None
+        if media_type == 'document':
+            start = 0
+            end = 0
+            anchor = kwargs.get('anchor') if isinstance(kwargs, dict) else None
+            if anchor:
+                try:
+                    import json as _json
+                    parsed = {}
+                    if text:
+                        try:
+                            parsed = _json.loads(text)
+                            if not isinstance(parsed, dict):
+                                parsed = {'raw_text': str(text)}
+                        except Exception:
+                            parsed = {'raw_text': str(text)}
+                    parsed['anchor'] = anchor
+                    text = _json.dumps(parsed)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    try:
+        # create DB entry first (stored_at may be updated after file save)
+        new_note = Note.create_note(user_id=user_id, media_id=media_id, start=start, end=end, type=type, text=text, stored_at=None, private=private, page=page, A_point=A_point, B_point=B_point)
+        if not new_note:
+            logger.error("Failed to create note")
+            return {"status": "ERROR", "id": None, "error_msg": "FAIL"}
+
+        note_id = new_note.id
+
+        # If graphic note (type == 0 or False) and stored_at contains file content, save it under server/storage/notes/<note_id>
+        if (str(type) in ("0", "False", "false") ) or (isinstance(type, (int, bool)) and int(type) == 0):
+            content = None
+            # bytes provided directly
+            if isinstance(stored_at, (bytes, bytearray)):
+                content = bytes(stored_at)
+            elif isinstance(stored_at, str):
+                # data URI base64
+                if stored_at.startswith('data:') and ';base64,' in stored_at:
+                    try:
+                        import base64
+                        b64 = stored_at.split(';base64,', 1)[1]
+                        content = base64.b64decode(b64)
+                    except Exception:
+                        content = None
+                else:
+                    # maybe a filesystem path
+                    try:
+                        import os
+                        if os.path.isfile(stored_at):
+                            with open(stored_at, 'rb') as f:
+                                content = f.read()
+                    except Exception:
+                        content = None
+
+            if content:
+                try:
+                    from server.utils.storage_manager import save_file
+                    # save under notes folder with filename equal to note id (no extension)
+                    save_file('notes', str(note_id), content)
+                    stored_path = f"server/storage/notes/{note_id}"
+                    # update DB stored_at
+                    Note.update_note(note_id, stored_at=stored_path)
+                    return {"status": "OK", "id": note_id, "error_msg": None}
+                except Exception as e:
+                    logger.exception("Failed to save note image: %s", e)
+                    return {"status": "ERROR", "id": note_id, "error_msg": "FILE_SAVE_FAILED"}
+            else:
+                # no content provided; return created note id but indicate missing file
+                return {"status": "OK", "id": note_id, "error_msg": "NO_FILE_CONTENT"}
+
+        # non-graphic notes
+        return {"status": "OK", "id": note_id, "error_msg": None}
+
+    except Exception as e:
+        logger.exception("Exception occurred while creating note")
+        return {"status": "ERROR", "id": None, "error_msg": str(e)}
+
+def get_notes(user_obj: Any, media_id: int) -> Dict[str, Any]:
+    """Fetch all notes for a media and apply visibility rules.
+
+    Visibility rules:
+      - public notes (private == False) are always returned
+      - private notes returned only if viewer is the note owner OR viewer lvl < 2
+    """
+    try:
+        media_id = int(media_id)
+    except (TypeError, ValueError):
+        logger.error("Invalid media_id: %s", media_id)
+        return {"status": "ERROR", "notes": [], "error_msg": "INVALID_MEDIA_ID"}
+
+    try:
+        rows = Note.fetch_by_media(media_id)
+        
+        notes = []
+        for row in (rows or []):
+            note_dict = {
+                "id": row.get("id"),
+                "user_id": row.get("user_id"),
+                "media_id": row.get("media_id"),
+                "note_start": row.get("note_start"),
+                "note_end": row.get("note_end"),
+                "type": row.get("type"),
+                "text": row.get("text"),
+                "stored_at": row.get("stored_at"),
+                "private": row.get("private"),
+                "created_at": row.get("created_at"),
+                "page": row.get("page"),
+                "A_point": row.get("A_point"),
+                "B_point": row.get("B_point")
+            }
+            notes.append(note_dict)
+
+        # Determine viewer info
+        viewer_id = get_user_id(user_obj)
+        viewer_lvl = None
+        try:
+            if isinstance(user_obj, dict):
+                viewer_lvl = user_obj.get('lvl') if user_obj.get('lvl') is not None else user_obj.get('level')
+            else:
+                viewer_lvl = getattr(user_obj, 'lvl', None)
+            if viewer_lvl is not None:
+                viewer_lvl = int(viewer_lvl)
+        except Exception:
+            viewer_lvl = None
+
+        # Apply visibility rules
+        visible = []
+        for n in notes:
+            try:
+                if not n.get('private'):
+                    visible.append(n); continue
+                # private: only owner OR viewer lvl < 2
+                if viewer_id is not None and str(viewer_id) == str(n.get('user_id')):
+                    visible.append(n); continue
+                if viewer_lvl is not None and viewer_lvl < 2:
+                    visible.append(n); continue
+            except Exception:
+                continue
+
+        # Enrich visible notes with user info (username) and normalize timestamps
+        for n in visible:
+            try:
+                # normalize created_at to ISO string when possible
+                ca = n.get('created_at')
+                if ca is not None:
+                    if isinstance(ca, datetime):
+                        n['created_at'] = ca.isoformat()
+                    elif isinstance(ca, date):
+                        n['created_at'] = ca.isoformat()
+                    else:
+                        n['created_at'] = str(ca)
+
+                # fetch user info when available
+                uid = n.get('user_id')
+                username = None
+                user_obj = None
+                if uid is not None:
+                    try:
+                        user_obj = User.get_user(uid)
+                        if user_obj:
+                            if isinstance(user_obj, dict):
+                                username = user_obj.get('username')
+                            else:
+                                username = getattr(user_obj, 'username', None)
+                    except Exception:
+                        username = None
+
+                n['username'] = username
+                n['user'] = {'id': uid, 'username': username}
+            except Exception:
+                # ignore enrichment errors for individual notes
+                pass
+
+        logger.debug("[get_notes] fetched %d notes for media_id=%s (visible=%d)", len(notes), media_id, len(visible))
+        return {"status": "OK", "notes": visible, "error_msg": None}
+    except Exception as e:
+        logger.exception("[get_notes] Exception occurred while fetching notes")
+        return {"status": "ERROR", "notes": [], "error_msg": str(e)}
+
+def update_note(user_obj: Any, note_id: int, **kwargs) -> Dict[str, Any]:
+    """Update a note (only provided fields are updated)."""
+    try:
+        note_id = int(note_id)
+    except (TypeError, ValueError):
+        logger.error("Invalid note_id: %s", note_id)
+        return {"status": "ERROR", "id": note_id, "error_msg": "INVALID_NOTE_ID"}
+
+    try:
+        note_row = Note.fetch_by_id(note_id)
+        if not note_row:
+            logger.error("Note not found with note_id: %s", note_id)
+            return {"status": "ERROR", "id": note_id, "error_msg": "NOT_FOUND"}
+
+        # Call Note.update_note which handles dynamic updates
+        success = Note.update_note(note_id, **kwargs)
+        if success:
+            logger.debug("[update_note] updated note_id=%s with kwargs=%s", note_id, kwargs)
+            return {"status": "OK", "id": note_id, "error_msg": None}
+        else:
+            logger.error("[update_note] failed to update note_id=%s", note_id)
+            return {"status": "ERROR", "id": note_id, "error_msg": "UPDATE_FAILED"}
+    except Exception as e:
+        logger.exception("[update_note] Exception occurred while updating note")
+        return {"status": "ERROR", "id": note_id, "error_msg": str(e)}
+
+def delete_note(user_obj: Any, note_id: int) -> Dict[str, Any]:
+    """Delete a note by id. Permission required: viewer must be the note owner AND have lvl < 2."""
+    try:
+        note_id = int(note_id)
+    except (TypeError, ValueError):
+        logger.error("Invalid note_id: %s", note_id)
+        return {"status": "ERROR", "id": note_id, "error_msg": "INVALID_NOTE_ID"}
+
+    try:
+        note_row = Note.fetch_by_id(note_id)
+        if not note_row:
+            logger.error("Note not found with note_id: %s", note_id)
+            return {"status": "ERROR", "id": note_id, "error_msg": "NOT_FOUND"}
+
+        owner_id = note_row.get('user_id')
+        viewer_id = get_user_id(user_obj)
+        viewer_lvl = None
+        try:
+            if isinstance(user_obj, dict):
+                viewer_lvl = user_obj.get('lvl') if user_obj.get('lvl') is not None else user_obj.get('level')
+            else:
+                viewer_lvl = getattr(user_obj, 'lvl', None)
+            if viewer_lvl is not None:
+                viewer_lvl = int(viewer_lvl)
+        except Exception:
+            viewer_lvl = None
+
+        # Permission enforcement: allow deletion if viewer is the owner OR viewer lvl < 2
+        allowed = False
+        try:
+            # owner may delete their own note regardless of level
+            if viewer_id is not None and owner_id is not None and str(viewer_id) == str(owner_id):
+                allowed = True
+            # users with lvl < 2 (admins/mod) may delete any note
+            if viewer_lvl is not None and viewer_lvl < 2:
+                allowed = True
+        except Exception:
+            allowed = False
+
+        if not allowed:
+            logger.warning("[delete_note] forbidden delete attempt note_id=%s by viewer_id=%s lvl=%s", note_id, viewer_id, viewer_lvl)
+            return {"status": "ERROR", "id": note_id, "error_msg": "FORBIDDEN"}
+
+        # If note has a stored_at path, try to delete the file
+        stored_at = note_row.get("stored_at")
+        if stored_at and stored_at.startswith("server/storage/notes/"):
+            try:
+                from server.utils.storage_manager import delete_file
+                delete_file("notes", str(note_id))
+            except Exception as e:
+                logger.warning("[delete_note] Failed to delete stored file for note_id=%s: %s", note_id, e)
+
+        # Delete from DB
+        success = Note.delete_note(note_id)
+        if success:
+            logger.debug("[delete_note] deleted note_id=%s", note_id)
+            return {"status": "OK", "id": note_id, "error_msg": None}
+        else:
+            logger.error("[delete_note] failed to delete note_id=%s", note_id)
+            return {"status": "ERROR", "id": note_id, "error_msg": "DELETE_FAILED"}
+    except Exception as e:
+        logger.exception("[delete_note] Exception occurred while deleting note")
+        return {"status": "ERROR", "id": note_id, "error_msg": str(e)}
 
 # last line

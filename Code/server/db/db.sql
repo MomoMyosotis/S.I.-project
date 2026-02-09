@@ -128,8 +128,7 @@ CREATE TABLE performance_instruments (
 CREATE TABLE documents (
     media_id INT PRIMARY KEY REFERENCES media(id) ON DELETE CASCADE,
     format VARCHAR(20),
-    pages INT,
-    caption TEXT
+    pages INT
 );
 
 -- ========================================
@@ -194,6 +193,31 @@ CREATE TABLE concert_segment_instruments (
     segment_id INT REFERENCES concert_segments(id) ON DELETE CASCADE,
     instrument_id INT REFERENCES instruments(id) ON DELETE CASCADE,
     PRIMARY KEY (segment_id, instrument_id)
+);
+
+-- ========================================
+-- NOTE
+-- ========================================
+CREATE TABLE notes (
+    id PRIMARY KEY SERIAL,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    media_id INT REFERENCES media(id) ON DELETE CASCADE,
+    -- AAAABBCC with AAAA being the number of the page 0003 or 2001,
+    -- BB the number of the line in the page and
+    -- CC the number of the chars in that line nel caso di un documento
+    -- se si tratta di video, audio o video\link di youtube
+    -- si tratta solo del numero in secondi
+    -- overkill ma sticazzi
+    start NUMERIC(8,2) NOT NULL DEFAULT 00000000,
+    end NUMERIC(8,2) NOT NULL DEFAULT 00000000,
+    type BOOLEAN NOT NULL DEFAULT 1, -- TRUE = text, FALSE = graphic
+    text TEXT,
+    stored_at VARCHAR(255),
+    private BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+    page INT,
+    A_point VARCHAR(255),
+    B_point VARCHAR(255)
 );
 
 -- ========================================

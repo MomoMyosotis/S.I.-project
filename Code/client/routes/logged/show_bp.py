@@ -275,6 +275,50 @@ def update_segment(segment_id):
         current_app.logger.exception('Failed to update segment')
         return jsonify({'error': str(e)}), 500
 
+
+@show_bp.route('/notes', methods=['GET'])
+def list_notes():
+    """Fetch notes for a media and return normalized JSON list."""
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+    media_id = request.args.get('media_id') or request.args.get('id')
+    if not media_id:
+        return jsonify({'notes': []})
+    try:
+        current_app.logger.debug(f"[DEBUG][list_notes] media_id={media_id}")
+        response = http_client.send_request("FETCH_NOTE", [media_id], require_auth=True)
+        current_app.logger.debug(f"[DEBUG][list_notes] raw response: {response!r}")
+        # Normalize shapes: expect {'status':'OK','notes':[...]} or direct list
+        notes = []
+        if isinstance(response, dict):
+            if response.get('status') not in (None, 'OK'):
+                return jsonify({'notes': []})
+            payload = response.get('notes') or response.get('response') or response.get('results') or []
+            if isinstance(payload, list):
+                notes = payload
+            elif isinstance(payload, dict) and 'notes' in payload and isinstance(payload['notes'], list):
+                notes = payload['notes']
+        elif isinstance(response, list):
+            notes = response
+        # ensure list
+        if not isinstance(notes, list): notes = []
+        return jsonify({'notes': notes})
+    except Exception as e:
+        current_app.logger.exception('Failed to fetch notes')
+        return jsonify({'notes': []})
+
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+    updates = request.get_json(silent=True) or {}
+    try:
+        current_app.logger.debug(f"[DEBUG][update_segment] segment_id={segment_id}, updates={updates}")
+        res = ShowService.update_concert_segment(segment_id, updates)
+        current_app.logger.debug(f"[DEBUG][update_segment] result: {res!r}")
+        return jsonify(res)
+    except Exception as e:
+        current_app.logger.exception('Failed to update segment')
+        return jsonify({'error': str(e)}), 500
+
 @show_bp.route('/segments/<int:segment_id>', methods=['DELETE'])
 def delete_segment(segment_id):
     if http_client.token is None:
@@ -684,3 +728,189 @@ def open_with():
     if res.get("status") == "OK":
         return jsonify({"status": "OK", "message": res.get("message")}), 200
     return jsonify({"status": "ERROR", "error_msg": res.get("error_msg", "Unknown error")}), 400
+
+
+@show_bp.route("/note/create", methods=["POST"])
+def create_note():
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+
+    data = request.get_json(silent=True) or {}
+    media_id = data.get('media_id')
+    note_type = data.get('type', 1)  # 0=graphic, 1=text
+    start = data.get('start')
+    end = data.get('end')
+    text = data.get('text', "")
+    private = data.get('private', False)
+    media_type = data.get('media_type')
+    stored_at = data.get('stored_at', None)  # optional base64 data URI for graphic notes
+
+    if not media_id:
+        return jsonify({"status": "ERROR", "error_msg": "Missing required field: media_id"}), 400
+
+    try:
+        # For document notes, normalize start/end to 0 and embed spatial anchor into text
+        if media_type == 'document':
+            start = 0
+            end = 0
+            anchor = data.get('anchor') or None
+            if anchor:
+                try:
+                    import json as _json
+                    parsed = {}
+                    if text:
+                        try:
+                            parsed = _json.loads(text)
+                            if not isinstance(parsed, dict):
+                                parsed = {'raw_text': str(text)}
+                        except Exception:
+                            parsed = {'raw_text': str(text)}
+                    parsed['anchor'] = anchor
+                    text = _json.dumps(parsed)
+                except Exception:
+                    # if embedding anchor fails, continue with original text
+                    pass
+
+        # Build payload for backend CREATE_NOTE
+        payload = {
+            "media_id": media_id,
+            "start": start,
+            "end": end,
+            "type": note_type,
+            "text": text,
+            "private": private,
+            "stored_at": stored_at,
+            "stored_at": stored_at
+        }
+
+
+        response = http_client.send_request("CREATE_NOTE", [payload], require_auth=True)
+        current_app.logger.debug(f"[DEBUG] create_note response: {response!r}")
+
+        if isinstance(response, dict):
+            if response.get("status") in (None, "OK"):
+                # backend may return 'id' or 'note_id'
+                note_id = response.get('id') or response.get('note_id') or None
+                return jsonify({"status": "OK", "note_id": note_id}), 200
+            else:
+                return jsonify({"status": "ERROR", "error_msg": response.get("error_msg", "Failed to create note")}), 400
+
+        return jsonify({"status": "OK"}), 200
+    except Exception as e:
+        current_app.logger.exception("Error creating note")
+        return jsonify({"status": "ERROR", "error_msg": str(e)}), 500
+
+
+@show_bp.route('/note/delete', methods=['POST'])
+def delete_note():
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+
+    data = request.get_json(silent=True) or {}
+    note_id = data.get('note_id') or data.get('id')
+    if not note_id:
+        return jsonify({'status': 'ERROR', 'error_msg': 'missing note_id'}), 400
+
+    try:
+        res = http_client.send_request('DELETE_NOTE', [note_id], require_auth=True)
+        current_app.logger.debug(f"[DEBUG] DELETE_NOTE response: {res!r}")
+        if isinstance(res, dict) and res.get('status') in (None, 'OK'):
+            return jsonify({'status': 'OK', 'id': note_id}), 200
+        err = res.get('error_msg') if isinstance(res, dict) else 'Backend error'
+        return jsonify({'status': 'ERROR', 'error_msg': err}), 400
+    except Exception as e:
+        current_app.logger.exception('Failed to delete note')
+        return jsonify({'status': 'ERROR', 'error_msg': str(e)}), 500
+
+
+@show_bp.route('/fix_metadata', methods=['POST'])
+def fix_metadata():
+    if http_client.token is None:
+        http_client.token = session.get('session_token')
+
+    data = request.get_json(silent=True) or {}
+    media_id = data.get('media_id') or request.args.get('media_id')
+    if not media_id:
+        return jsonify({"status": "ERROR", "error_msg": "media_id required"}), 400
+
+    try:
+        # Ask backend to probe and persist document metadata
+        res = http_client.send_request('FIX_DOCUMENT_METADATA', [int(media_id)], require_auth=True)
+        current_app.logger.debug(f"[fix_metadata] FIX_DOCUMENT_METADATA response: {res!r}")
+    except Exception as e:
+        current_app.logger.debug(f"[fix_metadata] error calling FIX_DOCUMENT_METADATA: {e}")
+        return jsonify({"status": "ERROR", "error_msg": str(e)}), 500
+
+    # Return fresh media data so client can update immediately
+    try:
+        media_resp = ShowService.get_media(media_id)
+        current_app.logger.debug(f"[fix_metadata] raw fresh media: {media_resp!r}")
+        # Normalize shapes the same way /show/data does so client receives consistent media dict
+        candidate = None
+        if isinstance(media_resp, dict):
+            status = media_resp.get("status")
+            if status and str(status).lower() not in ("ok", "true", "accepted"):
+                # backend returned error; still return fix result
+                return jsonify({"status": "OK", "fix_result": res, "media": None}), 200
+            for k in ("response", "result", "media"):
+                if k in media_resp and media_resp[k]:
+                    candidate = media_resp[k]
+                    break
+            if candidate is None:
+                candidate = media_resp
+        else:
+            candidate = None
+
+        media_dict = None
+        if isinstance(candidate, dict):
+            media_obj = Media.from_server(candidate)
+            media_dict = media_obj.to_dict()
+            # copy legacy fields if present
+            for k in ("tags","author_names","authors","performers","segments","subtracks","duration_display","duration_seconds","filename","file","link","description","embed_url","embed_ok","embed_error","username"):
+                if k in candidate and k not in media_dict:
+                    media_dict[k] = candidate[k]
+
+        return jsonify({"status": "OK", "fix_result": res, "media": media_dict}), 200
+    except Exception as e:
+        current_app.logger.debug(f"[fix_metadata] error fetching media after fix: {e}")
+        return jsonify({"status": "OK", "fix_result": res}), 200
+    """Create a note for a media item."""
+    if http_client.token is None:
+        return jsonify({"status": "ERROR", "error_msg": "Non autenticato"}), 401
+
+    data = request.get_json(silent=True) or {}
+    media_id = data.get("media_id")
+    note_type = data.get("type", 1)  # 0=graphic, 1=text
+    start = data.get("start")
+    end = data.get("end")
+    text = data.get("text", "")
+    private = data.get("private", False)
+    media_type = data.get("media_type")
+
+    if not media_id or start is None or end is None:
+        return jsonify({"status": "ERROR", "error_msg": "Missing required fields: media_id, start, end"}), 400
+
+    try:
+        # Call the backend API to create the note
+        payload = {
+            "media_id": media_id,
+            "start": start,
+            "end": end,
+            "type": note_type,
+            "text": text,
+            "private": private
+        }
+        
+        response = http_client.send_request("CREATE_NOTE", [payload], require_auth=True)
+        current_app.logger.debug(f"[DEBUG] create_note response: {response!r}")
+        
+        if isinstance(response, dict):
+            if response.get("status") in (None, "OK"):
+                return jsonify({"status": "OK", "note_id": response.get("note_id")}), 200
+            else:
+                return jsonify({"status": "ERROR", "error_msg": response.get("error_msg", "Failed to create note")}), 400
+        
+        return jsonify({"status": "OK"}), 200
+    except Exception as e:
+        current_app.logger.exception("Error creating note")
+        return jsonify({"status": "ERROR", "error_msg": str(e)}), 500
