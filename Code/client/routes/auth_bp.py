@@ -15,7 +15,7 @@ def login():
     form = Login()
     if form.validate_on_submit():
         response = AuthService.login(form.username.data, form.password.data)
-        # print("[DEBUG][login] Response:", repr(response))
+        # #print("[DEBUG][login] Response:", repr(response))
 
         if isinstance(response, dict):
             status = response.get("status", "").lower()
@@ -40,7 +40,7 @@ def login():
                     return redirect(url_for("auth.change_password"))
                 
                 flash("Login successful!", "success")
-                # print("[DEBUG][login] http_client id:", id(http_client), "token:", http_client.token)
+                # #print("[DEBUG][login] http_client id:", id(http_client), "token:", http_client.token)
                 return redirect(url_for("home.homepage"))
 
             elif status == "pending":
@@ -89,7 +89,7 @@ def register():
             birthday_str
         )
 
-        print("[DEBUG][register] Response:", repr(response))
+        #print("[DEBUG][register] Response:", repr(response))
 
         if isinstance(response, dict) and response.get("status") == "OK":
             flash("Registration successful! Pending approval.", "success")
@@ -112,7 +112,7 @@ def recover():
     form = Recover()
     if form.validate_on_submit():
         response = AuthService.recover(form.identifier.data)
-        print("[DEBUG][recover] Response:", repr(response))
+        #print("[DEBUG][recover] Response:", repr(response))
 
         if isinstance(response, dict):
             status = response.get("status", "").lower()
@@ -137,7 +137,7 @@ def assistance():
     form = Assistance()
     if form.validate_on_submit():
         response = AuthService.assistance(form.identifier.data, form.message.data)
-        print("[DEBUG][assistance] Response:", repr(response))
+        #print("[DEBUG][assistance] Response:", repr(response))
 
         if isinstance(response, dict):
             status = response.get("status", "").lower()
@@ -178,7 +178,7 @@ def change_password():
         
         # Send change password request to server
         response = AuthService.change_password(form.new_password.data)
-        print(f"[DEBUG][change_password] Response: {repr(response)}")
+        #print(f"[DEBUG][change_password] Response: {repr(response)}")
         
         if isinstance(response, dict):
             status = response.get("status", "").lower()
@@ -208,7 +208,7 @@ def reset_password():
     
     # Call server to validate and reset password
     response = http_client.send_request("RESET_PASSWORD", [reset_token])
-    print(f"[DEBUG][reset_password] Response: {repr(response)}")
+    #print(f"[DEBUG][reset_password] Response: {repr(response)}")
     
     if isinstance(response, dict):
         status = response.get("status", "").lower()

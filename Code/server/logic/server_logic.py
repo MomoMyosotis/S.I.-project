@@ -32,7 +32,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         try:
             data = json.loads(raw_data)
-            command = data.get("command")
+            command = (data.get("command") or "").lower()
             args = data.get("args", [])
             token = data.get("token")
         except Exception:
@@ -45,9 +45,10 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         user_obj = sessions.get(token)
 
-        # Intercetta register_user in modalità manuale
-        if command == "register_user" and mode_ref[0] == "manual":
-            approved = macr(timeout=30)
+        # Intercetta register/login in modalità manuale (support 'register' and 'register_user')
+        if command in ("register", "register_user", "login") and mode_ref[0] == "manual":
+            meta = {"command": command, "args": args, "token": token}
+            approved = macr(timeout=30, meta=meta)
             if not approved:
                 self._set_headers(200)
                 self.wfile.write(json.dumps({
@@ -83,22 +84,22 @@ def start_server(host: str, port: int):
     # Register a stop callback so admin can stop this HTTPServer cleanly.
     def _stop_httpserver():
         try:
-            print("Admin requested server stop. Shutting down HTTP server...")
+            #print("Admin requested server stop. Shutting down HTTP server...")
             server.shutdown()
             server.server_close()
         except Exception as e:
             print(f"Error stopping server: {e}")
     register_stop_callback(_stop_httpserver)
-    print(f"Server running on {host}:{port}")
+    #print(f"Server running on {host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nKeyboardInterrupt received. Shutting down server...")
+        #print("\nKeyboardInterrupt received. Shutting down server...")
         server.server_close()
 
 def stop_server(server: HTTPServer):
     """Chiude il server HTTP."""
     server.server_close()
-    print("Server stopped.")
+    #print("Server stopped.")
 
 # last line

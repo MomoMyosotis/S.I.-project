@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Admin Console</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <link rel="icon" href="/storage/images/favicon.ico" />
+        <link rel="stylesheet" href="{{ url_for('static', filename='admin_console_style.css') }}">
+    </head>
+    <body>
+        <div class="admin-logo" aria-hidden="true"></div>
+        <div class="wrap">
+        <header>
+            <h2>Admin Console</h2>
+            <div class="controls">
+                <div><strong>Mode:</strong> <span style="color:var(--accent-2)"> {{ mode }}</span></div>
+                <button id="switch" class="shine">Switch Mode</button>
+            </div>
+        </header>
+
+        <div class="panel">
+        <h3 style="margin-top:0">Pending approvals — <small>{{ pending|length }} pending</small></h3>
+        <ul id="pending-list">
+        {% for item in pending %}
+            <li>
+                <div class="meta">
+                    <strong>#{{ item.index }}</strong> — <span style="color:var(--accent-2)">{{ item.meta.command if item.meta and item.meta.command else 'n/a' }}</span>
+                    <div><small>args: {{ item.meta.args if item.meta and item.meta.args else [] }} • from: {{ item.meta.remote if item.meta and item.meta.remote else 'unknown' }}</small></div>
+                </div>
+                <div class="actions">
+                    <button class="approve-item shine" data-index="{{ item.index }}" data-action="accept">Approve</button>
+                    <button class="approve-item shine" data-index="{{ item.index }}" data-action="deny">Deny</button>
+                </div>
+            </li>
+        {% endfor %}
+        </ul>
+        </div>
+        <div class="panel">
+        <h3 style="margin-top:0">Sessions (logged-in tokens)</h3>
+        <ul>
+            {% for t in tokens %}
+                <li>{{ t }} <button class="logout" data-token="{{ t }}">Logout</button></li>
+            {% endfor %}
+        </ul>
+        </div>
+        <div class="panel">
+        <h3 style="margin-top:0">Reset tokens</h3>
+        <ul>
+            {% for tk, v in reset_tokens.items() %}
+                <li>{{ tk }} -> {{ v.email }} <button class="revoke" data-token="{{ tk }}">Revoke</button></li>
+            {% endfor %}
+        </ul>
+        </div>
+
+        <div class="panel">
+        <h3 style="margin-top:0">Server control</h3>
+        {% if running %}
+            <button id="server-toggle" data-action="stop">Stop server</button>
+        {% else %}
+            <button id="server-toggle" data-action="start">Start server</button>
+        {% endif %}
+        </div>
+
+        <script>
+            async function post(path, body) {
+                const res = await fetch(path, {method: 'POST', headers: {'Content-Type':'application/x-www-form-urlencoded'}, body: body});
+                return res.json().catch(()=>null);
+            }
+
+            async function fetchPending(){
+                try{
+                    const res = await fetch('/admin/pending');
+                    if(!res.ok) return [];
+                    const data = await res.json();
+                    return data;
+                }catch(e){return []}
+            }
+
+            function renderPending(list){
+                const ul = document.getElementById('pending-list');
+                if(!ul) return;
+                ul.innerHTML = '';
+                list.forEach(item=>{
+                    const li = document.createElement('li');
+                    li.innerHTML = `<strong>#${item.index}</strong> - ${item.meta && item.meta.command?item.meta.command:'n/a'} <small>args: ${item.meta && item.meta.args?JSON.stringify(item.meta.args):'[]'}</small>`;
+                    const a = document.createElement('button'); a.textContent='Approve'; a.className='approve-item'; a.dataset.index=item.index; a.dataset.action='accept';
+                    const d = document.createElement('button'); d.textContent='Deny'; d.className='approve-item'; d.dataset.index=item.index; d.dataset.action='deny';
+                    a.addEventListener('click', async ()=>{ await post('/admin/approve', 'action=accept&index='+encodeURIComponent(item.index)); });
+                    d.addEventListener('click', async ()=>{ await post('/admin/approve', 'action=deny&index='+encodeURIComponent(item.index)); });
+                    li.appendChild(document.createTextNode(' '));
+                    li.appendChild(a); li.appendChild(d);
+                    ul.appendChild(li);
+                });
+            }
+
+            document.getElementById('switch').addEventListener('click', async ()=>{
+                await post('/admin/switch', '');
+                location.reload();
+            });
+
+            document.querySelectorAll('.logout').forEach(btn=>{
+                btn.addEventListener('click', async ()=>{
+                    const token = btn.dataset.token;
+                    await post('/admin/logout', 'token='+encodeURIComponent(token));
+                    location.reload();
+                });
+            });
+
+            document.querySelectorAll('.revoke').forEach(btn=>{
+                btn.addEventListener('click', async ()=>{
+                    const token = btn.dataset.token;
+                    await post('/admin/revoke_reset', 'token='+encodeURIComponent(token));
+                    location.reload();
+                });
+            });
+
+            document.getElementById('server-toggle').addEventListener('click', async ()=>{
+                const action = document.getElementById('server-toggle').dataset.action;
+                if (action === 'stop') await post('/admin/stop', '');
+                else await post('/admin/start', '');
+                location.reload();
+            });
+
+            // Poll pending list every second and render
+            (async function poll(){
+                try{
+                    const list = await fetchPending();
+                    renderPending(list);
+                }catch(e){/* ignore */}
+                setTimeout(poll, 1000);
+            })();
+        </script>
+        </div>
+    </body>
+</html>

@@ -37,7 +37,7 @@ def _build_user_obj(user_data: Dict[str, Any]) -> Optional[User]:
                 try:
                     return UserLevel(int(val))
                 except Exception:
-                    print(f"[DEBUG][_extract_level] couldn't parse level from key {k}: {val!r}")
+                    #print(f"[DEBUG][_extract_level] couldn't parse level from key {k}: {val!r}")
                     break
         # final fallback
         return UserLevel.REGULAR
@@ -87,7 +87,7 @@ def login_user(login_field: str, password: str, config: Optional[Dict[str, Any]]
             user_data = User.get_user(username=login_field)
 
         if not user_data:
-            print(f"[DEBUG][login_user] Login fallito: utente '{login_field}' non trovato")
+            #print(f"[DEBUG][login_user] Login fallito: utente '{login_field}' non trovato")
             return {"status": "error", "user_obj": None, "error_msg": "User not found"}
 
         user_obj = _build_user_obj(user_data)
@@ -95,17 +95,17 @@ def login_user(login_field: str, password: str, config: Optional[Dict[str, Any]]
 
         # verifica password
         if not verify_password(password, user_obj.password_hash):
-            print(f"[DEBUG][login_user] Password errata per utente '{login_field}'")
+            #print(f"[DEBUG][login_user] Password errata per utente '{login_field}'")
             return {"status": "wrong_password", "user_obj": None, "error_msg": "WRONG_PASSWORD"}
 
         # verifica livello: bannati (lvl 6) non possono accedere
         if user_obj.lvl == UserLevel.BANNED:
-            print(f"[DEBUG][login_user] Utente '{login_field}' bannato (lvl=6)")
+            #print(f"[DEBUG][login_user] Utente '{login_field}' bannato (lvl=6)")
             return {"status": "banned", "user_obj": None, "error_msg": "Your account has been banned"}
 
         # controllo blacklist
         if config and user_obj.mail in config.get("BLACKLIST", []):
-            print(f"[DEBUG][login_user] Utente '{login_field}' in blacklist")
+            #print(f"[DEBUG][login_user] Utente '{login_field}' in blacklist")
             return {"status": "blacklisted", "user_obj": None, "error_msg": "BLACKLISTED"}
 
         # login OK
@@ -124,7 +124,7 @@ def login_user(login_field: str, password: str, config: Optional[Dict[str, Any]]
         }
 
     except Exception as e:
-        print(f"[DEBUG][login_user] Errore generico: {e}")
+        #print(f"[DEBUG][login_user] Errore generico: {e}")
         return {"status": "error", "user_obj": None, "error_msg": str(e)}
 
 def register_user(mail: str, username: str, password: str, birthday_str: str) -> Dict[str, Any]:
@@ -225,7 +225,7 @@ def get_profile(user_obj: User, target_name: Optional[str] = None) -> Optional[D
                     break
         except Exception as e:
             # On error, default to not following (safe fallback)
-            print(f"[DEBUG][get_profile] Error checking follow status: {e}")
+            #print(f"[DEBUG][get_profile] Error checking follow status: {e}")
             is_followed = False
     
     # Add follow flag to profile payload so frontend can display correct button
@@ -529,7 +529,7 @@ def recover(identifier: str) -> Dict[str, Any]:
         
         if not user_data:
             # Don't leak whether user exists, return success anyway for security
-            print(f"[DEBUG][recover] User not found for identifier: {identifier}")
+            #print(f"[DEBUG][recover] User not found for identifier: {identifier}")
             return {
                 "status": "OK",
                 "error_msg": None,
@@ -548,14 +548,14 @@ def recover(identifier: str) -> Dict[str, Any]:
                 "message": f"Recovery email sent to {email}"
             }
         else:
-            print(f"[ERROR][recover] Failed to send recovery email: {result.get('error_msg')}")
+            #print(f"[ERROR][recover] Failed to send recovery email: {result.get('error_msg')}")
             return {
                 "status": "ERROR",
                 "error_msg": result.get("error_msg", "Failed to send recovery email")
             }
     
     except Exception as e:
-        print(f"[ERROR][recover] Exception: {str(e)}")
+        #print(f"[ERROR][recover] Exception: {str(e)}")
         return {
             "status": "ERROR",
             "error_msg": f"Recovery process failed: {str(e)}"
@@ -578,7 +578,7 @@ def assistance(identifier: str, message: str) -> Dict[str, Any]:
             user_data = User.get_user_by_username(identifier)
         
         if not user_data:
-            print(f"[DEBUG][assistance] User not found: {identifier}")
+            #print(f"[DEBUG][assistance] User not found: {identifier}")
             return {
                 "status": "ERROR",
                 "error_msg": f"User '{identifier}' not found"
@@ -587,7 +587,7 @@ def assistance(identifier: str, message: str) -> Dict[str, Any]:
         user_email = user_data.get("mail")
         username = user_data.get("username", "User")
         if not user_email:
-            print(f"[DEBUG][assistance] No email for user: {identifier}")
+            #print(f"[DEBUG][assistance] No email for user: {identifier}")
             return {
                 "status": "ERROR",
                 "error_msg": "User email not found"
@@ -598,28 +598,28 @@ def assistance(identifier: str, message: str) -> Dict[str, Any]:
             config = load_config()
             admin_email = config.get("ADMIN_EMAIL")
         except Exception as e:
-            print(f"[WARNING][assistance] Failed to load config for admin email: {str(e)}")
+            #print(f"[WARNING][assistance] Failed to load config for admin email: {str(e)}")
             admin_email = None
         
         # Send assistance emails
         result = send_assistance_email(user_email, username, message, admin_email)
         
         if result.get("status") == "OK":
-            print(f"[DEBUG][assistance] Assistance email sent to {user_email}")
+            #print(f"[DEBUG][assistance] Assistance email sent to {user_email}")
             return {
                 "status": "OK",
                 "error_msg": None,
                 "message": f"Assistance request received. Confirmation sent to {user_email}"
             }
         else:
-            print(f"[ERROR][assistance] Failed to send assistance email: {result.get('error_msg')}")
+            #print(f"[ERROR][assistance] Failed to send assistance email: {result.get('error_msg')}")
             return {
                 "status": "ERROR",
                 "error_msg": result.get("error_msg", "Failed to send assistance email")
             }
     
     except Exception as e:
-        print(f"[ERROR][assistance] Exception: {str(e)}")
+        #print(f"[ERROR][assistance] Exception: {str(e)}")
         return {
             "status": "ERROR",
             "error_msg": f"Assistance process failed: {str(e)}"
@@ -644,7 +644,7 @@ def reset_password(reset_token: str) -> Dict[str, Any]:
         # Fetch user by email
         user_data = User.get_user(mail=email)
         if not user_data:
-            print(f"[DEBUG][reset_password] User not found for email: {email}")
+            #print(f"[DEBUG][reset_password] User not found for email: {email}")
             return {
                 "status": "ERROR",
                 "error_msg": "User not found"
@@ -659,7 +659,7 @@ def reset_password(reset_token: str) -> Dict[str, Any]:
         success = update_user_db(user_id, {"password_hash": new_password_hash})
         
         if success:
-            print(f"[DEBUG][reset_password] Password reset successfully for {email}")
+            #print(f"[DEBUG][reset_password] Password reset successfully for {email}")
             return {
                 "status": "OK",
                 "error_msg": None,
@@ -667,14 +667,14 @@ def reset_password(reset_token: str) -> Dict[str, Any]:
                 "new_password": DEFAULT_RESET_PASSWORD
             }
         else:
-            print(f"[ERROR][reset_password] Failed to update password for {email}")
+            #print(f"[ERROR][reset_password] Failed to update password for {email}")
             return {
                 "status": "ERROR",
                 "error_msg": "Failed to reset password"
             }
     
     except Exception as e:
-        print(f"[ERROR][reset_password] Exception: {str(e)}")
+        #print(f"[ERROR][reset_password] Exception: {str(e)}")
         return {
             "status": "ERROR",
             "error_msg": f"Password reset failed: {str(e)}"
@@ -719,20 +719,20 @@ def change_password(user_obj: Any, new_password: str) -> Dict[str, Any]:
         success = update_user_db(user_id, {"password_hash": new_password_hash})
         
         if success:
-            print(f"[DEBUG][change_password] Password changed successfully for user {username} (id={user_id})")
+            #print(f"[DEBUG][change_password] Password changed successfully for user {username} (id={user_id})")
             return {
                 "status": "OK",
                 "message": "Password changed successfully"
             }
         else:
-            print(f"[ERROR][change_password] Failed to update password for user {username} (id={user_id})")
+            #print(f"[ERROR][change_password] Failed to update password for user {username} (id={user_id})")
             return {
                 "status": "ERROR",
                 "error_msg": "Failed to update password"
             }
     
     except Exception as e:
-        print(f"[ERROR][change_password] Exception: {str(e)}")
+        #print(f"[ERROR][change_password] Exception: {str(e)}")
         import traceback
         traceback.print_exc()
         return {
@@ -767,7 +767,7 @@ def search_users(user_obj: Any, term: str = "", offset: int = 0, limit: int = 20
             })
         return {"status": "OK", "response": results, "count": len(results)}
     except Exception as e:
-        print(f"[ERROR][search_users] {e}")
+        #print(f"[ERROR][search_users] {e}")
         return {"status": "ERROR", "error_msg": str(e)}
 
 # last line

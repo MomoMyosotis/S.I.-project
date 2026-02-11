@@ -14,7 +14,7 @@ def create_app():
         static_url_path='/static'
     )
 
-    print(f"Template folder is set to: {os.path.join(base_dir, 'templates')}")
+    ##print(f"Template folder is set to: {os.path.join(base_dir, 'templates')}")
 
     app.config.from_object(Config)
     app.config['DEBUG'] = True

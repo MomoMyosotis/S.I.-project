@@ -17,7 +17,7 @@ def feed_data():
     offset = int(request.args.get("offset", 0))
     limit = int(request.args.get("limit", 10))
 
-    print(f"[DEBUG] Fetching feed: search={search!r}, filter={filter_by}, offset={offset}, limit={limit}")
+    #print(f"[DEBUG] Fetching feed: search={search!r}, filter={filter_by}, offset={offset}, limit={limit}")
 
     # fetch merged feed (media + users when applicable) via FeedService which uses http_helper
     response = FeedService.get_feed(search, filter_by, offset, limit)
@@ -25,7 +25,7 @@ def feed_data():
     # handle error envelope
     if isinstance(response, dict) and response.get("status") and str(response.get("status")).lower() not in ("ok", "true"):
         err = response.get("error_msg", "Unknown error")
-        print(f"[ERROR] feed_data failed during fetch: {err}")
+        #print(f"[ERROR] feed_data failed during fetch: {err}")
         return jsonify({"error": err}), 400
 
     # extract batch robustly
@@ -86,7 +86,7 @@ def feed_data():
                 "raw": md_sanit
             })
         except Exception as e:
-            print(f"[DEBUG] feed item normalization failed: {e}")
+            #print(f"[DEBUG] feed item normalization failed: {e}")
             normalized_batch.append({
                 "id": it.get("id") or it.get("media_id"),
                 "title": it.get("title") or it.get("name") or "Untitled",

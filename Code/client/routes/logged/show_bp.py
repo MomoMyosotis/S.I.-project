@@ -872,45 +872,7 @@ def fix_metadata():
 
         return jsonify({"status": "OK", "fix_result": res, "media": media_dict}), 200
     except Exception as e:
-        current_app.logger.debug(f"[fix_metadata] error fetching media after fix: {e}")
+        current_app.logger.debug(f"[fix_metadata] error fetching media after fix: {e}''''''''''''''''''''''")
         return jsonify({"status": "OK", "fix_result": res}), 200
-    """Create a note for a media item."""
-    if http_client.token is None:
-        return jsonify({"status": "ERROR", "error_msg": "Non autenticato"}), 401
 
-    data = request.get_json(silent=True) or {}
-    media_id = data.get("media_id")
-    note_type = data.get("type", 1)  # 0=graphic, 1=text
-    start = data.get("start")
-    end = data.get("end")
-    text = data.get("text", "")
-    private = data.get("private", False)
-    media_type = data.get("media_type")
-
-    if not media_id or start is None or end is None:
-        return jsonify({"status": "ERROR", "error_msg": "Missing required fields: media_id, start, end"}), 400
-
-    try:
-        # Call the backend API to create the note
-        payload = {
-            "media_id": media_id,
-            "start": start,
-            "end": end,
-            "type": note_type,
-            "text": text,
-            "private": private
-        }
-        
-        response = http_client.send_request("CREATE_NOTE", [payload], require_auth=True)
-        current_app.logger.debug(f"[DEBUG] create_note response: {response!r}")
-        
-        if isinstance(response, dict):
-            if response.get("status") in (None, "OK"):
-                return jsonify({"status": "OK", "note_id": response.get("note_id")}), 200
-            else:
-                return jsonify({"status": "ERROR", "error_msg": response.get("error_msg", "Failed to create note")}), 400
-        
-        return jsonify({"status": "OK"}), 200
-    except Exception as e:
-        current_app.logger.exception("Error creating note")
-        return jsonify({"status": "ERROR", "error_msg": str(e)}), 500
+# last line

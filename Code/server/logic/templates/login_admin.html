@@ -1,0 +1,152 @@
+<!doctype html>
+<div class="box">
+  <div class="login">
+    <link rel="stylesheet" href="{{ url_for('static', filename='login_style.css') }}">
+
+    <form id="loginForm" class="loginBx" method="post" action="{{ url_for('admin_ui.login') }}">
+      {{ form.hidden_tag() }}
+      <h2>
+        <i class="fa-solid fa-right-to-bracket"></i>
+        Login
+        <i class="fa-solid fa-heart"></i>
+      </h2>
+
+      {{ form.username(class_="input", placeholder="Username") }}
+      {% for error in form.username.errors %}
+        <p class="error">{{ error }}</p>
+      {% endfor %}
+
+      <div class="password-input-group">
+        {{ form.password(class_="input", placeholder="Password", id="login_password") }}
+        <button type="button" class="toggle-password-btn" onclick="togglePasswordVisibility('login_password')" title="Show/Hide Password">
+          <i class="fas fa-eye"></i>
+        </button>
+      </div>
+      {% for error in form.password.errors %}
+        <p class="error">{{ error }}</p>
+      {% endfor %}
+
+      <input type="submit" value="Sign in" />
+
+      <p id="msg" style="color: #ff2770; text-align: center; margin-top: 1px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              {{ message }}
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+      </p>
+    </form>
+
+    
+
+    <style>
+      /* Error popup styles */
+      #error-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9990; display:none; opacity:0; transition: opacity .18s ease; }
+      #error-overlay.show { display:block; }
+      #error-overlay.visible { opacity:1; }
+      #error-popup { position: fixed; left: 50%; top: 14%; transform: translateX(-50%) translateY(-6px); z-index: 9999; display: none; opacity: 0; transition: opacity .18s ease, transform .18s ease; }
+      #error-popup.show { display: block; }
+      #error-popup.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+      #error-popup .ep-inner { display:flex; align-items:center; gap:12px; background: linear-gradient(90deg,#2d2d39,#25252b); padding:12px 16px; border-radius:12px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); border:2px solid rgba(255,39,112,0.06); backdrop-filter: blur(4px); }
+      #error-popup .ep-icon { width:28px; height:28px; object-fit:contain; filter: drop-shadow(0 6px 18px rgba(0,0,0,0.6)); }
+      #error-popup .ep-text { color:#ffb6c9; font-weight:700; }
+      #error-popup .ep-close { background:transparent; border:1px solid rgba(255,255,255,0.06); color:#fff; font-size:15px; cursor:pointer; padding:6px 10px; border-radius:8px; }
+
+      /* Raise the LOGIN title slightly */
+      .loginBx h2 { transform: translateY(-22px); }
+
+      .password-input-group { position: relative; width: 100%; display: flex; align-items: center; }
+      .password-input-group .input { width: 100%; padding-right: 50px; }
+      .toggle-password-btn { position: absolute; right: 15px; background: none; border: none; color: #ff2770; cursor: pointer; font-size: 18px; transition: 0.3s ease; padding: 5px 10px; }
+      .toggle-password-btn:hover { color: #45f3ff; text-shadow: 0 0 10px #45f3ff; transform: scale(1.2); }
+      .toggle-password-btn:active { transform: scale(0.95); }
+    </style>
+
+    <script>
+      function togglePasswordVisibility(fieldId) {
+        const field = document.getElementById(fieldId);
+        const button = event.target.closest('.toggle-password-btn');
+        const icon = button.querySelector('i');
+        if (field.type === 'password') {
+          field.type = 'text';
+          icon.classList.remove('fa-eye');
+          icon.classList.add('fa-eye-slash');
+        } else {
+          field.type = 'password';
+          icon.classList.remove('fa-eye-slash');
+          icon.classList.add('fa-eye');
+        }
+      }
+    </script>
+
+    <script>
+      // show popup when `error` variable is provided
+      {% if error is defined and error %}
+        const err = {{ error|tojson }};
+      {% else %}
+        const err = null;
+      {% endif %}
+      document.addEventListener('DOMContentLoaded', ()=>{
+        const popup = document.getElementById('error-popup');
+        const overlay = document.getElementById('error-overlay');
+        if (err && popup && overlay) {
+          // Force show overlay and popup (avoid race with other scripts)
+          overlay.classList.add('show');
+          popup.classList.add('show');
+          overlay.style.display = 'block';
+          popup.style.display = 'block';
+          // force high stacking and pointer capture
+          overlay.style.zIndex = 99990;
+          popup.style.zIndex = 99991;
+          overlay.style.pointerEvents = 'auto';
+          popup.style.pointerEvents = 'auto';
+          // ensure rendering then fade in
+          requestAnimationFrame(()=>{
+            overlay.classList.add('visible');
+            popup.classList.add('visible');
+            document.body.style.overflow = 'hidden';
+            popup.setAttribute('aria-hidden','false');
+            overlay.setAttribute('aria-hidden','false');
+          });
+
+          const close = ()=>{
+            popup.classList.remove('visible'); overlay.classList.remove('visible');
+            setTimeout(()=>{
+              popup.classList.remove('show'); overlay.classList.remove('show');
+              // clear inline styles set when showing
+              popup.style.display = '';
+              overlay.style.display = '';
+              popup.style.zIndex = '';
+              overlay.style.zIndex = '';
+              popup.style.pointerEvents = '';
+              overlay.style.pointerEvents = '';
+              document.body.style.overflow = '';
+              popup.setAttribute('aria-hidden','true'); overlay.setAttribute('aria-hidden','true');
+            }, 220);
+          };
+
+          const closer = popup.querySelector('.ep-close');
+          if (closer) closer.addEventListener('click', close);
+          // click outside -> close
+          overlay.addEventListener('click', close);
+
+          // focus OK button for accessibility
+          if (closer) closer.focus();
+        }
+      });
+    </script>
+
+  </div>
+</div>
+
+  <!-- Error modal placed outside the login container so it's not clipped by .login -->
+  <div id="error-overlay" aria-hidden="true"></div>
+  <div id="error-popup" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="ep-inner">
+      <img src="/storage/images/favicon.ico" alt="icon" class="ep-icon"/>
+      <div class="ep-text">{{ error }}</div>
+      <button class="ep-close" aria-label="OK">OK</button>
+    </div>
+  </div>

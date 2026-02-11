@@ -16,14 +16,14 @@ def get_commented_media():
     offset = int(request.args.get("offset", 0))
     limit = int(request.args.get("limit", 10))
 
-    print(f"[DEBUG] Fetching commented media: offset={offset}, limit={limit}")
+    #print(f"[DEBUG] Fetching commented media: offset={offset}, limit={limit}")
 
     response = LibraryService.get_commented_media(offset, limit)
 
     # handle error envelope
     if isinstance(response, dict) and response.get("status") and str(response.get("status")).lower() not in ("ok", "true"):
         err = response.get("error_msg", "Unknown error")
-        print(f"[ERROR] get_commented_media failed during fetch: {err}")
+        #print(f"[ERROR] get_commented_media failed during fetch: {err}")
         return jsonify({"error": err}), 400
 
     # extract batch robustly
@@ -70,7 +70,7 @@ def get_commented_media():
                 "raw": md_sanit
             })
         except Exception as e:
-            print(f"[DEBUG] media item normalization failed: {e}")
+            #print(f"[DEBUG] media item normalization failed: {e}")
             normalized_batch.append({
                 "id": it.get("id") or it.get("media_id"),
                 "title": it.get("title") or it.get("name") or "Untitled",
@@ -92,14 +92,14 @@ def get_followed_media():
     offset = int(request.args.get("offset", 0))
     limit = int(request.args.get("limit", 10))
 
-    print(f"[DEBUG] Fetching followed media: offset={offset}, limit={limit}")
+    #print(f"[DEBUG] Fetching followed media: offset={offset}, limit={limit}")
 
     response = LibraryService.get_followed_media(offset, limit)
 
     # handle error envelope
     if isinstance(response, dict) and response.get("status") and str(response.get("status")).lower() not in ("ok", "true"):
         err = response.get("error_msg", "Unknown error")
-        print(f"[ERROR] get_followed_media failed during fetch: {err}")
+        #print(f"[ERROR] get_followed_media failed during fetch: {err}")
         return jsonify({"error": err}), 400
 
     # extract batch robustly
@@ -146,7 +146,7 @@ def get_followed_media():
                 "raw": md_sanit
             })
         except Exception as e:
-            print(f"[DEBUG] media item normalization failed: {e}")
+            #print(f"[DEBUG] media item normalization failed: {e}")
             normalized_batch.append({
                 "id": it.get("id") or it.get("media_id"),
                 "title": it.get("title") or it.get("name") or "Untitled",

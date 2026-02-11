@@ -38,7 +38,7 @@ class MetadataService:
             
             # Handle error responses
             if isinstance(res, dict) and res.get("status") and str(res.get("status")).lower() not in ("ok", "true"):
-                print(f"[ERROR] GET_METADATA failed: {res.get('error_msg', 'Unknown error')}")
+                #print(f"[ERROR] GET_METADATA failed: {res.get('error_msg', 'Unknown error')}")
                 return {
                     "instruments": [],
                     "genres": [],
@@ -70,7 +70,7 @@ class MetadataService:
                 "media_titles": []
             }
         except Exception as e:
-            print(f"[ERROR] MetadataService.get_metadata failed: {e}")
+            #print(f"[ERROR] MetadataService.get_metadata failed: {e}")
             return {
                 "instruments": [],
                 "genres": [],

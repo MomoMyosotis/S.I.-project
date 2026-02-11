@@ -50,7 +50,7 @@ def get_metadata_for_client():
         instruments = fetch_all_dict_entries("instruments")
         metadata["instruments"] = [inst.get("name") for inst in (instruments or []) if inst.get("name")]
     except Exception as e:
-        print(f"[ERROR] Failed to fetch instruments: {e}")
+        #print(f"[ERROR] Failed to fetch instruments: {e}")
         metadata["instruments"] = []
     
     # Fetch genres/tags
@@ -60,7 +60,7 @@ def get_metadata_for_client():
         # full objects for id->name resolution on clients that need it
         metadata["genre_objects"] = genres or []
     except Exception as e:
-        print(f"[ERROR] Failed to fetch genres: {e}")
+        #print(f"[ERROR] Failed to fetch genres: {e}")
         metadata["genres"] = []
         metadata["genre_objects"] = []
     
@@ -69,7 +69,7 @@ def get_metadata_for_client():
         authors = fetch_all_dict_entries("authors")
         metadata["authors"] = [a.get("name") for a in (authors or []) if a.get("name")]
     except Exception as e:
-        print(f"[ERROR] Failed to fetch authors: {e}")
+        #print(f"[ERROR] Failed to fetch authors: {e}")
         metadata["authors"] = []
     
     # Fetch performers
@@ -77,7 +77,7 @@ def get_metadata_for_client():
         performers = fetch_all_dict_entries("performers")
         metadata["performers"] = [p.get("name") for p in (performers or []) if p.get("name")]
     except Exception as e:
-        print(f"[ERROR] Failed to fetch performers: {e}")
+        #print(f"[ERROR] Failed to fetch performers: {e}")
         metadata["performers"] = []
     
     # Fetch media titles (recent/popular)
@@ -86,7 +86,7 @@ def get_metadata_for_client():
         media_titles = fetch_all("SELECT title, MAX(created_at) as latest FROM media WHERE title IS NOT NULL GROUP BY title ORDER BY latest DESC LIMIT 100")
         metadata["media_titles"] = [m.get("title") for m in (media_titles or []) if m.get("title")]
     except Exception as e:
-        print(f"[ERROR] Failed to fetch media titles: {e}")
+        #print(f"[ERROR] Failed to fetch media titles: {e}")
         metadata["media_titles"] = []
     
     return metadata
@@ -230,7 +230,7 @@ COMMAND_MAP = {
 }
 
 def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple[str, Optional[Any], Optional[str], str]:
-    print(f"[DEBUG][dispatch_command] START - command={command}, args={args}, user_obj={user_obj}")
+    #print(f"[DEBUG][dispatch_command] START - command={command}, args={args}, user_obj={user_obj}")
     command = command.lower()
 
     # =====================
@@ -248,10 +248,10 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
                     user_obj = user_obj_instance.to_dict_internal() if user_obj_instance else None
                     # Remove the user_id from args since it's now in user_obj
                     args = args[1:]
-                    print(f"[DEBUG][dispatch_command] Built user_obj from user_id={first_arg}, remaining args={args}")
+                    #print(f"[DEBUG][dispatch_command] Built user_obj from user_id={first_arg}, remaining args={args}")
             except Exception as e:
                 print(f"[DEBUG][dispatch_command] Failed to build user_obj from user_id: {e}")
-    
+
     print(f"[DEBUG][dispatch_command] After user_id extraction - user_obj={'(set)' if user_obj else 'None'}, args={args}")
 
     if isinstance(user_obj, dict):

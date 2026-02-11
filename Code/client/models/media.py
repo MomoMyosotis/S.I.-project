@@ -165,7 +165,7 @@ class Media:
                 if yt_url:
                     # Store the YouTube URL so show.html can use it
                     stored_at = yt_url
-                    print(f"[DEBUG][Media.from_server] Concert: extracted YouTube URL from linked_media: {yt_url}")
+                    #print(f"[DEBUG][Media.from_server] Concert: extracted YouTube URL from linked_media: {yt_url}")
 
         return Media(
             id=mid,

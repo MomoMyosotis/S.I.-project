@@ -19,11 +19,11 @@ def profile_data():
         http_client.token = session.get("session_token")
 
     username = request.args.get("username")
-    print("[DEBUG][profile_bp.profile_data] START")
-    print("[DEBUG][profile_bp.profile_data] requested username:", username)
+    #print("[DEBUG][profile_bp.profile_data] START")
+    #print("[DEBUG][profile_bp.profile_data] requested username:", username)
 
     response = ProfileService.get_profile(username)
-    print("[DEBUG][ProfileService.get_profile] response:", response)
+    #print("[DEBUG][ProfileService.get_profile] response:", response)
 
     if response.get("status") == "OK":
         # ProfileService already returns { "user": ..., "self": ..., "recent_publications": ... }
@@ -32,7 +32,7 @@ def profile_data():
         # VALIDATION: Reject if no user data or user is empty
         if not user_data or not isinstance(user_data, dict) or not user_data.get("id"):
             err = response.get("error_msg", "Server returned invalid profile")
-            print(f"[ERROR][profile_bp.profile_data] Invalid user data: {user_data}")
+            #print(f"[ERROR][profile_bp.profile_data] Invalid user data: {user_data}")
             return jsonify({"status": "ERROR", "error": err}), 400
         
         # Fetch viewer's own profile to get viewer's id, username, lvl
@@ -77,7 +77,7 @@ def profile_data():
                         is_followed = True
                         break
             except Exception as e:
-                print(f"[DEBUG][profile_bp.profile_data] Error checking follow status: {e}")
+                #print(f"[DEBUG][profile_bp.profile_data] Error checking follow status: {e}")
                 is_followed = False
         
         user_data['is_followed'] = is_followed
@@ -88,11 +88,11 @@ def profile_data():
             "viewer": viewer_data,  # Include viewer's own profile data
             "recent_publications": response.get("recent_publications", [])
         }
-        print("[DEBUG][profile_bp.profile_data] returning payload:", payload)
+        #print("[DEBUG][profile_bp.profile_data] returning payload:", payload)
         return jsonify(payload)
     else:
         err = response.get("error_msg", "Unknown error")
-        print(f"[ERROR][profile_bp.profile_data] Service error: {err}")
+        #print(f"[ERROR][profile_bp.profile_data] Service error: {err}")
         return jsonify({"status": "ERROR", "error": err}), 400
 
 @profile_bp.route("/publications", methods=["GET"])

@@ -19,7 +19,7 @@ def init_mail(app):
     """Initialize Flask-Mail with the given Flask app."""
     global mail
     mail = Mail(app)
-    print("[DEBUG][email_service] Flask-Mail initialized successfully")
+    #print("[DEBUG][email_service] Flask-Mail initialized successfully")
 
 def generate_reset_token(email: str, token_expiry_hours: int = 24) -> str:
     """
@@ -33,7 +33,7 @@ def generate_reset_token(email: str, token_expiry_hours: int = 24) -> str:
         "email": email,
         "expires_at": expires_at
     }
-    print(f"[DEBUG][email_service] Generated reset token for {email}, expires at {expires_at}")
+    #print(f"[DEBUG][email_service] Generated reset token for {email}, expires at {expires_at}")
     return token
 
 def validate_reset_token(token: str) -> Optional[str]:
@@ -42,7 +42,7 @@ def validate_reset_token(token: str) -> Optional[str]:
     Returns None if token is invalid or expired.
     """
     if token not in reset_tokens:
-        print(f"[DEBUG][email_service] Invalid token: {token}")
+        #print(f"[DEBUG][email_service] Invalid token: {token}")
         return None
     
     token_data = reset_tokens[token]
@@ -51,11 +51,11 @@ def validate_reset_token(token: str) -> Optional[str]:
     if expires_at < datetime.utcnow():
         # Token expired, remove it
         del reset_tokens[token]
-        print(f"[DEBUG][email_service] Token expired: {token}")
+        #print(f"[DEBUG][email_service] Token expired: {token}")
         return None
     
     email = token_data.get("email")
-    print(f"[DEBUG][email_service] Token validated for {email}")
+    #print(f"[DEBUG][email_service] Token validated for {email}")
     return email
 
 def consume_reset_token(token: str) -> Optional[str]:
@@ -66,7 +66,7 @@ def consume_reset_token(token: str) -> Optional[str]:
     email = validate_reset_token(token)
     if email and token in reset_tokens:
         del reset_tokens[token]
-        print(f"[DEBUG][email_service] Token consumed for {email}")
+        #print(f"[DEBUG][email_service] Token consumed for {email}")
     return email
 
 def send_recovery_email(recipient_email: str, username: str, reset_link_base: str = "http://127.0.0.1:5000") -> Dict[str, Any]:
@@ -110,7 +110,7 @@ The Support Team
         # Send the email
         mail.send(msg)
         
-        print(f"[DEBUG][email_service.send_recovery_email] Recovery email sent to {recipient_email}")
+        #print(f"[DEBUG][email_service.send_recovery_email] Recovery email sent to {recipient_email}")
         return {
             "status": "OK",
             "error_msg": None,
@@ -118,7 +118,7 @@ The Support Team
         }
     
     except Exception as e:
-        print(f"[ERROR][email_service.send_recovery_email] Failed to send email: {str(e)}")
+        #print(f"[ERROR][email_service.send_recovery_email] Failed to send email: {str(e)}")
         return {
             "status": "ERROR",
             "error_msg": f"Failed to send recovery email: {str(e)}"
@@ -180,7 +180,7 @@ Please review and respond to the user as soon as possible.
             
             mail.send(admin_msg)
         
-        print(f"[DEBUG][email_service.send_assistance_email] Assistance email sent to {user_email}")
+        #print(f"[DEBUG][email_service.send_assistance_email] Assistance email sent to {user_email}")
         return {
             "status": "OK",
             "error_msg": None,
@@ -188,7 +188,7 @@ Please review and respond to the user as soon as possible.
         }
     
     except Exception as e:
-        print(f"[ERROR][email_service.send_assistance_email] Failed to send email: {str(e)}")
+        #print(f"[ERROR][email_service.send_assistance_email] Failed to send email: {str(e)}")
         return {
             "status": "ERROR",
             "error_msg": f"Failed to send assistance email: {str(e)}"

@@ -14,7 +14,7 @@ def connect():
         conn = psycopg2.connect(**pruty)
         return conn
     except Exception as e:
-        print("Failed to establish connection:\n", e)
+        #print("Failed to establish connection:\n", e)
         return None
 
 # last line

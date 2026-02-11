@@ -20,7 +20,7 @@ def tprint(cur, tname, limit=10):
         rows = cur.fetchall()
         if rows:
             headers = [desc[0] for desc in cur.description]
-            print(tabulate(rows, headers=headers, tablefmt="psql"))
+            #print(tabulate(rows, headers=headers, tablefmt="psql"))
         else:
             print(f"No data found in table {tname}.")
     except Exception as e:
@@ -39,48 +39,48 @@ def populate(cnt, cur):
     ]
 
 
-    print("Starting database population...\n")
+    #print("Starting database population...\n")
 
     for name, func, tname in tables:
         try:
-            print(f"Populating {name}...")
+            #print(f"Populating {name}...")
             func(cnt, cur)  # passiamo connessione e cursore
             cnt.commit()
             tprint(cur, tname)
-            print(f"{name} populated successfully.\n")
+            #print(f"{name} populated successfully.\n")
         except Exception as e:
             cnt.rollback()
-            print(f"Error populating {name}: {e}\n")
+            #print(f"Error populating {name}: {e}\n")
 
 # =========================
 # Connessione iniziale
 # =========================
 def first_connection():
-    print("first_connection() start")
+    #print("first_connection() start")
     cnt = connect()
     if cnt is None:
-        print("Couldn't connect to the DB. Check credentials.")
+        #print("Couldn't connect to the DB. Check credentials.")
         return None, None
 
     cur = cnt.cursor()
     populate(cnt, cur)
-    print("first_connection() ended")
+    #print("first_connection() ended")
     return cnt, cur
 
 # =========================
 # Flow principale
 # =========================
 def flow():
-    print("flow() started")
+    #print("flow() started")
     conn, cur = first_connection()
     if not conn or not cur:
-        print("Flow aborted due to connection error.")
+        #print("Flow aborted due to connection error.")
         return False
 
     time.sleep(1)
     cur.close()
     conn.close()
-    print("flow() ended")
+    #print("flow() ended")
     return True
 
 flow()

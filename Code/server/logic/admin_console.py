@@ -13,17 +13,17 @@ _mode_ref: typing.Optional[list] = None
 _admin_server = None
 _stop_callback = None
 
-def macr(timeout=30):
+def macr(timeout=60, meta=None):
     """
     Aspetta la decisione dell'admin per una registrazione.
     Ritorna True se approvata, False se rifiutata, None se timeout.
     """
-    req = {"event": threading.Event(), "result": None}
+    req = {"event": threading.Event(), "result": None, "meta": meta}
     approval_queue.put(req)
-    print("Waiting for admin's approval...\n")
+    #print("Waiting for admin's approval...\n")
 
     if not req["event"].wait(timeout):
-        print("Admin approval timeout reached.")
+        #print("Admin approval timeout reached.")
         req["result"] = None
         req["event"].set()
     return req["result"]
@@ -50,20 +50,20 @@ def manual_cmd(state, mode_ref):
                 continue
             elif cmd == 'switch':
                 mode_ref[0] = 'manual' if mode_ref[0] == 'auto' else 'auto'
-                print(f"Mode switched to: [{mode_ref[0]}]", flush=True)
+                #print(f"Mode switched to: [{mode_ref[0]}]", flush=True)
                 continue
             elif cmd in ['mode', 'status']:
-                print(f"Currently on [{mode_ref[0]}] mode.\n", flush=True)
+                #print(f"Currently on [{mode_ref[0]}] mode.\n", flush=True)
                 continue
             else:
-                print("Invalid input. Type 'menu' to see options.\n", flush=True)
+                #print("Invalid input. Type 'menu' to see options.\n", flush=True)
                 continue
         except EOFError:
-            print("EOF detected, stopping console thread.", flush=True)
+            #print("EOF detected, stopping console thread.", flush=True)
             if state: stop_server(state)
             break
         except Exception as e:
-            print(f"Unexpected error: {e}", flush=True)
+            #print(f"Unexpected error: {e}", flush=True)
             if state: stop_server(state)
             break
 
@@ -71,11 +71,40 @@ def _process_approval(cmd):
     try:
         req = approval_queue.get_nowait()
     except queue.Empty:
-        print("No pending approval requests.\n", flush=True)
+        #print("No pending approval requests.\n", flush=True)
         return
     req["result"] = (cmd in accepted_list)
     req["event"].set()
-    print(f"Request {'ACCEPTED' if req['result'] else 'DENIED'}.\n", flush=True)
+    #print(f"Request {'ACCEPTED' if req['result'] else 'DENIED'}.\n", flush=True)
+
+
+def list_pending():
+    """Return a snapshot list of pending request metadata.
+    Each item is a dict: {"index": int, "meta": ...}
+    """
+    out = []
+    with approval_queue.mutex:
+        for i, req in enumerate(list(approval_queue.queue)):
+            out.append({"index": i, "meta": req.get("meta")})
+    return out
+
+
+def process_approval_at(index: int, approve: bool):
+    """Process approval for the request at `index` in the queue.
+    Returns True if processed, False otherwise.
+    """
+    with approval_queue.mutex:
+        items = list(approval_queue.queue)
+        if index < 0 or index >= len(items):
+            return False
+        req = items.pop(index)
+        # rebuild the deque without the processed item
+        approval_queue.queue.clear()
+        approval_queue.queue.extend(items)
+    req["result"] = approve
+    req["event"].set()
+    #print(f"Request at index {index} {'ACCEPTED' if approve else 'DENIED'}.\n", flush=True)
+    return True
 
 def _print_menu():
     print("""Currently you can do the following:
@@ -149,7 +178,7 @@ def start_admin_server(mode_ref: list, host: str = '127.0.0.1', port: int = 6000
         raise
     thread = threading.Thread(target=_admin_server.serve_forever, kwargs={'poll_interval': 0.5}, daemon=True)
     thread.start()
-    print(f"Admin TCP console listening on {host}:{port}")
+    #print(f"Admin TCP console listening on {host}:{port}")
     return _admin_server
 
 def register_stop_callback(func):
@@ -158,9 +187,9 @@ def register_stop_callback(func):
     _stop_callback = func
 
 def stop_server(state):
-    print("Server closing...\n", flush=True)
+    #print("Server closing...\n", flush=True)
     if not state:
-        print("State not initialized, nothing to close.", flush=True)
+        #print("State not initialized, nothing to close.", flush=True)
         return
     if state.get("socket"):
         try: state["socket"].close()
@@ -170,6 +199,6 @@ def stop_server(state):
         except: pass
     state["socket"] = None
     state["connections"] = []
-    print("All connections closed.\n", flush=True)
+    #print("All connections closed.\n", flush=True)
 
 # last line

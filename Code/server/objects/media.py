@@ -185,20 +185,20 @@ class Media:
 
         # Gestione extra attr
         for k, v in kwargs.items():
-            #print(f"[DEBUG][Media.__init__] Setting extra attr: {k}={v}")
+            ##print(f"[DEBUG][Media.__init__] Setting extra attr: {k}={v}")
             setattr(self, k, v)
 
         # Gestione tracklist
         tracklist = kwargs.get("tracklist")
         if tracklist is not None:
             self.additional_info = json.dumps(tracklist)
-            #print(f"[DEBUG][Media.__init__] Converted tracklist to additional_info")
+            ##print(f"[DEBUG][Media.__init__] Converted tracklist to additional_info")
 
-        #print(f"[DEBUG][Media.__init__] ===== INIT COMPLETE =====")
-        #print(f"[DEBUG][Media.__init__] Final object state:")
-        #print(f"  year={self.year}, description={self.description}, location={self.location}")
-        #print(f"  additional_info={self.additional_info}, is_author={self.is_author}, is_performer={self.is_performer}")
-        #print(f"  authors={self.authors}, performers={self.performers}\n")
+        ##print(f"[DEBUG][Media.__init__] ===== INIT COMPLETE =====")
+        ##print(f"[DEBUG][Media.__init__] Final object state:")
+        ##print(f"  year={self.year}, description={self.description}, location={self.location}")
+        ##print(f"  additional_info={self.additional_info}, is_author={self.is_author}, is_performer={self.is_performer}")
+        ##print(f"  authors={self.authors}, performers={self.performers}\n")
 
     def media_type(self) -> str:
         """Return the media type. Can be 'song', 'document', 'video', 'concert', etc."""
@@ -255,7 +255,7 @@ class Media:
                             payload[date_field] = datetime.fromisoformat(val)
                         else:
                             payload[date_field] = datetime.strptime(val, "%Y-%m-%d")
-                        print(f"[DEBUG][Media.save] Converted date string '{val}' to datetime for field '{date_field}'")
+                        #print(f"[DEBUG][Media.save] Converted date string '{val}' to datetime for field '{date_field}'")
                     except Exception as e:
                         print(f"[DEBUG][Media.save] Failed to convert date string '{val}' for field '{date_field}': {e}")
                         # Leave as-is if conversion fails, DB will handle or error appropriately
@@ -266,14 +266,14 @@ class Media:
             user_id = payload.get('user_id')
             if user_id:
                 payload['authors'] = [user_id]
-                print(f"[DEBUG][Media.save] Converted is_author=True to authors=[{user_id}]")
+                #print(f"[DEBUG][Media.save] Converted is_author=True to authors=[{user_id}]")
         
         # If is_performer=True and no performers list, add user_id to performers  
         if payload.get('is_performer') and not payload.get('performers'):
             user_id = payload.get('user_id')
             if user_id:
                 payload['performers'] = [user_id]
-                print(f"[DEBUG][Media.save] Converted is_performer=True to performers=[{user_id}]")
+                #print(f"[DEBUG][Media.save] Converted is_performer=True to performers=[{user_id}]")
 
         # helper: ensure dict table entries exist and return ids
         def ensure_ids(table: str, items):
@@ -283,7 +283,6 @@ class Media:
             for it in items:
                 if it is None:
                     continue
-                
                 # Handle string names (most common case for client submissions)
                 if isinstance(it, str):
                     name = it.strip()
@@ -294,7 +293,7 @@ class Media:
                         row = fetch_dict_entry_by_name(table, name)
                         if row and row.get("id"):
                             ids.append(row["id"])
-                            print(f"[Media.save] found existing {table} entry '{name}' -> id={row['id']}")
+                            #print(f"[Media.save] found existing {table} entry '{name}' -> id={row['id']}")
                             continue
                     except Exception as e:
                         print(f"[Media.save] fetch_dict_entry_by_name error: {e}")
@@ -304,7 +303,7 @@ class Media:
                         nid = create_dict_entry(table, name)
                         if nid:
                             ids.append(nid)
-                            print(f"[Media.save] created {table} entry '{name}' -> id={nid}")
+                            #print(f"[Media.save] created {table} entry '{name}' -> id={nid}")
                         else:
                             print(f"[Media.save] failed to create {table} entry '{name}'")
                     except Exception as e:
@@ -323,7 +322,7 @@ class Media:
                                 existing = fetch_one(f"SELECT id FROM {table} WHERE user_id=%s", (it,))
                                 if existing and existing.get("id"):
                                     ids.append(int(existing.get("id")))
-                                    print(f"[Media.save] found existing {table} for user_id={it} -> id={existing['id']}")
+                                    #print(f"[Media.save] found existing {table} for user_id={it} -> id={existing['id']}")
                                     continue
                                 # Create linked dict entry for this user
                                 try:
@@ -335,7 +334,7 @@ class Media:
                                         new_id = create_performer_with_user(int(it), urow.get("username") or f"user_{it}")
                                     if new_id:
                                         ids.append(int(new_id))
-                                        print(f"[Media.save] created {table[:-1]} for user_id={it} -> id={new_id}")
+                                        #print(f"[Media.save] created {table[:-1]} for user_id={it} -> id={new_id}")
                                     continue
                                 except Exception as e:
                                     print(f"[Media.save] failed to create {table[:-1]} for user {it}: {e}")
@@ -344,17 +343,17 @@ class Media:
                             arow = fetch_one(f"SELECT id FROM {table} WHERE id=%s", (it,))
                             if arow and arow.get("id"):
                                 ids.append(int(arow.get("id")))
-                                print(f"[Media.save] found {table} entry with id={it}")
+                                #print(f"[Media.save] found {table} entry with id={it}")
                                 continue
-                            print(f"[Media.save] id={it} not found in {table} or users, skipping")
+                            #print(f"[Media.save] id={it} not found in {table} or users, skipping")
                         else:
                             # For other tables (genres, instruments), verify id exists
                             row = fetch_one(f"SELECT id FROM {table} WHERE id=%s", (it,))
                             if row and row.get("id"):
                                 ids.append(it)
-                                print(f"[Media.save] verified {table} entry with id={it}")
+                                #print(f"[Media.save] verified {table} entry with id={it}")
                                 continue
-                            print(f"[Media.save] id={it} not found in {table}, skipping")
+                            #print(f"[Media.save] id={it} not found in {table}, skipping")
                     except Exception as e:
                         print(f"[Media.save] verify id error for {table} id={it}: {e}")
                     continue
@@ -511,7 +510,7 @@ class Media:
                 # also keep media_id attribute if used elsewhere
                 self.media_id = result["id"]
             else:
-                print(f"[DEBUG][Media.save] Result from create_media_db={result}")
+                #print(f"[DEBUG][Media.save] Result from create_media_db={result}")
                 # leave id None so callers see failure
                 return None
         else:
@@ -579,14 +578,14 @@ class Media:
         return self.id
 
     def delete(self):
-        print(f"[DEBUG][Media.delete] Called on {self}")
+        #print(f"[DEBUG][Media.delete] Called on {self}")
         if self._deleted:
-            print(f"[DEBUG][Media.delete] Object already deleted")
+            #print(f"[DEBUG][Media.delete] Object already deleted")
             return False
 
         if self.media_id:
             delete_media_db(self.media_id)
-            print(f"[DEBUG][Media.delete] Deleted media_id={self.media_id}")
+            #print(f"[DEBUG][Media.delete] Deleted media_id={self.media_id}")
             self.media_id = None
 
         self._deleted = True
@@ -594,14 +593,14 @@ class Media:
 
     @classmethod
     def fetch(cls, media_id: int):
-        print(f"[DEBUG][Media.fetch] Called cls={cls.__name__}, media_id={media_id}")
+        #print(f"[DEBUG][Media.fetch] Called cls={cls.__name__}, media_id={media_id}")
         data = fetch_media_db(media_id)
-        print(f"[DEBUG][Media.fetch] Data from DB={data}")
+        #print(f"[DEBUG][Media.fetch] Data from DB={data}")
         if not data:
-            print("[DEBUG][Media.fetch] No data found -> returning None")
+            #print("[DEBUG][Media.fetch] No data found -> returning None")
             return None
         obj = cls.from_dict(data)
-        print(f"[DEBUG][Media.fetch] Built object={obj}")
+        #print(f"[DEBUG][Media.fetch] Built object={obj}")
         return obj
 
     @classmethod
@@ -611,7 +610,7 @@ class Media:
         Fetch all media from the database with optional search or type filter.
         If media_type is not specified, tries to infer from class name.
         """
-        print(f"[DEBUG][Media.fetch_all] Called cls={cls.__name__}, search={search}, filter_by={filter_by}, media_type={media_type}")
+        #print(f"[DEBUG][Media.fetch_all] Called cls={cls.__name__}, search={search}, filter_by={filter_by}, media_type={media_type}")
 
         try:
             from server.db.db_crud import fetch_all_media_db
@@ -629,15 +628,15 @@ class Media:
                 try:
                     media_type = cls().media_type()
                 except Exception as e:
-                    print(f"[DEBUG][Media.fetch_all] could not determine media_type: {e}")
+                    #print(f"[DEBUG][Media.fetch_all] could not determine media_type: {e}")
                     media_type = None
             except Exception as e:
-                print(f"[DEBUG][Media.fetch_all] unexpected error resolving media_type: {e}")
+                #print(f"[DEBUG][Media.fetch_all] unexpected error resolving media_type: {e}")
                 media_type = None
 
         rows = fetch_all_media_db(media_type=media_type, search=search, filter_by=filter_by, offset=offset, limit=limit
     )
-        print(f"[DEBUG][Media.Fetch_all] DB returned {len(rows) if rows else 0} rows")
+        #print(f"[DEBUG][Media.Fetch_all] DB returned {len(rows) if rows else 0} rows")
 
         result = []
         if not rows:
@@ -649,7 +648,7 @@ class Media:
                 result.append(obj)
             except Exception as e:
                 print(f"[ERROR][Media.fetch_all] failed to build obj from rows: {e}")
-        print(f"[DEBUG][Media.fetch_all] Returning {len(result)} obj")
+        #print(f"[DEBUG][Media.fetch_all] Returning {len(result)} obj")
         return result
 
     # =====================
@@ -660,7 +659,7 @@ class Media:
         # Override nelle sottoclassi per gestire relazioni come authors, performers, genres.
 
     def to_dict(self) -> Dict[str, Any]:
-        #print(f"\n[DEBUG][Media.to_dict] ===== TO_DICT START =====")
+        ##print(f"\n[DEBUG][Media.to_dict] ===== TO_DICT START =====")
         # Normalize genres/tags into display-ready names when possible so clients receive names, not ids
         def _normalize_genres_list(lst):
             if not lst:
@@ -710,14 +709,14 @@ class Media:
             "is_author": self.is_author,
             "is_performer": self.is_performer
         }
-        #print(f"[DEBUG][Media.to_dict] Result dict: year={d.get('year')}, description={d.get('description')}, location={d.get('location')}")
-        #print(f"[DEBUG][Media.to_dict] additional_info={d.get('additional_info')}, is_author={d.get('is_author')}, is_performer={d.get('is_performer')}, recording_date={d.get('recording_date')}")
-        #print(f"[DEBUG][Media.to_dict] ===== TO_DICT COMPLETE =====\n")
+        ##print(f"[DEBUG][Media.to_dict] Result dict: year={d.get('year')}, description={d.get('description')}, location={d.get('location')}")
+        ##print(f"[DEBUG][Media.to_dict] additional_info={d.get('additional_info')}, is_author={d.get('is_author')}, is_performer={d.get('is_performer')}, recording_date={d.get('recording_date')}")
+        ##print(f"[DEBUG][Media.to_dict] ===== TO_DICT COMPLETE =====\n")
         return d
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
-        #print(f"[DEBUG][Media.from_dict] Input data keys: {list(data.keys())}")
+        ##print(f"[DEBUG][Media.from_dict] Input data keys: {list(data.keys())}")
         
         if 'id' in data:
             data['media_id'] = data.pop('id')
@@ -727,11 +726,11 @@ class Media:
         # use those instead of the numeric IDs to preserve human-readable names
         if data.get('author_names'):
             data['authors'] = data.pop('author_names')
-            #print(f"[DEBUG][Media.from_dict] Using author_names as authors: {data['authors']}")
+            ##print(f"[DEBUG][Media.from_dict] Using author_names as authors: {data['authors']}")
         
         if data.get('performer_names'):
             data['performers'] = data.pop('performer_names')
-            #print(f"[DEBUG][Media.from_dict] Using performer_names as performers: {data['performers']}")
+            ##print(f"[DEBUG][Media.from_dict] Using performer_names as performers: {data['performers']}")
         
         # --- PREFER SERVER-PROVIDED TAG NAMES ---
         # Backend queries may populate 'tags' (display names) or 'genre_names'. Prefer those
@@ -772,18 +771,18 @@ class Media:
             user_id = data.get('user_id')
             if user_id:
                 data['authors'] = [user_id]
-                #print(f"[DEBUG][Media.from_dict] Inferred authors=[{user_id}] from is_author=True")
+                ##print(f"[DEBUG][Media.from_dict] Inferred authors=[{user_id}] from is_author=True")
         
         # If is_performer is True but performers list is empty, add current user as performer
         if data.get('is_performer') and not data.get('performers'):
             user_id = data.get('user_id')
             if user_id:
                 data['performers'] = [user_id]
-                #print(f"[DEBUG][Media.from_dict] Inferred performers=[{user_id}] from is_performer=True")
+                ##print(f"[DEBUG][Media.from_dict] Inferred performers=[{user_id}] from is_performer=True")
         
         # Return a direct Media instance instead of delegating to subclasses
         obj = cls(**data)
-        # print(f"[DEBUG][Media.from_dict] ===== FROM_DICT COMPLETE =====\n")
+        # #print(f"[DEBUG][Media.from_dict] ===== FROM_DICT COMPLETE =====\n")
         return obj
 
     def __repr__(self) -> str:

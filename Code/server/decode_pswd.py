@@ -15,7 +15,7 @@ def start():
         while True:
             p = input("Enter password to test: ")
             if test(p):
-                print("Password is correct!")
+                #print("Password is correct!")
                 break
             else:
                 print("Incorrect password, try again.")
@@ -24,7 +24,7 @@ def start():
                 break
     elif i == "2":
         p = input("Enter password to hash: ")
-        print(f"Hashed password: \n{hash_pswd(p)}")
+        #print(f"Hashed password: \n{hash_pswd(p)}")
 
 start()
 

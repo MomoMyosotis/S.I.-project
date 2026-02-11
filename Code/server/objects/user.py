@@ -345,7 +345,7 @@ class User:
             except Exception:
                 lvl_num = UserLevel.REGULAR.value
         # debug helpful for tracing
-        print(f"[DEBUG is_admin] user_id={user.get('id') if isinstance(user, dict) else user_id}, resolved_lvl={lvl_num}, user_row={user}")
+        #print(f"[DEBUG is_admin] user_id={user.get('id') if isinstance(user, dict) else user_id}, resolved_lvl={lvl_num}, user_row={user}")
         return lvl_num <= UserLevel.ADMIN.value
 
     # =====================

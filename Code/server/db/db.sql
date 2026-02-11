@@ -208,8 +208,8 @@ CREATE TABLE notes (
     -- se si tratta di video, audio o video\link di youtube
     -- si tratta solo del numero in secondi
     -- overkill ma sticazzi
-    start NUMERIC(8,2) NOT NULL DEFAULT 00000000,
-    end NUMERIC(8,2) NOT NULL DEFAULT 00000000,
+    note_start NUMERIC(8,2) NOT NULL DEFAULT 00000000,
+    note_end NUMERIC(8,2) NOT NULL DEFAULT 00000000,
     type BOOLEAN NOT NULL DEFAULT 1, -- TRUE = text, FALSE = graphic
     text TEXT,
     stored_at VARCHAR(255),

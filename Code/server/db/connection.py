@@ -41,26 +41,26 @@ def check_db(cur, required_tables):
         # controlla che tutte le tabelle richieste ci siano
         for t in required_tables:
             if t not in tables:
-                print(f"Missing table: {t}")
+                #print(f"Missing table: {t}")
                 return False
 
         # controlla che non siano vuote
         for t in required_tables:
             if not tprint(cur, t):
-                print(f"Table {t} exists but has no data.")
+                #print(f"Table {t} exists but has no data.")
                 return False
 
         return True
     except Exception as e:
-        print(f"Error during DB check: {str(e)}")
+        #print(f"Error during DB check: {str(e)}")
         return False
 
 # main flow
 def flow():
-    print("flow() started")
+    #print("flow() started")
     cnt = connect()
     if cnt is None:
-        print("Couldn't connect to DB.")
+        #print("Couldn't connect to DB.")
         return False
 
     cur = cnt.cursor()
@@ -73,11 +73,11 @@ def flow():
     result = check_db(cur, required_tables)
 
     close(cur, cnt)
-    print("flow() ended")
+    #print("flow() ended")
     return result
 
 if __name__ == "__main__":
     status = flow()
-    print(f"Database check result: {status}")
+    #print(f"Database check result: {status}")
 
 # last line

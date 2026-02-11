@@ -12,7 +12,7 @@ class HTTPClient:
                     command: str,
                     args: Optional[List[Any]] = None,
                     require_auth: bool = False) -> dict:
-        print(f"\n_______________________\n[DEBUG][http_helper.HTTPClient.send_request]\nself is: {self}\ncommand is: {command}\nargs are: {args}\n________________\n")
+        #print(f"\n_______________________\n[DEBUG][http_helper.HTTPClient.send_request]\nself is: {self}\ncommand is: {command}\nargs are: {args}\n________________\n")
         payload = {"command": command, "args": args or []}
         if require_auth:
             if not self.token:
@@ -20,7 +20,9 @@ class HTTPClient:
             payload["token"] = self.token
 
         try:
-            response = requests.post(f"{self.base_url}/api", json=payload, timeout=15)
+            # server mode affects response time. if auto timeout = 15 else timout  = 60
+            time = 15 if self.token else 60
+            response = requests.post(f"{self.base_url}/api", json=payload, timeout=time)
             response.raise_for_status()
             data = response.json()
             if "token" in data and data["token"]:

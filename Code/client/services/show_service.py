@@ -68,28 +68,28 @@ class ShowService:
     # --------------------
     @staticmethod
     def get_concert(media_id):
-        print(f"[DEBUG][ShowService.get_concert] media_id={media_id}")
+        #print(f"[DEBUG][ShowService.get_concert] media_id={media_id}")
         return http_client.send_request("GET_CONCERT", [media_id], require_auth=True)
 
     @staticmethod
     def get_concert_segments(media_id):
-        print(f"[DEBUG][ShowService.get_concert_segments] media_id={media_id}")
+        #print(f"[DEBUG][ShowService.get_concert_segments] media_id={media_id}")
         return http_client.send_request("GET_CONCERT_SEGMENTS", [media_id], require_auth=True)
 
     @staticmethod
     def add_concert_segment(media_id, segment_data):
-        print(f"[DEBUG][ShowService.add_concert_segment] media_id={media_id}, segment_data={segment_data}")
+        #print(f"[DEBUG][ShowService.add_concert_segment] media_id={media_id}, segment_data={segment_data}")
         # server expects (video_id, segment_data)
         return http_client.send_request("ADD_CONCERT_SEGMENT", [media_id, segment_data], require_auth=True)
 
     @staticmethod
     def update_concert_segment(segment_id, updates: dict):
-        print(f"[DEBUG][ShowService.update_concert_segment] segment_id={segment_id}, updates={updates}")
+        #print(f"[DEBUG][ShowService.update_concert_segment] segment_id={segment_id}, updates={updates}")
         return http_client.send_request("UPDATE_CONCERT_SEGMENT", [segment_id, updates], require_auth=True)
 
     @staticmethod
     def delete_concert_segment(segment_id):
-        print(f"[DEBUG][ShowService.delete_concert_segment] segment_id={segment_id}")
+        #print(f"[DEBUG][ShowService.delete_concert_segment] segment_id={segment_id}")
         return http_client.send_request("DELETE_CONCERT_SEGMENT", [segment_id], require_auth=True)
     
         @staticmethod

@@ -6,9 +6,9 @@ class ProfileService:
     @staticmethod
     def get_profile(username=None):
         args = [username] if username else []
-        # print(f"[DEBUG][ProfileService.get_profile] sending GET_PROFILE with args={args}")
+        # #print(f"[DEBUG][ProfileService.get_profile] sending GET_PROFILE with args={args}")
         res = http_client.send_request("GET_PROFILE", args, require_auth=True)
-        # print(f"[DEBUG][ProfileService.get_profile] raw response: {res}")
+        # #print(f"[DEBUG][ProfileService.get_profile] raw response: {res}")
 
         # Try to extract a user-dict from many possible server shapes
         def extract_user_dict(resp):
@@ -52,7 +52,7 @@ class ProfileService:
             pubs_res = http_client.send_request("GET_USER_PUBLICATIONS", [target_username, 0, 100], require_auth=True)
         except Exception as e:
             # Log but don't fail - publications are optional
-            print(f"[DEBUG][ProfileService.get_profile] publications fetch failed: {e}")
+            #print(f"[DEBUG][ProfileService.get_profile] publications fetch failed: {e}")
             pubs_res = None
 
         # normalize publications response into a list
@@ -154,34 +154,34 @@ class ProfileService:
 
     @staticmethod
     def add_media(content):
-        print(f"[DEBUG][ProfileService.add_media] sending ADD_MEDIA with content={content}")
+        #print(f"[DEBUG][ProfileService.add_media] sending ADD_MEDIA with content={content}")
         res = http_client.send_request("ADD_MEDIA", [content], require_auth=True)
-        print(f"[DEBUG][ProfileService.add_media] response: {res}")
+        #print(f"[DEBUG][ProfileService.add_media] response: {res}")
         return res
 
     @staticmethod
     def delete_post(media_id):
-        print(f"[DEBUG][ProfileService.delete_post] sending DELETE_MEDIA with media_id={media_id}")
+        #print(f"[DEBUG][ProfileService.delete_post] sending DELETE_MEDIA with media_id={media_id}")
         res = http_client.send_request("DELETE_MEDIA", [media_id], require_auth=True)
-        print(f"[DEBUG][ProfileService.delete_post] response: {res}")
+        #print(f"[DEBUG][ProfileService.delete_post] response: {res}")
         return res
 
     @staticmethod
     def follow(followed, follower):
         # send only the target username to the API; the server derives the follower from the token
         args = [followed]
-        print(f"[DEBUG][ProfileService.follow] sending FOLLOW_USER with args={args}")
+        #print(f"[DEBUG][ProfileService.follow] sending FOLLOW_USER with args={args}")
         res = http_client.send_request("FOLLOW_USER", args, require_auth=True)
-        print(f"[DEBUG][ProfileService.follow] response: {res}")
+        #print(f"[DEBUG][ProfileService.follow] response: {res}")
         return res
 
     @staticmethod
     def unfollow(unfollowed, unfollower):
         # send only the target username to the API; the server derives the unfollower from the token
         args = [unfollowed]
-        print(f"[DEBUG][ProfileService.unfollow] sending UNFOLLOW_USER with args={args}")
+        #print(f"[DEBUG][ProfileService.unfollow] sending UNFOLLOW_USER with args={args}")
         res = http_client.send_request("UNFOLLOW_USER", args, require_auth=True)
-        print(f"[DEBUG][ProfileService.unfollow] response: {res}")
+        #print(f"[DEBUG][ProfileService.unfollow] response: {res}")
         return res
 
     @staticmethod
@@ -193,7 +193,7 @@ class ProfileService:
 # added methods for level management / moderation
     @staticmethod
     def change_level(username, new_level):
-        print(f"[DEBUG][ProfileService.change_level] change_level username={username} -> {new_level}")
+        #print(f"[DEBUG][ProfileService.change_level] change_level username={username} -> {new_level}")
         command = "CHANGE_LVL"
         args = [username, new_level]
         res = http_client.send_request(command, args, require_auth=True)
@@ -212,16 +212,16 @@ class ProfileService:
     @staticmethod
     def get_followers(username):
         args = [username]
-        print(f"[DEBUG][ProfileService.get_followers] sending GET_FOLLOWERS with args={args}")
+        #print(f"[DEBUG][ProfileService.get_followers] sending GET_FOLLOWERS with args={args}")
         res = http_client.send_request("GET_FOLLOWERS", args, require_auth=True)
-        print(f"[DEBUG][ProfileService.get_followers] response: {res}")
+        #print(f"[DEBUG][ProfileService.get_followers] response: {res}")
         return res
 
     @staticmethod
     def get_following(username):
         args = [username]
-        print(f"[DEBUG][ProfileService.get_following] sending GET_FOLLOWING with args={args}")
+        #print(f"[DEBUG][ProfileService.get_following] sending GET_FOLLOWING with args={args}")
         res = http_client.send_request("GET_FOLLOWING", args, require_auth=True)
-        print(f"[DEBUG][ProfileService.get_following] response: {res}")
+        #print(f"[DEBUG][ProfileService.get_following] response: {res}")
         return res
 # last line

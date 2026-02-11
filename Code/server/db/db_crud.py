@@ -26,7 +26,7 @@ def fetch_one(query: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
                 return dict(row)
             return None
     except Exception as e:
-        print(f"[DB ERROR fetch_one] {e}")
+        #print(f"[DB ERROR fetch_one] {e}")
         return None
     finally:
         if conn:
@@ -42,7 +42,7 @@ def fetch_all(query: str, params: tuple = ()) -> List[Dict[str, Any]]:
             # RealDictCursor yields dict-like rows already
             return [dict(r) for r in rows]
     except Exception as e:
-        print(f"[DB ERROR fetch_all] {e}")
+        #print(f"[DB ERROR fetch_all] {e}")
         return []
     finally:
         if conn:
@@ -59,7 +59,7 @@ def execute(query: str, params: tuple = ()) -> bool:
             time.sleep(0.1)
             return True
     except Exception as e:
-        print(f"[DB ERROR execute] {e}")
+        #print(f"[DB ERROR execute] {e}")
         if conn:
             conn.rollback()
         return False
@@ -880,7 +880,7 @@ def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
             # Controllo se l'utente esiste
             user_row = fetch_one("SELECT id FROM users WHERE id=%s", (user_id,))
             if not user_row:
-                print(f"[create_comment_db] User id={user_id} does not exist!")
+                #print(f"[create_comment_db] User id={user_id} does not exist!")
                 return None
             fields = ["user_id", "text"]
             values = [user_id, text]
@@ -889,7 +889,7 @@ def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
             if media_id is not None:
                 media_row = fetch_one("SELECT id FROM media WHERE id=%s", (media_id,))
                 if not media_row:
-                    print(f"[create_comment_db] Media id={media_id} does not exist!")
+                    #print(f"[create_comment_db] Media id={media_id} does not exist!")
                     return None
                 fields.append("media_id")
                 values.append(media_id)
@@ -898,7 +898,7 @@ def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
             if parent_comment_id is not None:
                 parent_row = fetch_one("SELECT id FROM comments WHERE id=%s", (parent_comment_id,))
                 if not parent_row:
-                    print(f"[create_comment_db] Parent comment id={parent_comment_id} does not exist!")
+                    #print(f"[create_comment_db] Parent comment id={parent_comment_id} does not exist!")
                     return None
                 fields.append("parent_comment_id")
                 values.append(parent_comment_id)
@@ -913,12 +913,12 @@ def create_comment_db(user_id: int, text: str, media_id: Optional[int] = None,
             if row and "id" in row:
                 return row["id"]
             else:
-                print(f"[create_comment_db] No ID returned after insert")
+                #print(f"[create_comment_db] No ID returned after insert")
                 return None
 
     except Exception as e:
         if conn: conn.rollback()
-        print(f"[DB ERROR create_comment_db]: {e}")
+        #print(f"[DB ERROR create_comment_db]: {e}")
         return None
     finally:
         if conn:
@@ -941,7 +941,7 @@ def update_comment_db(comment_id: int, field: str, value: Any) -> bool:
         result = execute(f"UPDATE comments SET {field}=%s WHERE id=%s", (value, comment_id))
         return result
     except Exception as e:
-        print(f"[update_comment_db] Error while updating comment_id={comment_id}: {e}")
+        #print(f"[update_comment_db] Error while updating comment_id={comment_id}: {e}")
         return False
 
 def delete_comment_db(comment_id: int) -> bool:
@@ -949,7 +949,7 @@ def delete_comment_db(comment_id: int) -> bool:
         result = execute("DELETE FROM comments WHERE id=%s", (comment_id,))
         return result
     except Exception as e:
-        print(f"[delete_comment_db] Error while deleting comment_id={comment_id}: {e}")
+        #print(f"[delete_comment_db] Error while deleting comment_id={comment_id}: {e}")
         return False
 
 # =====================
@@ -1435,7 +1435,7 @@ def update_note_db(note_id: int, start: Optional[float] = None, end: Optional[fl
             conn.commit()
             return True
     except Exception as e:
-        print(f"[ERROR][update_note_db] {e}")
+        #print(f"[ERROR][update_note_db] {e}")
         if conn:
             conn.rollback()
         return False
@@ -1452,7 +1452,7 @@ def delete_note_db(note_id: int):
             conn.commit()
             return True
     except Exception as e:
-        print(f"[ERROR][delete_note_db] {e}")
+        #print(f"[ERROR][delete_note_db] {e}")
         if conn:
             conn.rollback()
         return False
@@ -1471,9 +1471,9 @@ def get_user_username_by_id(id_):
 
 def get_user_id_by_username(username: str) -> Optional[int]:
     """Restituisce l'id di un utente dato lo username."""
-    print(f"[DEBUG] get_user_id_by_username called with: {username}")
+    #print(f"[DEBUG] get_user_id_by_username called with: {username}")
     row = fetch_one("SELECT id FROM users WHERE username=%s", (username,))
-    print(f"[DEBUG] fetch_one returned: {row}")
+    #print(f"[DEBUG] fetch_one returned: {row}")
     if row:
         return row["id"]
     return None

@@ -33,7 +33,7 @@ def create_database():
             print("Database 'boop' già esistente.")
         else:
             cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier("boop")))
-            print("Database 'boop' creato correttamente!")
+            #print("Database 'boop' creato correttamente!")
 
         cur.close()
         conn.close()
@@ -54,10 +54,10 @@ def connect_to_db():
             host=creds["host"],
             port=creds["port"]
         )
-        print("Connessione a 'boop' riuscita!")
+        #print("Connessione a 'boop' riuscita!")
         return conn
     except Exception as e:
-        print("Connessione fallita:", e)
+        #print("Connessione fallita:", e)
         return None
 
 # ============================================================
@@ -71,10 +71,10 @@ def execute_sql_file(conn, sql_file):
     try:
         cur.execute(sql_content)
         conn.commit()
-        print(f"Script SQL '{sql_file}' eseguito correttamente!")
+        #print(f"Script SQL '{sql_file}' eseguito correttamente!")
     except Exception as e:
         conn.rollback()
-        print(f"Errore eseguendo '{sql_file}':", e)
+        #print(f"Errore eseguendo '{sql_file}':", e)
     finally:
         cur.close()
 
@@ -103,7 +103,7 @@ def drop_database_if_exists():
         """, ("boop",))
 
         cur.execute("DROP DATABASE IF EXISTS boop;")
-        print("Database 'boop' eliminato (se esisteva).")
+        #print("Database 'boop' eliminato (se esisteva).")
 
         cur.close()
         conn.close()

@@ -755,11 +755,11 @@ def fill_user_levels(cnt, cur):
                 VALUES (%s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET code=EXCLUDED.code, description=EXCLUDED.description;
             """, (lvl_id, code, desc))
-            print(f"[INFO] User level {code} inserito/aggiornato")
+            #print(f"[INFO] User level {code} inserito/aggiornato")
         cnt.commit()
     except Exception as e:
         cnt.rollback()
-        print(f"[DB ERROR] user_levels: {e}")
+        #print(f"[DB ERROR] user_levels: {e}")
 
 def fill_permissions(cnt, cur):
     try:
@@ -769,11 +769,11 @@ def fill_permissions(cnt, cur):
                 VALUES (%s, %s)
                 ON CONFLICT DO NOTHING;
             """, (name, desc))
-            print(f"[INFO] Permission {name} inserita/aggiornata")
+            #print(f"[INFO] Permission {name} inserita/aggiornata")
         cnt.commit()
     except Exception as e:
         cnt.rollback()
-        print(f"[DB ERROR] permissions: {e}")
+        #print(f"[DB ERROR] permissions: {e}")
 
 def fill_role_permissions(cnt, cur):
     try:
@@ -782,7 +782,7 @@ def fill_role_permissions(cnt, cur):
                 cur.execute("SELECT id FROM permissions WHERE name=%s;", (perm,))
                 perm_row = cur.fetchone()
                 if not perm_row:
-                    print(f"[WARN] Permission {perm} non trovata.")
+                    #print(f"[WARN] Permission {perm} non trovata.")
                     continue
                 perm_id = perm_row[0]
 
@@ -792,10 +792,10 @@ def fill_role_permissions(cnt, cur):
                     ON CONFLICT DO NOTHING;
                 """, (lvl_id, perm_id))
         cnt.commit()
-        print("[INFO] Role-permissions inserite")
+        #print("[INFO] Role-permissions inserite")
     except Exception as e:
         cnt.rollback()
-        print(f"[DB ERROR] role_permissions: {e}")
+        #print(f"[DB ERROR] role_permissions: {e}")
 
 def fill_users(cnt, cur):
     try:
@@ -817,11 +817,11 @@ def fill_users(cnt, cur):
                     profile_pic=EXCLUDED.profile_pic,
                     lvl_id=EXCLUDED.lvl_id;
             """, (mail, username, password_hash, birthday, bio, pic, lvl_id))
-            print(f"[INFO] User {username} inserito/aggiornato")
+            #print(f"[INFO] User {username} inserito/aggiornato")
         cnt.commit()
     except Exception as e:
         cnt.rollback()
-        print(f"[DB ERROR] users: {e}")
+        #print(f"[DB ERROR] users: {e}")
 
 media_list = songs + videos + documents
 
