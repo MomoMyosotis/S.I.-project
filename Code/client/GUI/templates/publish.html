@@ -455,39 +455,269 @@ function validate() {
     return v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
   }
 
-  function payload() {
-    const type = $('mediaType').value;
-    const base = {
-      from: logged.username,
-      on_behalf_of: onBehalf.checked ? $('targetInput').value.trim() : null,
-      type
-    };
 
-    if (type === 'link') {
-      return {
-        ...base,
-        title: $('linkTitle').value.trim(),
-        description: $('linkDesc').value.trim(),
-        link: $('linkUrl').value.trim(),
-        tags: list($('linkTags').value),
-        is_live: $('linkIsLive').checked
+    // --- Build payload (client preview object) ---
+    function Payload(){
+      const t = mediaType.value;
+      const base = {
+        from: usernameInput.value || '',
+        on_behalf_of: (onBehalfToggle.checked && targetInput.value.trim()) ? targetInput.value.trim() : null,
+        type: t,
       };
+
+      if(t === 'link'){
+        return {
+          ...base,
+          title: document.getElementById('linkTitle').value.trim(),
+          description: document.getElementById('linkDesc').value.trim(),
+          link: document.getElementById('linkUrl').value.trim(),
+          publication_date: document.getElementById('linkPublicationDate').value || null,
+          tags: splitListInput(document.getElementById('linkTags')?.value),
+          is_author: document.getElementById('linkIAmAuthor').checked,
+          is_performer: document.getElementById('linkIAmPerformer').checked,
+          performers: splitListInput(document.getElementById('linkPerformers')?.value),
+          instruments: splitListInput(document.getElementById('linkInstruments')?.value),
+          is_live: document.getElementById('linkIsLive').checked,
+          recording_date: document.getElementById('linkRecDate').value || null,
+          location: document.getElementById('linkRecLoc').value || null,
+          auto_extracted: {
+            duration: (function(){ const v = normalizeDurationValue(linkDurationEl?.textContent); return v ? Number(v) : null; })()
+          }
+        };
+      }
+      if(t === 'document'){
+        const f = docFile?.files[0] || null;
+        const drafts = getLinkedFilesForType('document').map(x => ({ filename: x.name }));
+        return {
+          ...base,
+          title: document.getElementById('docTitle').value.trim(),
+          description: document.getElementById('docDesc').value.trim(),
+          genres: splitListInput(document.getElementById('docGenres').value),
+          // alias for consistency with link/video payload preview
+          tags: splitListInput(document.getElementById('docGenres').value),
+          year: document.getElementById('docYear').value || null,
+          // authors: documents don't expose an authors text-field in the UI —
+          // if user checked "I'm the author" include the logged username
+          authors: (document.getElementById('docIAmAuthor')?.checked && usernameInput.value) ? [usernameInput.value] : [],
+          // performers/instruments are optional on the document form — include if present
+          performers: splitListInput(document.getElementById('docPerformers')?.value),
+          instruments: splitListInput(document.getElementById('docInstruments')?.value),
+          linked_media: {
+            selected: getSelectedMediaIds(null),
+            drafts: drafts
+          },
+          is_author: document.getElementById('docIAmAuthor').checked,
+          // avoid sending placeholder '-' values; prefer empty/null
+          automatic: {
+            format: (docFormatEl?.textContent && docFormatEl.textContent !== '-') ? docFormatEl.textContent : '',
+            pages: docPagesEl?.textContent ? (docPagesEl.textContent === '-' ? null : Number(docPagesEl.textContent) || null) : null
+          }
+        };
+      }
+      if(t === 'audio' || t === 'video'){
+        const isAudio = t === 'audio';
+        const f = isAudio ? audioFile?.files[0] : videoFile?.files[0];
+        const durationEl = isAudio ? audioDurationEl : videoDurationEl;
+        const formatEl = isAudio ? audioFormatEl : videoFormatEl;
+        const drafts = getLinkedFilesForType(isAudio ? 'audio' : 'video').map(x => ({ filename: x.name }));
+        return {
+          ...base,
+          title: document.getElementById((isAudio ? 'audioTitle' : 'videoTitle')).value.trim(),
+          description: document.getElementById((isAudio ? 'audioDesc' : 'videoDesc')).value.trim(),
+          genres: splitListInput(document.getElementById((isAudio ? 'audioGenres' : 'videoGenres')).value),
+          // alias 'tags' like in link/publish preview so payloads look consistent
+          tags: splitListInput(document.getElementById((isAudio ? 'audioGenres' : 'videoGenres')).value),
+          year: document.getElementById((isAudio ? 'audioYear' : 'videoYear')).value || null,
+          authors: splitListInput(document.getElementById((isAudio ? 'audioAuthors' : 'videoAuthors')).value),
+          performers: splitListInput(document.getElementById((isAudio ? 'audioPerformers' : 'videoPerformers'))?.value),
+          instruments: splitListInput(document.getElementById((isAudio ? 'audioInstruments' : 'videoInstruments'))?.value),
+          linked_media: {
+            selected: getSelectedMediaIds(null),
+            drafts: drafts
+          },
+          is_author: document.getElementById((isAudio ? 'audioIAmAuthor' : 'videoIAmAuthor')).checked,
+          is_performer: document.getElementById((isAudio ? 'audioIAmPerformer' : 'videoIAmPerformer')).checked,
+          is_live: document.getElementById((isAudio ? 'audioIsLive' : 'videoIsLive')).checked,
+          recording_date: document.getElementById((isAudio ? 'audioRecDate' : 'videoRecDate')).value || null,
+          location: document.getElementById((isAudio ? 'audioRecLoc' : 'videoRecLoc')).value || null,
+          automatic: {
+            duration: (function(){ const v = normalizeDurationValue(durationEl?.textContent); return v ? Number(v) : null; })(),
+            format: (formatEl?.textContent && formatEl.textContent !== '-') ? formatEl.textContent : ''
+          },
+          segments: gatherSegments(),
+          subtracks: gatherSubtracks()
+        };
+      }
+      return {...base};
     }
 
-    const cfg = MEDIA[type];
-    return {
-      ...base,
-      title: $(cfg.title).value.trim(),
-      automatic: cfg.auto
-        ? Object.fromEntries(Object.entries(cfg.auto).map(([k, id]) => [k, $(id).textContent]))
-        : {}
-    };
+  // ----- Local DOM references & helpers -----
+  const usernameInput = $('username');
+  const mediaType = $('mediaType');
+  const onBehalfToggle = $('onBehalfToggle');
+  const targetInput = $('targetInput');
+  const linkDurationEl = $('linkDuration');
+  const docFormatEl = $('docFormat');
+  const docPagesEl = $('docPages');
+  const audioDurationEl = $('audioDuration');
+  const audioFormatEl = $('audioFormat');
+  const videoDurationEl = $('videoDuration');
+  const videoFormatEl = $('videoFormat');
+  const docFile = $('docFile');
+  const audioFile = $('audioFile');
+  const videoFile = $('videoFile');
+  const docLinkedFilesEl = $('docLinkedFiles');
+  const audioLinkedFilesEl = $('audioLinkedFiles');
+  const videoLinkedFilesEl = $('videoLinkedFiles');
+  const payloadViewEl = $('payloadView');
+  const previewBtn = $('previewBtn');
+  const publishForm = $('publishForm');
+  const submitBtn = $('submitBtn');
+
+  // wire simple linked-file dropzones (click / drag & drop -> hidden file input)
+  function wireDropzone(dropId, inputEl, listId){
+    const drop = $(dropId);
+    const list = $(listId);
+    if(!drop || !inputEl) return;
+    drop.addEventListener('click', () => inputEl.click());
+    inputEl.addEventListener('change', () => {
+      const files = Array.from(inputEl.files || []);
+      if(list) list.innerHTML = files.map(f => `<div class="linked-item">${f.name}</div>`).join('');
+    });
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+    drop.addEventListener('dragleave', e => { e.preventDefault(); drop.classList.remove('dragover'); });
+    drop.addEventListener('drop', e => {
+      e.preventDefault(); drop.classList.remove('dragover');
+      const dt = new DataTransfer();
+      const existing = Array.from(inputEl.files || []);
+      existing.concat(Array.from(e.dataTransfer.files || [])).forEach(f => dt.items.add(f));
+      inputEl.files = dt.files;
+      inputEl.dispatchEvent(new Event('change'));
+    });
+  }
+  wireDropzone('docDropzone', docLinkedFilesEl, 'docLinkedList');
+  wireDropzone('audioDropzone', audioLinkedFilesEl, 'audioLinkedList');
+  wireDropzone('videoDropzone', videoLinkedFilesEl, 'videoLinkedList');
+
+  function splitListInput(v){ return v ? v.split(',').map(s=>s.trim()).filter(Boolean) : []; }
+  // normalize duration string shown in the UI ("120s", "-", "(loading...)") -> numeric string or empty
+  function normalizeDurationValue(v){
+    if (v === null || v === undefined) return '';
+    const s = String(v).trim();
+    if (!s) return '';
+    const low = s.toLowerCase();
+    if (low === '-' || low.includes('load') || low.includes('server')) return '';
+    const m = s.match(/(-?\d+(?:\.\d+)?)/);
+    return m ? m[1] : '';
+  }
+  // safe fallbacks for UI pieces that are not implemented in this template
+  function getSelectedMediaIds(_){ return []; }
+  function gatherSegments(){ return []; }
+  function gatherSubtracks(){ return []; }
+
+  function getLinkedFilesForType(type){
+    if(type === 'document') return docLinkedFilesEl?.files ? Array.from(docLinkedFilesEl.files) : [];
+    if(type === 'audio') return audioLinkedFilesEl?.files ? Array.from(audioLinkedFilesEl.files) : [];
+    if(type === 'video') return videoLinkedFilesEl?.files ? Array.from(videoLinkedFilesEl.files) : [];
+    return [];
   }
 
-  $('previewBtn').addEventListener('click', e => {
+  // Build FormData matching server expectations (request.form keys used in server-side handler)
+  function buildFormData(payload){
+    const fd = new FormData();
+
+    // basic scalar fields
+    fd.append('type', payload.type || '');
+    fd.append('title', payload.title || '');
+    fd.append('description', payload.description || '');
+    // prefer explicit 'genres' array, otherwise accept 'tags' (used by link form)
+    const _genres = Array.isArray(payload.genres) ? payload.genres : (Array.isArray(payload.tags) ? payload.tags : (payload.genres ? String(payload.genres).split(',').map(s=>s.trim()).filter(Boolean) : []));
+    fd.append('genres', Array.isArray(_genres) ? _genres.join(',') : (_genres || ''));
+    fd.append('year', payload.year || '');
+    fd.append('authors', JSON.stringify(payload.authors || []));
+    fd.append('performers', JSON.stringify(payload.performers || []));
+    if (payload.publication_date) fd.append('publication_date', payload.publication_date);
+    if (payload.recording_date) fd.append('recording_date', payload.recording_date);
+    fd.append('location', payload.location || '');
+    fd.append('format', payload.automatic?.format || payload.file_format || '');
+    fd.append('additional_info', payload.additional_info || '');
+    fd.append('concert_date', payload.concert_date || '');
+    fd.append('concert_location', payload.concert_location || '');
+    fd.append('link', payload.link || '');
+    // normalize duration so server receives either a number-string or empty (avoids float('-') errors)
+    const _rawDur = (payload.automatic && payload.automatic.duration) ?? payload.duration ?? '';
+    fd.append('duration', normalizeDurationValue(_rawDur));
+    fd.append('file_format', payload.automatic?.format || payload.file_format || '');
+    fd.append('instruments_used', Array.isArray(payload.instruments) ? payload.instruments.join(',') : (payload.instruments || ''));
+    fd.append('target_username', payload.on_behalf_of || '');
+
+    if(payload.is_author) fd.append('is_author', '1');
+    if(payload.is_performer) fd.append('is_performer', '1');
+    if(payload.is_live) fd.append('is_live', '1');
+
+    // attach main file (server expects files in request.files.getlist('files'))
+    const t = (payload.type || '').toLowerCase();
+    if(t === 'document' && docFile?.files?.length){ fd.append('files', docFile.files[0]); }
+    if(t === 'audio' && audioFile?.files?.length){ fd.append('files', audioFile.files[0]); }
+    if(t === 'video' && videoFile?.files?.length){ fd.append('files', videoFile.files[0]); }
+
+    // attach linked files (server expects request.files.getlist('linked_files'))
+    const linkedFiles = getLinkedFilesForType(t);
+    const linkedMeta = [];
+    linkedFiles.forEach(f => {
+      fd.append('linked_files', f);
+      linkedMeta.push({ filename: f.name, suggested_type: t });
+    });
+    fd.append('linked_files_meta', JSON.stringify(linkedMeta));
+
+    // flags/arrays passed explicitly
+    fd.append('authors', JSON.stringify(payload.authors || []));
+    fd.append('performers', JSON.stringify(payload.performers || []));
+
+    return fd;
+  }
+
+  // Preview helper
+  previewBtn?.addEventListener('click', e => {
     e.preventDefault();
-    $('payloadView').textContent = JSON.stringify(payload(), null, 2);
+    payloadViewEl.textContent = JSON.stringify(Payload(), null, 2);
   });
+
+  // Submit handler: POST multipart/form-data to server endpoint '/content/publish'
+  publishForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    validate();
+    if(submitBtn.disabled) return;
+
+    const p = Payload();
+    payloadViewEl.textContent = 'Sending...';
+    submitBtn.disabled = true;
+
+    try{
+      const fd = buildFormData(p);
+      const res = await fetch('/content/publish', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => null);
+      if(!res.ok || (data && data.status === 'ERROR')){
+        payloadViewEl.textContent = `Error: ${data?.error_msg || JSON.stringify(data) || res.statusText}`;
+        submitBtn.disabled = false;
+        return;
+      }
+
+      // show server response and redirect to new media page when possible
+      payloadViewEl.textContent = JSON.stringify(data, null, 2);
+      const newId = (data && (data.id || data.media_id || data.result && data.result.id)) || null;
+      if(newId){
+        // small delay so user sees the response
+        setTimeout(() => window.location.href = `/show?id=${newId}` , 800);
+      } else {
+        submitBtn.disabled = false;
+      }
+    }catch(err){
+      payloadViewEl.textContent = `Submission failed: ${err}`;
+      submitBtn.disabled = false;
+    }
+  });
+
 
   /* ==========================================================
    * EVENTS
@@ -527,10 +757,6 @@ function validate() {
       }
     });
   });
-
-  // if other fields are required the submit botton is disabled
-  // until they are filled, but if the user checks
-  // as already doing for title and file, the submit button should be enabled immediately
   $('conditional_block')?.addEventListener('change', validate);
 
 

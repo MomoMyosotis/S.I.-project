@@ -133,13 +133,6 @@ def _extract_entity_id(resp):
 
 @publish_bp.route("/content/publish", methods=["POST"])
 def publish_content():
-    """
-    Accept multipart FormData from browser. Validate per media type, optionally save files
-    via SAVE_FILE RPC and forward create command to backend.
-    
-    SECURITY: Validates that only users with admin/mod level (0-1) can publish on behalf
-    of other users.
-    """
     try:
         # Ensure authentication token is set
         if http_client.token is None:
@@ -180,6 +173,10 @@ def publish_content():
                     }), 403
         
         media_type = (request.form.get("type") or "").lower()
+        # Accept legacy/client 'link' media type and treat it as a concert (external link)
+        if media_type == 'link':
+            current_app.logger.debug("[publish_content] normalizing media type 'link' -> 'concert'")
+            media_type = 'concert'
         title = (request.form.get("title") or "").strip()
         authors = json.loads(request.form.get("authors") or "[]")
         genres = (request.form.get("genres") or "").strip()
@@ -192,7 +189,8 @@ def publish_content():
         # Capture description from form (used for all media types including concerts)
         description = (request.form.get("description") or "").strip()
 
-        recording_date = request.form.get("recording_date")
+        # normalize empty date strings -> None (DB expects NULL for missing DATE)
+        recording_date = request.form.get("recording_date") or None
         location = request.form.get("location", "").strip()
 
         format = request.form.get("format")
@@ -210,7 +208,7 @@ def publish_content():
             try:
                 year_from_date = publication_date.split('-')[0]
                 year = int(year_from_date) if year_from_date.isdigit() else None
-                #print(f"[DEBUG][publish_content] Extracted year from publication_date: {year}")
+                print(f"[DEBUG][publish_content] Extracted year from publication_date: {year}")
             except Exception as e:
                 print(f"[DEBUG][publish_content] Failed to extract year from publication_date: {e}")
 
@@ -227,27 +225,27 @@ def publish_content():
         is_live = bool(request.form.get("is_live"))
 
         # ===== DEBUG: Log all form fields extracted =====
-        #print(f"\n[DEBUG][publish_content] ===== FORM EXTRACTION START =====")
-        #print(f"[DEBUG][publish_content] media_type: {media_type}")
-        #print(f"[DEBUG][publish_content] title: {title}")
-        #print(f"[DEBUG][publish_content] year: {year}")
-        #print(f"[DEBUG][publish_content] publication_date: {publication_date}")
-        #print(f"[DEBUG][publish_content] duration: {duration}")
-        #print(f"[DEBUG][publish_content] description: {description}")
-        #print(f"[DEBUG][publish_content] recording_date: {recording_date}")
-        #print(f"[DEBUG][publish_content] location: {location}")
-        #print(f"[DEBUG][publish_content] is_author: {is_author}")
-        #print(f"[DEBUG][publish_content] is_performer: {is_performer}")
-        #print(f"[DEBUG][publish_content] authors: {authors}")
-        #print(f"[DEBUG][publish_content] performers: {performers}")
-        #print(f"[DEBUG][publish_content] genres: {genres}")
+        print(f"\n[DEBUG][publish_content] ===== FORM EXTRACTION START =====")
+        print(f"[DEBUG][publish_content] media_type: {media_type}")
+        print(f"[DEBUG][publish_content] title: {title}")
+        print(f"[DEBUG][publish_content] year: {year}")
+        print(f"[DEBUG][publish_content] publication_date: {publication_date}")
+        print(f"[DEBUG][publish_content] duration: {duration}")
+        print(f"[DEBUG][publish_content] description: {description}")
+        print(f"[DEBUG][publish_content] recording_date: {recording_date}")
+        print(f"[DEBUG][publish_content] location: {location}")
+        print(f"[DEBUG][publish_content] is_author: {is_author}")
+        print(f"[DEBUG][publish_content] is_performer: {is_performer}")
+        print(f"[DEBUG][publish_content] authors: {authors}")
+        print(f"[DEBUG][publish_content] performers: {performers}")
+        print(f"[DEBUG][publish_content] genres: {genres}")
         # Normalize genres string into a list of tags (split on comma) to match server expectations
         if genres and isinstance(genres, str):
             try:
                 genres = [s.strip() for s in genres.split(",") if s.strip()]
-                #print(f"[DEBUG][publish_content] normalized genres -> {genres}")
+                print(f"[DEBUG][publish_content] normalized genres -> {genres}")
             except Exception as e:
-                #print(f"[DEBUG][publish_content] failed to normalize genres: {e}")
+                print(f"[DEBUG][publish_content] failed to normalize genres: {e}")
                 genres = []
 
         # Normalize instruments string into a list
@@ -255,9 +253,9 @@ def publish_content():
         if isinstance(instruments_used, str):
             try:
                 instruments_list = [s.strip() for s in instruments_used.split(",") if s.strip()]
-                #print(f"[DEBUG][publish_content] normalized instruments -> {instruments_list}")
+                print(f"[DEBUG][publish_content] normalized instruments -> {instruments_list}")
             except Exception as e:
-                #print(f"[DEBUG][publish_content] failed to normalize instruments: {e}")
+                print(f"[DEBUG][publish_content] failed to normalize instruments: {e}")
                 instruments_list = []
         elif isinstance(instruments_used, list):
             instruments_list = instruments_used
@@ -266,9 +264,9 @@ def publish_content():
         if is_performer and not instruments_list:
             return jsonify({"status":"ERROR","error_msg":"You declared yourself performer: 'instruments_used' must be provided (comma separated)"}), 400
 
-        #print(f"[DEBUG][publish_content] link: {link}")
-        #print(f"[DEBUG][publish_content] additional_info: {additional_info}")
-        #print(f"[DEBUG][publish_content] ===== FORM EXTRACTION COMPLETE =====\n")
+        print(f"[DEBUG][publish_content] link: {link}")
+        print(f"[DEBUG][publish_content] additional_info: {additional_info}")
+        print(f"[DEBUG][publish_content] ===== FORM EXTRACTION COMPLETE =====\n")
 
         # Basic validation per media type
         if media_type == "concert":
@@ -408,17 +406,17 @@ def publish_content():
         }
 
         # ===== DEBUG: Log complete payload before sending =====
-        #print(f"\n[DEBUG][publish_content] ===== PAYLOAD BUILDING COMPLETE =====")
-        #print(f"[DEBUG][publish_content] Payload keys: {list(payload.keys())}")
-        #print(f"[DEBUG][publish_content] CRITICAL FIELDS IN PAYLOAD:")
-        #print(f"[DEBUG][publish_content]   - year: {payload.get('year')}")
-        #print(f"[DEBUG][publish_content]   - description: {payload.get('description')}")
-        #print(f"[DEBUG][publish_content]   - recording_date: {payload.get('recording_date')}")
-        #print(f"[DEBUG][publish_content]   - location: {payload.get('location')}")
-        #print(f"[DEBUG][publish_content]   - is_author: {payload.get('is_author')}")
-        #print(f"[DEBUG][publish_content]   - is_performer: {payload.get('is_performer')}")
-        #print(f"[DEBUG][publish_content] FULL PAYLOAD: {payload}")
-        #print(f"[DEBUG][publish_content] ===== READY TO SEND =====\n")
+        print(f"\n[DEBUG][publish_content] ===== PAYLOAD BUILDING COMPLETE =====")
+        print(f"[DEBUG][publish_content] Payload keys: {list(payload.keys())}")
+        print(f"[DEBUG][publish_content] CRITICAL FIELDS IN PAYLOAD:")
+        print(f"[DEBUG][publish_content]   - year: {payload.get('year')}")
+        print(f"[DEBUG][publish_content]   - description: {payload.get('description')}")
+        print(f"[DEBUG][publish_content]   - recording_date: {payload.get('recording_date')}")
+        print(f"[DEBUG][publish_content]   - location: {payload.get('location')}")
+        print(f"[DEBUG][publish_content]   - is_author: {payload.get('is_author')}")
+        print(f"[DEBUG][publish_content]   - is_performer: {payload.get('is_performer')}")
+        print(f"[DEBUG][publish_content] FULL PAYLOAD: {payload}")
+        print(f"[DEBUG][publish_content] ===== READY TO SEND =====\n")
 
         # choose backend command
         cmd_map = {
@@ -436,51 +434,100 @@ def publish_content():
                 current_app.logger.debug(f"[publish_content][concert] failed logging payload: {e_log}")
         current_app.logger.debug(f"[publish_content] sending CREATE command {cmd} for type={media_type}")
         
-        #print(f"\n[DEBUG][publish_content] ===== SENDING TO BACKEND =====")
-        #print(f"[DEBUG][publish_content] Command: {cmd}")
-        #print(f"[DEBUG][publish_content] Media type: {media_type}")
-        #print(f"[DEBUG][publish_content] Payload keys being sent: {list(payload.keys())}")
-        #print(f"[DEBUG][publish_content] Critical fields in outgoing payload:")
-        #print(f"[DEBUG][publish_content]   - year: {payload.get('year')}")
-        #print(f"[DEBUG][publish_content]   - description: {payload.get('description')}")
-        #print(f"[DEBUG][publish_content]   - recording_date: {payload.get('recording_date')}")
-        #print(f"[DEBUG][publish_content]   - is_author: {payload.get('is_author')}")
-        #print(f"[DEBUG][publish_content]   - is_performer: {payload.get('is_performer')}")
-        #print(f"[DEBUG][publish_content] ===== SENDING NOW =====\n")
+        print(f"\n[DEBUG][publish_content] ===== SENDING TO BACKEND =====")
+        print(f"[DEBUG][publish_content] Command: {cmd}")
+        print(f"[DEBUG][publish_content] Media type: {media_type}")
+        print(f"[DEBUG][publish_content] Payload keys being sent: {list(payload.keys())}")
+        print(f"[DEBUG][publish_content] Critical fields in outgoing payload:")
+        print(f"[DEBUG][publish_content]   - year: {payload.get('year')}")
+        print(f"[DEBUG][publish_content]   - description: {payload.get('description')}")
+        print(f"[DEBUG][publish_content]   - recording_date: {payload.get('recording_date')}")
+        print(f"[DEBUG][publish_content]   - is_author: {payload.get('is_author')}")
+        print(f"[DEBUG][publish_content]   - is_performer: {payload.get('is_performer')}")
+        print(f"[DEBUG][publish_content] ===== SENDING NOW =====\n")
         
         res = http_client.send_request(cmd, [payload], require_auth=True)
         
-        #print(f"\n[DEBUG][publish_content] ===== RESPONSE RECEIVED =====")
-        #print(f"[DEBUG][publish_content] Response: {res}")
-        #print(f"[DEBUG][publish_content] ===== END RESPONSE =====\n")
+        print(f"\n[DEBUG][publish_content] ===== RESPONSE RECEIVED =====")
+        print(f"[DEBUG][publish_content] Response: {res}")
+        print(f"[DEBUG][publish_content] ===== END RESPONSE =====\n")
         
         current_app.logger.debug(f"[publish_content] CREATE {cmd} response: {res!r}")
         
         # ===== DEBUG: Analyze response from backend =====
-        #print(f"\n[DEBUG][publish_content] ===== BACKEND RESPONSE ANALYSIS =====")
+        print(f"\n[DEBUG][publish_content] ===== BACKEND RESPONSE ANALYSIS =====")
         if isinstance(res, dict):
-            #print(f"[DEBUG][publish_content] Response keys: {list(res.keys())}")
-            #print(f"[DEBUG][publish_content] Response status: {res.get('status')}")
-            #print(f"[DEBUG][publish_content] Response ID/main_id: {res.get('id')}")
-            #print(f"[DEBUG][publish_content] Fields RETURNED by backend:")
-            #print(f"[DEBUG][publish_content]   - year: {res.get('year')}")
-            #print(f"[DEBUG][publish_content]   - description: {res.get('description')}")
-            #print(f"[DEBUG][publish_content]   - recording_date: {res.get('recording_date')}")
-            #print(f"[DEBUG][publish_content]   - location: {res.get('location')}")
-            #print(f"[DEBUG][publish_content]   - is_author: {res.get('is_author')}")
-            #print(f"[DEBUG][publish_content]   - is_performer: {res.get('is_performer')}")
-            #print(f"[DEBUG][publish_content]   - additional_info: {res.get('additional_info')}")
-            #print(f"[DEBUG][publish_content] Full response: {res}")
+            print(f"[DEBUG][publish_content] Response keys: {list(res.keys())}")
+            print(f"[DEBUG][publish_content] Response status: {res.get('status')}")
+            print(f"[DEBUG][publish_content] Response ID/main_id: {res.get('id')}")
+            print(f"[DEBUG][publish_content] Fields RETURNED by backend:")
+            print(f"[DEBUG][publish_content]   - year: {res.get('year')}")
+            print(f"[DEBUG][publish_content]   - description: {res.get('description')}")
+            print(f"[DEBUG][publish_content]   - recording_date: {res.get('recording_date')}")
+            print(f"[DEBUG][publish_content]   - location: {res.get('location')}")
+            print(f"[DEBUG][publish_content]   - is_author: {res.get('is_author')}")
+            print(f"[DEBUG][publish_content]   - is_performer: {res.get('is_performer')}")
+            print(f"[DEBUG][publish_content]   - additional_info: {res.get('additional_info')}")
+            print(f"[DEBUG][publish_content] Full response: {res}")
             pass
         else:
             print(f"[DEBUG][publish_content] Response is not dict: {type(res)} = {res}")
-        #print(f"[DEBUG][publish_content] ===== END RESPONSE ANALYSIS =====\n")
+        print(f"[DEBUG][publish_content] ===== END RESPONSE ANALYSIS =====\n")
 
         # if main creation failed, return error immediately
         if not isinstance(res, dict) or res.get('status') == 'ERROR':
             return jsonify(res)
 
         main_id = _extract_entity_id(res) or res.get('id')
+
+        # If backend didn't return a valid id, attempt a best-effort recovery by
+        # looking up the publisher's recent publications (match by stored_at/title)
+        if not main_id:
+            current_app.logger.warning(f"[publish_content] backend CREATE returned no id; attempting recovery lookup; backend_response={res!r}")
+
+            # determine owner username to query (target_username -> logged user)
+            lookup_username = payload.get('target_username') or (logged_user_info.get('username') if logged_user_info else None)
+            recovered_id = None
+            try:
+                if lookup_username:
+                    # request recent publications for that username
+                    pubs_res = http_client.send_request('GET_USER_PUBLICATIONS', [lookup_username, 0, 50], require_auth=True)
+                    # pubs_res may be wrapped by api_server (/api) so try both shapes
+                    pubs_payload = None
+                    if isinstance(pubs_res, dict):
+                        pubs_payload = pubs_res.get('response') or pubs_res
+                    else:
+                        pubs_payload = pubs_res
+
+                    results = None
+                    if isinstance(pubs_payload, dict):
+                        results = pubs_payload.get('results') or pubs_payload.get('response')
+                    if results is None and isinstance(pubs_payload, list):
+                        results = pubs_payload
+
+                    # try to match by stored_at (most reliable), fallback to title + recent timestamp
+                    target_stored = payload.get('stored_at')
+                    target_title = payload.get('title')
+                    if results and isinstance(results, list):
+                        for item in results:
+                            s_at = (item.get('stored_at') or item.get('raw', {}).get('stored_at')) if isinstance(item, dict) else None
+                            t = item.get('title') if isinstance(item, dict) else None
+                            if target_stored and s_at and target_stored.strip() == s_at.strip():
+                                recovered_id = item.get('id') or item.get('media_id') or None
+                                break
+                            if target_title and t and target_title.strip() == t.strip():
+                                recovered_id = item.get('id') or item.get('media_id') or None
+                                # don't break immediately — prefer stored_at exact match first
+                        if recovered_id:
+                            main_id = recovered_id
+                            current_app.logger.info(f"[publish_content] recovered media id={main_id} by querying publications for '{lookup_username}'")
+            except Exception as e:
+                current_app.logger.debug(f"[publish_content] recovery lookup failed: {e}")
+
+            # if still not found, return explicit error
+            if not main_id:
+                current_app.logger.error(f"[publish_content] backend CREATE returned no id; full response: {res!r}")
+                return jsonify({"status": "ERROR", "error_msg": "Backend failed to create media (no id returned)", "backend_response": res}), 500
 
         # Create linked media entries (children) and attach linked_to / protagonist to each
         linked_children = []
@@ -573,6 +620,22 @@ def publish_content():
                     current_app.logger.debug(f"[publish_content] failed creating concert subtrack: {e}")
             if isinstance(res, dict):
                 res['subtracks_created'] = created_segments
+
+        # If backend returned a wrapped RPC envelope (api_server -> {status, response, token}),
+        # unwrap successful responses so the browser receives the media object at top-level
+        try:
+            if isinstance(res, dict) and res.get('status') in (None, 'OK') and isinstance(res.get('response'), dict):
+                inner = dict(res.get('response'))
+                # move helper fields we might have added on the wrapper into the inner object
+                if isinstance(res.get('linked_children'), list):
+                    inner['linked_children'] = res.get('linked_children')
+                if isinstance(res.get('subtracks_created'), list):
+                    inner['subtracks_created'] = res.get('subtracks_created')
+                return jsonify(inner)
+        except Exception:
+            # fall back to returning the full wrapper if anything goes wrong
+            pass
+
         return jsonify(res)
     except Exception as e:
         return jsonify({"status":"ERROR","error_msg": str(e)}), 500

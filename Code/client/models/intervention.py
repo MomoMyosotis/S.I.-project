@@ -59,7 +59,7 @@ class Intervention:
     @classmethod
     def fetch_interventions(cls, media_id: int, intervention_type: TYPEIntervention) -> List["Intervention"]:
         if intervention_type == TYPEIntervention.COMMENT:
-            response = http_client.send_request(command="FETCH_COMMENT", args=[media_id], require_auth=True)
+            response = http_client.send_request(command="FETCH_COMMENT", args=[media_id], require_auth=(http_client.token is not None))
         else:
             raise ValueError(f"Invalid intervention type.\ntype: {intervention_type}\nmedia_id: {media_id}")
         interventions_data = response.get("interventions", [])
@@ -199,7 +199,7 @@ class Note(Intervention):
     @classmethod
     def fetch_notes(cls, media_id: int) -> List["Note"]:
         """Fetch all notes for a media."""
-        response = http_client.send_request("FETCH_NOTE", [media_id], require_auth=True)
+        response = http_client.send_request("FETCH_NOTE", [media_id], require_auth=(http_client.token is not None))
         if not isinstance(response, dict):
             return []
         notes_data = response.get("notes", [])

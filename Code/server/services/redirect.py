@@ -233,6 +233,49 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
     #print(f"[DEBUG][dispatch_command] START - command={command}, args={args}, user_obj={user_obj}")
     command = command.lower()
 
+    # If user_obj is missing, attempt to resolve it from the incoming HTTP request.
+    # Token precedence: Authorization Bearer header -> session cookie -> JSON body token.
+    # This lets server handlers determine the request actor even when client sent
+    # the token in a header/cookie rather than in the JSON payload.
+    if user_obj is None:
+        try:
+            from flask import request
+            token_candidate = None
+
+            # Authorization header (Bearer)
+            auth = request.headers.get("Authorization") or request.headers.get("authorization")
+            if auth:
+                parts = auth.split()
+                if len(parts) == 2 and parts[0].lower() == "bearer":
+                    token_candidate = parts[1].strip()
+                else:
+                    token_candidate = auth.strip()
+
+            # Cookie fallback
+            if not token_candidate:
+                token_candidate = request.cookies.get("session_token") or request.cookies.get("token")
+
+            # JSON body fallback (safe/silent)
+            if not token_candidate:
+                try:
+                    body = request.get_json(silent=True) or {}
+                    token_candidate = body.get("token") or token_candidate
+                except Exception:
+                    pass
+
+            if token_candidate:
+                try:
+                    # import sessions lazily to avoid circular imports at module import time
+                    from server.logic.api_server import sessions
+                    cand = sessions.get(token_candidate)
+                    if cand:
+                        user_obj = cand
+                        print(f"[DEBUG][dispatch_command] Resolved user_obj from request token")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     # =====================
     # EXTRACT USER_ID FROM ARGS IF user_obj IS None
     # =====================

@@ -11,20 +11,29 @@
 <header>Feed</header>
 
 <div class="search-bar">
-  <input type="text" id="search" placeholder="Cerca... (nome, tag, YYYY, author, performer, instrument)">
-  <select id="filter">
-    <option value="all">Tutti</option>
-    <option value="user">Utente</option>
-    <option value="title">Titolo</option>
-    <option value="file">File</option>
-    <option value="tag">Tag</option>
-    <option value="date">Data pubblicazione</option>
-    <option value="publisher">Publisher</option>
-    <option value="author">Autore</option>
-    <option value="performer">Interprete</option>
-    <option value="instrument">Strumento</option>
-  </select>
-  <button onclick="applySearch()">Cerca</button>
+  <form onsubmit="applySearch(); return false;">
+    <input type="text" id="search" placeholder="Cerca... (nome, tag, YYYY, author, performer, instrument)">
+    <select id="filter">
+      <option value="all">Tutti</option>
+      <option value="user">Utente</option>
+      <option value="title">Titolo</option>
+      <option value="tag">Tag</option>
+      <option value="date">Data pubblicazione</option>
+      <option value="publisher">Publisher</option>
+      <option value="author">Autore</option>
+      <option value="performer">Interprete</option>
+      <option value="instrument">Strumento</option>
+      <option value="composed_query">Ricerca Avanzata</option>
+    </select>
+    <div id="composed_query" style="display:none;" class="advanced-box">
+      <h3>Ricerca Avanzata</h3>
+      <div id="advanced-conditions"></div>
+      <div style="margin-top:8px;">
+        <button type="button" onclick="addCondition()">Aggiungi condizione</button>
+      </div>
+    </div>
+    <button onclick="applySearch()">Cerca</button>
+  </form>
 </div>
 
 <div class="feed" id="feed"></div>
@@ -141,6 +150,83 @@
     await originalLoadMetadata.call(this);
     setupMetadataAutocomplete();
   };
+
+  // Composed query helpers
+  function addCondition(prefField) {
+    const container = document.getElementById('advanced-conditions');
+    const idx = container.children.length;
+
+    const row = document.createElement('div');
+    row.className = 'condition-row';
+    row.style.marginTop = '6px';
+
+    const fieldSelect = document.createElement('select');
+    fieldSelect.innerHTML = `
+      <option value="tag">Tag</option>
+      <option value="author">Autore</option>
+      <option value="performer">Interprete</option>
+      <option value="instrument">Strumento</option>
+      <option value="title">Titolo</option>
+      <option value="user">Utente</option>
+      <option value="date">Data pubblicazione</option>
+      <option value="publisher">Publisher</option>
+    `;
+    if (prefField) fieldSelect.value = prefField;
+    fieldSelect.style.marginRight = '8px';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Valori (separati da virgola)';
+    input.setAttribute('list', 'metadata-suggestions');
+    input.style.marginRight = '8px';
+    input.className = 'condition-input';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Rimuovi';
+    removeBtn.onclick = () => container.removeChild(row);
+
+    row.appendChild(fieldSelect);
+    row.appendChild(input);
+    row.appendChild(removeBtn);
+
+    container.appendChild(row);
+  }
+
+  function getComposedQueryString() {
+    const container = document.getElementById('advanced-conditions');
+    const parts = [];
+    Array.from(container.children).forEach(row => {
+      const sel = row.querySelector('select');
+      const inp = row.querySelector('input');
+      if (!sel || !inp) return;
+      const field = sel.value;
+      const raw = inp.value || '';
+      const values = raw.split(',').map(s => s.trim()).filter(Boolean);
+      if (values.length === 0) return;
+    // Format: field:value1,value2  (fields separated by ';') — values are comma-separated
+    const safe = values.map(v => v.replace(/;/g, '').replace(/,/g, '')).join(',');
+      parts.push(`${field}:${safe}`);
+    });
+    return parts.join(';');
+  }
+
+  // Toggle advanced UI when filter changes
+  const filterEl = document.getElementById('filter');
+  const composedBox = document.getElementById('composed_query');
+  const searchInput = document.getElementById('search');
+  filterEl.addEventListener('change', () => {
+    if (filterEl.value === 'composed_query') {
+      composedBox.style.display = 'block';
+      searchInput.disabled = true;
+      // ensure there's at least one condition row
+      const container = document.getElementById('advanced-conditions');
+      if (container.children.length === 0) addCondition('tag');
+    } else {
+      composedBox.style.display = 'none';
+      searchInput.disabled = false;
+    }
+  });
 
   const feedEl = document.getElementById('feed');
   const loadingEl = document.getElementById('loading');
@@ -322,8 +408,14 @@
   }
 
   function applySearch() {
-    currentSearch = document.getElementById('search').value.trim();
-    currentFilter = document.getElementById('filter').value;
+    const sel = document.getElementById('filter').value;
+    if (sel === 'composed_query') {
+      currentSearch = getComposedQueryString();
+      currentFilter = 'composed_query';
+    } else {
+      currentSearch = document.getElementById('search').value.trim();
+      currentFilter = sel;
+    }
     currentIndex = 0;
     endReached = false;
     loadingEl.textContent = '';

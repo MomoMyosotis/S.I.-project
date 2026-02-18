@@ -48,7 +48,8 @@ class ShowService:
     @staticmethod
     def get_comments(media_id, offset=0, limit=20):
         # server 'fetch_comment' expects just media_id (extra args can cause TypeError on the server)
-        return http_client.send_request("FETCH_COMMENT", [media_id], require_auth=True)
+        # fetching comments is public — send token when available so backend can resolve request user
+        return http_client.send_request("FETCH_COMMENT", [media_id], require_auth=(http_client.token is not None))
 
     @staticmethod
     def delete_comment(comment_id):

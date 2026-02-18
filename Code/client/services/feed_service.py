@@ -49,6 +49,11 @@ class FeedService:
 
             return {"status": "OK", "results": media_list, "count": len(media_list)}
 
+        # Composed query: call dedicated API (server-side handler returns paginated envelope)
+        if (str((filter_by or "")).lower() == 'composed_query'):
+            res = http_client.send_request("COMPOSED_QUERY", [search, offset, limit], require_auth=False)
+            return res
+
         # Default: fetch media feed from server
         args = [search, filter_by, offset, limit]
         # Feed is public: don't require auth (allows anonymous browsing / infinite scroll)

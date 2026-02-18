@@ -286,7 +286,7 @@ def list_notes():
         return jsonify({'notes': []})
     try:
         current_app.logger.debug(f"[DEBUG][list_notes] media_id={media_id}")
-        response = http_client.send_request("FETCH_NOTE", [media_id], require_auth=True)
+        response = http_client.send_request("FETCH_NOTE", [media_id], require_auth=(http_client.token is not None))
         current_app.logger.debug(f"[DEBUG][list_notes] raw response: {response!r}")
         # Normalize shapes: expect {'status':'OK','notes':[...]} or direct list
         notes = []
