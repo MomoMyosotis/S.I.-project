@@ -1,4 +1,4 @@
-# ...existing code...
+# first line
 from typing import Dict, Any, List, Optional
 from . import connection
 import json
@@ -1031,6 +1031,41 @@ def create_performer_with_user(user_id: int, name: str) -> Optional[int]:
         if conn:
             conn.rollback()
         debug(f"[DB ERROR create_performer_with_user]: {e}")
+        return None
+    finally:
+        if conn:
+            connection.close(None, conn)
+
+# ---------------------
+# INSTRUMENT helpers
+# ---------------------
+def get_instrument_by_name(name: str) -> Optional[Dict[str, Any]]:
+    """Return instrument row for a given name if exists."""
+    return fetch_one("SELECT id, name FROM instruments WHERE lower(name)=lower(%s)", (name.strip(),))
+
+def create_instrument(name: str) -> Optional[int]:
+    """Try to create an instrument row with the given name. If an instrument with the
+    same name exists return it; otherwise insert and return new id."""
+    conn = None
+    try:
+        conn = connection.connect()
+        with conn.cursor() as cur:
+            try:
+                cur.execute("INSERT INTO instruments (name) VALUES (%s) RETURNING id", (name.strip(),))
+                new = cur.fetchone()
+                conn.commit()
+                return new[0] if new else None
+            except Exception:
+                # possibly name already exists -> try to fetch by name
+                cur.execute("SELECT id FROM instruments WHERE lower(name)=lower(%s)", (name.strip(),))
+                row = cur.fetchone()
+                if row:
+                    return row[0]
+                return None
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        debug(f"[DB ERROR create_instrument]: {e}")
         return None
     finally:
         if conn:

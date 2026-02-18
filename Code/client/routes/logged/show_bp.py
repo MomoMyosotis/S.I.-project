@@ -302,7 +302,33 @@ def list_notes():
             notes = response
         # ensure list
         if not isinstance(notes, list): notes = []
-        return jsonify({'notes': notes})
+
+        # Normalize positional fields so client JS always sees `start`/`end`.
+        normalized = []
+        for nn in notes:
+            if not isinstance(nn, dict):
+                normalized.append(nn)
+                continue
+            n = dict(nn)  # shallow copy
+            # server may return `note_start`/`note_end` or `start`/`end` — prefer explicit keys
+            if 'note_start' in n and 'start' not in n:
+                n['start'] = n.get('note_start')
+            if 'note_end' in n and 'end' not in n:
+                n['end'] = n.get('note_end')
+            # also accept legacy numeric fields
+            if 'start' in n and isinstance(n.get('start'), str) and n.get('start').isdigit():
+                try:
+                    n['start'] = float(n['start'])
+                except Exception:
+                    pass
+            if 'end' in n and isinstance(n.get('end'), str) and n.get('end').isdigit():
+                try:
+                    n['end'] = float(n['end'])
+                except Exception:
+                    pass
+            normalized.append(n)
+
+        return jsonify({'notes': normalized})
     except Exception as e:
         current_app.logger.exception('Failed to fetch notes')
         return jsonify({'notes': []})

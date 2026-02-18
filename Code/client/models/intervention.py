@@ -99,11 +99,14 @@ class Intervention:
     user_id INT REFERENCES users(id) ON DELETE CASCADE,
     media_id INT REFERENCES media(id) ON DELETE CASCADE,
     -- For documents: AAAABBCC (page/line/char); for video/audio/concert: seconds
-    start INT NOT NULL DEFAULT 00000000,
-    end INT NOT NULL DEFAULT 00000000,
+    note_start INT NOT NULL DEFAULT 00000000,
+    note_end INT NOT NULL DEFAULT 00000000,
     type INT NOT NULL DEFAULT 1, -- 0=graphic, 1=text
     text TEXT, -- JSON string for structured data or base64 canvas data
     stored_at VARCHAR(255),
+    page INT,
+    A_point POINT,
+    B_point POINT,
     private BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW()
 );
