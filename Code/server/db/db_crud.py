@@ -703,10 +703,15 @@ def fetch_all_media_db(
 
             elif fb == "instrument":
                 # match instruments via performance_instruments -> instruments
+                # ALSO check concert segments (concerts -> concert_segments -> concert_segment_instruments)
                 terms = split_terms(search)
                 sub_clauses = []
                 for t in terms:
+                    # instruments attached to regular media performances
                     sub_clauses.append("EXISTS(SELECT 1 FROM media_performances mp JOIN performance_instruments pi ON pi.performance_id = mp.id JOIN instruments i ON i.id = pi.instrument_id WHERE mp.media_id = m.id AND i.name ILIKE %s)")
+                    params.append(f"%{t}%")
+                    # instruments attached to concert segments for concert-type media
+                    sub_clauses.append("EXISTS(SELECT 1 FROM concerts c JOIN concert_segments cs ON cs.concert_id = c.video_id JOIN concert_segment_instruments csi ON csi.segment_id = cs.id JOIN instruments i ON i.id = csi.instrument_id WHERE c.video_id = m.id AND i.name ILIKE %s)")
                     params.append(f"%{t}%")
                 if sub_clauses:
                     query += " AND (" + " OR ".join(sub_clauses) + ")"
@@ -728,8 +733,11 @@ def fetch_all_media_db(
                 # performers
                 or_parts.append("EXISTS(SELECT 1 FROM media_performances mp JOIN performers p ON p.id=mp.performer_id WHERE mp.media_id = m.id AND p.name ILIKE %s)")
                 params.append(f"%{search}%")
-                # instruments
+                # instruments (performances)
                 or_parts.append("EXISTS(SELECT 1 FROM media_performances mp JOIN performance_instruments pi ON pi.performance_id = mp.id JOIN instruments i ON i.id = pi.instrument_id WHERE mp.media_id = m.id AND i.name ILIKE %s)")
+                params.append(f"%{search}%")
+                # instruments referenced inside concert segments (concert media)
+                or_parts.append("EXISTS(SELECT 1 FROM concerts c JOIN concert_segments cs ON cs.concert_id = c.video_id JOIN concert_segment_instruments csi ON csi.segment_id = cs.id JOIN instruments i ON i.id = csi.instrument_id WHERE c.video_id = m.id AND i.name ILIKE %s)")
                 params.append(f"%{search}%")
 
                 query += " AND (" + " OR ".join(or_parts) + ")"

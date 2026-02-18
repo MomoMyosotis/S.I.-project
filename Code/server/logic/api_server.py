@@ -35,10 +35,23 @@ def start_wsgi_server(host='127.0.0.1', port=8000):
     with _wsgi_lock:
         if _wsgi_server is not None:
             return False
+        class LoggingWSGIRequestHandler(WSGIRequestHandler):
+            """Ensure access lines are always printed to the console (fallback to parent on error)."""
+            def log_message(self, format, *args):
+                try:
+                    # format like: 127.0.0.1 - - [18/Feb/2026 21:11:16] "GET /admin/pending HTTP/1.1" 200 3
+                    msg = "%s - - [%s] %s" % (self.client_address[0], self.log_date_time_string(), format % args)
+                    print(msg, flush=True)
+                except Exception:
+                    try:
+                        super().log_message(format, *args)
+                    except Exception:
+                        pass
+
         class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
             daemon_threads = True
 
-        _wsgi_server = ThreadingWSGIServer((host, port), WSGIRequestHandler)
+        _wsgi_server = ThreadingWSGIServer((host, port), LoggingWSGIRequestHandler)
         _wsgi_server.set_app(app)
         _wsgi_thread = threading.Thread(target=_wsgi_server.serve_forever, daemon=True)
         _wsgi_thread.start()
@@ -69,6 +82,10 @@ from server.services.email_service import init_mail
 app = Flask(__name__)
 # Ensure a secret key for session cookies (use env var when available)
 app.secret_key = os.environ.get('ADMIN_UI_SECRET') or os.environ.get('SECRET_KEY') or os.urandom(24)
+# Ensure werkzeug access logs are visible when Flask/dev server is used
+import logging
+logging.getLogger('werkzeug').setLevel(logging.INFO)
+
 sessions = {}      # token -> user_obj (condiviso)
 mode_ref = ["auto"]  # modalità mutabile
 

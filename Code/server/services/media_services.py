@@ -1960,8 +1960,18 @@ def composed_query_services(user_obj, composed: str, offset: int = 0, limit: int
                 return set(r.get("id") for r in (rows or []) if r.get("id") is not None)
 
             if field == "instrument":
+                # media_performances -> performance_instruments
                 rows = fetch_all("SELECT DISTINCT mp.media_id AS id FROM media_performances mp JOIN performance_instruments pi ON pi.performance_id = mp.id JOIN instruments i ON i.id = pi.instrument_id WHERE i.name ILIKE %s", (f"%{token}%",))
-                return set(r.get("id") for r in (rows or []) if r.get("id") is not None)
+                # concerts -> concert_segments -> concert_segment_instruments
+                rows2 = fetch_all("SELECT DISTINCT c.video_id AS id FROM concerts c JOIN concert_segments cs ON cs.concert_id = c.video_id JOIN concert_segment_instruments csi ON csi.segment_id = cs.id JOIN instruments i2 ON i2.id = csi.instrument_id WHERE i2.name ILIKE %s", (f"%{token}%",))
+                ids = set()
+                for r in (rows or []):
+                    if r.get("id") is not None:
+                        ids.add(r.get("id"))
+                for r in (rows2 or []):
+                    if r.get("id") is not None:
+                        ids.add(r.get("id"))
+                return ids
 
             if field == "title":
                 rows = fetch_all("SELECT id FROM media WHERE title ILIKE %s", (f"%{token}%",))
