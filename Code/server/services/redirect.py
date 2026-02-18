@@ -193,6 +193,7 @@ COMMAND_MAP = {
     "update_video": media_services.update_video_services,
     "delete_video": media_services.delete_video_services,
     "get_feed": media_services.get_feed_services,
+    "composed_query": media_services.composed_query_services,
     "get_user_publications": media_services.get_user_publications_services,
     "create_concert": media_services.create_concert_services,
     "get_concert": media_services.get_concert_services,
@@ -311,7 +312,7 @@ def dispatch_command(command: str, args: list, user_obj: Optional[Any]) -> Tuple
             user_obj = user_obj_instance.to_dict_internal() if user_obj_instance else user_obj
 
     # allow some public commands without authentication (feed browsing, user search, media viewing, etc.)
-    if user_obj is None and command not in ["login", "register", "recover", "reset_password", "assistance", "change_password", "get_feed", "search_users", "get_metadata", "get_media", "get_document", "fix_document_metadata"]:
+    if user_obj is None and command not in ["login", "register", "recover", "reset_password", "assistance", "change_password", "get_feed", "search_users", "get_metadata", "get_media", "get_document", "fix_document_metadata", "composed_query"]:
         return json.dumps({"error_msg": "User is not logged in. Please log in to proceed.", "status": "error"}), None, None, "ERROR"
 
     func = COMMAND_MAP.get(command)

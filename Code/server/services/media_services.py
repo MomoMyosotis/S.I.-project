@@ -1894,6 +1894,205 @@ def get_feed_services(user_obj, search: str = "", filter_by: str = "all", offset
 
     return {"status": "OK", "results": results, "count": total_count}
 
+
+def composed_query_services(user_obj, composed: str, offset: int = 0, limit: int = 10):
+    """Parse a composed query string (field:value;field2:val1,val2;...) and
+    return media that satisfy ALL provided conditions (logical AND across fields
+    and across comma-separated tokens within the same field).
+
+    Supported fields (client UI): date, date_from, date_to, tag/genre, author,
+    performer, instrument, user/username, title, publisher_only, from, to
+    """
+    if not composed or not str(composed).strip():
+        return {"status": "OK", "results": [], "count": 0}
+
+    from server.db.db_crud import fetch_all, fetch_all_media_db, get_user_username_by_id
+    from datetime import datetime
+
+    # --- parse composed string into {field: [tokens]} ---
+    filters = {}
+    parts = [p.strip() for p in str(composed).split(";") if p.strip()]
+    for part in parts:
+        if ":" not in part:
+            continue
+        k, v = part.split(":", 1)
+        key = k.strip().lower()
+        vals = [s.strip() for s in v.split(",") if s.strip()]
+        if not vals:
+            continue
+        # normalize synonyms
+        if key in ("genre", "genres"):
+            key = "tag"
+        if key in ("username", "user"):
+            key = "publisher"
+        if key in ("from",):
+            key = "date_from"
+        if key in ("to",):
+            key = "date_to"
+        filters[key] = vals
+
+    # Helper: run a small DB query that returns media ids matching a single token for a field
+    def ids_for_single_token(field: str, token: str):
+        token = str(token).strip()
+        if not token:
+            return set()
+        try:
+            if field == "tag":
+                # match genres by name or numeric id
+                if token.isdigit():
+                    rows = fetch_all("SELECT DISTINCT m.id FROM media m JOIN media_genres mg ON mg.media_id = m.id JOIN genres g ON g.id = mg.genre_id WHERE g.id = %s", (int(token),))
+                else:
+                    rows = fetch_all("SELECT DISTINCT m.id FROM media m JOIN media_genres mg ON mg.media_id = m.id JOIN genres g ON g.id = mg.genre_id WHERE g.name ILIKE %s", (f"%{token}%",))
+                return set(r.get("id") for r in (rows or []) if r.get("id") is not None)
+
+            if field == "author":
+                if token.isdigit():
+                    rows = fetch_all("SELECT DISTINCT ma.media_id AS id FROM media_authors ma JOIN authors a ON a.id = ma.author_id WHERE a.user_id = %s", (int(token),))
+                else:
+                    rows = fetch_all("SELECT DISTINCT ma.media_id AS id FROM media_authors ma JOIN authors a ON a.id = ma.author_id WHERE a.name ILIKE %s", (f"%{token}%",))
+                return set(r.get("id") for r in (rows or []) if r.get("id") is not None)
+
+            if field == "performer":
+                if token.isdigit():
+                    rows = fetch_all("SELECT DISTINCT mp.media_id AS id FROM media_performances mp JOIN performers p ON p.id = mp.performer_id WHERE p.user_id = %s", (int(token),))
+                else:
+                    rows = fetch_all("SELECT DISTINCT mp.media_id AS id FROM media_performances mp JOIN performers p ON p.id = mp.performer_id WHERE p.name ILIKE %s", (f"%{token}%",))
+                return set(r.get("id") for r in (rows or []) if r.get("id") is not None)
+
+            if field == "instrument":
+                rows = fetch_all("SELECT DISTINCT mp.media_id AS id FROM media_performances mp JOIN performance_instruments pi ON pi.performance_id = mp.id JOIN instruments i ON i.id = pi.instrument_id WHERE i.name ILIKE %s", (f"%{token}%",))
+                return set(r.get("id") for r in (rows or []) if r.get("id") is not None)
+
+            if field == "title":
+                rows = fetch_all("SELECT id FROM media WHERE title ILIKE %s", (f"%{token}%",))
+                return set(r.get("id") for r in (rows or []) if r.get("id") is not None)
+
+            if field == "publisher":
+                if token.isdigit():
+                    rows = fetch_all("SELECT id FROM media WHERE user_id = %s", (int(token),))
+                else:
+                    rows = fetch_all("SELECT m.id FROM media m JOIN users u ON u.id = m.user_id WHERE u.username ILIKE %s", (f"%{token}%",))
+                return set(r.get("id") for r in (rows or []) if r.get("id") is not None)
+
+            if field == "date":
+                # reuse existing date parsing in fetch_all_media_db by calling Media.fetch_all
+                # request a reasonably large limit to include all possible matches
+                from server.objects.media import Media
+                items = Media.fetch_all(search=token, filter_by="date", offset=0, limit=5000)
+                return set(i.media_id for i in (items or []) if getattr(i, "media_id", None) is not None)
+
+            # Fallback: broad match across media common fields (use fetch_all_media_db default 'all')
+            # This supports keys that we don't explicitly handle by delegating to DB's broad matching
+            from server.objects.media import Media
+            items = Media.fetch_all(search=token, filter_by="all", offset=0, limit=5000)
+            return set(i.media_id for i in (items or []) if getattr(i, "media_id", None) is not None)
+        except Exception:
+            return set()
+
+    # For each field compute ids that match ALL tokens of that field (intersection per-field)
+    per_field_sets = []
+    for field, toks in filters.items():
+        # special handling for date_from/date_to: defer to range filter later
+        if field in ("date_from", "date_to"):
+            continue
+        if field == "publisher_only":
+            # if publisher_only is present and truthy, ignore (handled via publisher token if provided)
+            continue
+
+        field_set = None
+        for t in toks:
+            ids = ids_for_single_token(field, t)
+            if field_set is None:
+                field_set = ids
+            else:
+                field_set = field_set.intersection(ids)
+        # if there were no tokens or match none -> empty set
+        per_field_sets.append(field_set or set())
+
+    # If no explicit field produced candidates, return empty
+    if not per_field_sets:
+        return {"status": "OK", "results": [], "count": 0}
+
+    # Intersection across fields -> only media satisfying ALL conditions
+    final_ids = None
+    for s in per_field_sets:
+        if final_ids is None:
+            final_ids = set(s)
+        else:
+            final_ids &= s
+    final_ids = final_ids or set()
+
+    # Apply date_from/date_to range filters if present by fetching matching medias and filtering by created_at
+    if final_ids and ("date_from" in filters or "date_to" in filters):
+        df = None
+        dt = None
+        try:
+            if "date_from" in filters:
+                df = datetime.fromisoformat(filters.get("date_from")[0])
+            if "date_to" in filters:
+                dt = datetime.fromisoformat(filters.get("date_to")[0])
+        except Exception:
+            # ignore parse errors and skip range filtering
+            df = dt = None
+
+        if df or dt:
+            keep = set()
+            for mid in list(final_ids):
+                m = Media.fetch(mid)
+                if not m:
+                    continue
+                created = getattr(m, "created_at", None)
+                if isinstance(created, str):
+                    try:
+                        created_dt = datetime.fromisoformat(created)
+                    except Exception:
+                        created_dt = None
+                else:
+                    created_dt = created
+                ok = True
+                if df and created_dt and created_dt < df:
+                    ok = False
+                if dt and created_dt and created_dt > dt:
+                    ok = False
+                if ok:
+                    keep.add(mid)
+            final_ids = keep
+
+    # Nothing matched
+    if not final_ids:
+        return {"status": "OK", "results": [], "count": 0}
+
+    # Build result list (fetch Media objects, normalize and sort by created_at desc)
+    from server.db.db_crud import get_user_username_by_id as duck
+    results = []
+    for mid in final_ids:
+        m = Media.fetch(mid)
+        if not m:
+            continue
+        d = m.to_dict()
+        user_id = d.get("user_id")
+        username = duck(user_id)
+        created = d.get("created_at")
+        created_iso = created.isoformat() if hasattr(created, "isoformat") else (str(created) if created is not None else "")
+        results.append({
+            "id": d.get("id"),
+            "title": d.get("title"),
+            "username": username or "Unknown",
+            "thumbnail": d.get("thumbnail", "/static/images/unknown.jpg"),
+            "tags": d.get("genres") or [],
+            "type": d.get("type"),
+            "created_at": created_iso,
+            "raw": d
+        })
+
+    # global ordering (newest first)
+    results.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+
+    total = len(results)
+    paged = results[offset: offset + limit]
+
+    return {"status": "OK", "results": paged, "count": total}
+
 # =========================
 # USER PUBLICATIONS SERVICES
 # =========================

@@ -60,23 +60,46 @@ def feed_data():
         #print(f"[ERROR] feed_data failed during fetch: {err}")
         return jsonify({"error": err}), 400
 
-    # extract batch robustly
-    batch = []
-    if isinstance(response, dict):
-        if "results" in response and isinstance(response["results"], list):
-            batch = response["results"]
-        elif "response" in response:
-            r = response["response"]
-            if isinstance(r, dict) and "results" in r and isinstance(r["results"], list):
-                batch = r["results"]
-            elif isinstance(r, list):
-                batch = r
-        elif isinstance(response.get("response"), list):
-            batch = response.get("response")
-    elif isinstance(response, list):
-        batch = response
+    # extract batch robustly — trust server payloads for composed queries and
+    # recursively unwrap any nested `response` envelope until we find a list
+    def _unwrap_results(obj):
+        # recursive unwrapping: return a list of items when found, else None
+        import json
+        if obj is None:
+            return None
+        # If the server returned a JSON string inside the envelope, try to parse it
+        if isinstance(obj, str):
+            s = obj.strip()
+            if not s:
+                return None
+            if (s.startswith('{') or s.startswith('[')):
+                try:
+                    parsed = json.loads(s)
+                    return _unwrap_results(parsed)
+                except Exception:
+                    return None
+            return None
+        if isinstance(obj, list):
+            return obj
+        if isinstance(obj, dict):
+            # direct results list
+            if "results" in obj and isinstance(obj["results"], list):
+                return obj["results"]
+            # single media-like object -> wrap it
+            if any(k in obj for k in ("id", "media_id", "title", "type")):
+                return [obj]
+            # nested envelope -> continue unwrapping
+            if "response" in obj:
+                return _unwrap_results(obj["response"])
+            # nothing useful found
+            return None
+        return None
 
-    batch = batch or []
+    batch = _unwrap_results(response) or []
+
+    # debug: show when we trusted a server-provided batch for composed_query
+    if filter_by == 'composed_query':
+        print(f"[DEBUG][feed_bp] composed_query -> server_batch_len={len(batch)}")
 
     # Normalize each item via Media model where appropriate
     normalized_batch = []
@@ -322,10 +345,6 @@ def feed_data():
         accumulated = normalized_batch
     else:
         for it in normalized_batch:
-            # Trust server results and skip client-side re-filtering when:
-            #  - server-side composed queries are used, or
-            #  - the search contains comma-separated multi-terms (server already applied AND semantics)
-            # Otherwise fall back to client-side matching.
             if filter_by == 'composed_query' or (filter_by == 'all' and isinstance(search, str) and ',' in search) or matches(it, search, filter_by):
                 accumulated.append(it)
 
