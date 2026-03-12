@@ -1,0 +1,249 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{geometry}
+\usepackage{float}
+\usepackage{enumitem}
+
+\geometry{margin=2.5cm}
+
+\title{Ingegneria del Software \\ \textbf{Boopie Share}}
+\author{Emanuele Alberton - VR472507 \\ Mouhanned Derouiche - VR485698}
+\date{A.A. 2024/2025\\[0.5cm]\includegraphics[width=4cm]{media/logo.jpeg}}
+
+\begin{document}
+
+\maketitle
+\newpage
+\tableofcontents
+\newpage
+
+%------------------------------------------------
+\section{Introduzione}
+
+Boopie Share è una piattaforma software per la condivisione e gestione di contenuti musicali quali spartiti, documenti, file audio, video e collegamenti a risorse esterne.
+
+Il sistema consente agli utenti di:
+\begin{itemize}
+    \item Pubblicare contenuti multimediali
+    \item Associare metadati (autori, generi...)
+    \item Inserire commenti ed annotazioni
+    \item Interagire con altri utenti tramite follow
+\end{itemize}
+
+L’applicazione è strutturata secondo un’architettura client–server multilivello implementata tramite framework Flask lato server.
+(questa sezione verrà approfondità meglio più avanti)
+
+%------------------------------------------------
+\section{Requisiti}
+
+\subsection{Prerequisiti}
+
+Il sistema è suddiviso in componente Client e Server.
+
+La comunicazione tra Client e Server avviene tramite richieste HTTP verso endpoint RESTful esposti dal Server Flask.
+
+All’avvio del Client:
+\begin{itemize}
+    \item viene verificata la versione del software;
+    \item vengono controllate eventuali dipendenze Python mancanti;
+    \item vengono eventualmente aggiornate versioni o dipendenze
+    \item viene stabilita la connessione con il server.
+\end{itemize}
+
+Il sistema è compatibile con Windows, macOS e Linux.
+
+\subsection{Gerarchia dei Ruoli}
+
+Il sistema implementa una gerarchia di livelli utente rappresentata tramite enumerazione \textit{UserLevel}.  
+I livelli sono ordinati gerarchicamente dal più privilegiato al meno privilegiato:
+
+\begin{itemize}
+    \item \textbf{Root (0)}: controllo totale del sistema.
+    \item \textbf{Admin (1)}: gestione utenti e contenuti.
+    \item \textbf{Moderatore (2)}: moderazione dei contenuti e applicazione restrizioni.
+    \item \textbf{Publisher (3)}: pubblicazione e gestione dei propri contenuti.
+    \item \textbf{Regular (4)}: utente standard con permessi limitati.
+    \item \textbf{Restricted (5)}: utente con accesso ridotto (sola visualizzazione).
+    \item \textbf{Banned (6)}: utente impossibilitato ad accedere al sistema.
+\end{itemize}
+
+Il livello numerico inferiore indica un livello di privilegio maggiore.
+
+
+\subsection{Requisiti Non Funzionali}
+
+\begin{itemize}
+    \item Sicurezza: password memorizzate tramite hashing.
+    \item Scalabilità: separazione in layer indipendenti.
+    \item Manutenibilità: architettura modulare.
+    \item Portabilità: indipendenza dal sistema operativo.
+    \item Performance: ricerca indicizzata sui media.
+\end{itemize}
+
+%------------------------------------------------
+\section{Use Case}
+
+\subsection{Use Case Diagram}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{media/usecase.png}
+\caption{Diagramma generale dei casi d'uso}
+\end{figure}
+
+\subsection{Registrazione Utente}
+
+\textbf{Attori:} Utente
+
+\textbf{Precondizioni:}
+\begin{itemize}
+    \item Utente non autenticato
+\end{itemize}
+
+\textbf{Flusso Principale:}
+\begin{enumerate}
+    \item L’utente accede alla pagina di registrazione.
+    \item Inserisce email, username e password.
+    \item Il sistema valida i dati.
+    \item I dati vengono salvati nel database.
+\end{enumerate}
+
+\textbf{Postcondizioni:}
+\begin{itemize}
+    \item Nuovo utente creato con ruolo Publisher.
+\end{itemize}
+
+\subsection{Pubblicazione Media}
+
+\textbf{Attori:} Publisher
+
+\textbf{Precondizioni:}
+\begin{itemize}
+    \item Utente autenticato.
+\end{itemize}
+
+\textbf{Flusso Principale:}
+\begin{enumerate}
+    \item Selezione “Carica Media”.
+    \item Inserimento metadati.
+    \item Upload file o inserimento link.
+    \item Conferma operazione.
+\end{enumerate}
+
+\textbf{Postcondizioni:}
+\begin{itemize}
+    \item Media salvato nel database.
+\end{itemize}
+
+%------------------------------------------------
+\section{Sequence Diagram}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{media/sequence_register.png}
+\caption{Sequence Diagram - Registrazione}
+\end{figure}
+
+%------------------------------------------------
+\section{Diagrammi di Attività}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{media/activity_login.png}
+\caption{Activity Diagram - Login}
+\end{figure}
+
+%------------------------------------------------
+\section{Architettura del Sistema}
+
+\subsection{Architettura Generale}
+
+Il sistema adotta un’architettura client–server multilivello:
+
+\begin{itemize}
+    \item Client Web
+    \item Server Flask
+    \item Database relazionale
+\end{itemize}
+
+\subsection{Architettura Flask}
+
+Il flusso di una richiesta è il seguente:
+
+\begin{enumerate}
+    \item Il client invia una richiesta HTTP.
+    \item Flask intercetta la richiesta tramite routing.
+    \item Il Dispatcher (Front Controller) identifica il comando.
+    \item Il Service Layer esegue la logica applicativa.
+    \item Il Data Access Layer interagisce con il database.
+    \item La risposta JSON viene restituita al client.
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{media/architecture.png}
+\caption{Schema architetturale}
+\end{figure}
+
+%------------------------------------------------
+\section{Diagramma delle Classi}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{media/class_diagram.png}
+\caption{Class Diagram}
+\end{figure}
+
+%------------------------------------------------
+\section{Progettazione Database}
+
+\subsection{Schema E-R}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{media/er_diagram.png}
+\caption{Schema Entity-Relationship}
+\end{figure}
+
+\subsection{Relazioni Principali}
+
+\begin{itemize}
+    \item User 1:N Media
+    \item Media 1:N Comment
+    \item Media N:M Tag
+    \item User N:M Follow
+\end{itemize}
+
+%------------------------------------------------
+\section{Testing}
+
+Per il testing è stato utilizzato il framework \textit{pytest}.
+
+\subsection{Unit Test}
+\begin{itemize}
+    \item Validazione modello utente
+    \item Verifica unicità email e username
+    \item Test permessi per ruolo
+    \item Test CRUD media
+\end{itemize}
+
+\subsection{Integration Test}
+\begin{itemize}
+    \item Registrazione → Login
+    \item Pubblicazione → Visualizzazione
+    \item Verifica restrizioni
+\end{itemize}
+
+\subsection{Security Test}
+\begin{itemize}
+    \item Hash password
+    \item Validazione input
+    \item Protezione SQL injection
+\end{itemize}
+
+\end{document}

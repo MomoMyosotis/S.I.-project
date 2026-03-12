@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profilo Utente</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='profile_style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+</head>
+<body>
+
+<main class="profile-container" role="main" aria-label="Profilo utente">
+
+  <!-- Intestazione profilo -->
+  <section class="profile-header" aria-label="Informazioni utente">
+    <img
+      id="profile-picture"
+      src=""
+      alt="Foto profilo"
+      class="profile-picture"
+      width="180"
+      height="180"
+    />
+    <div class="profile-info">
+      <h1 id="username" tabindex="0">@loading...</h1>
+
+      <!-- moved stats into the header to save vertical space -->
+      <div class="header-stats" role="region" aria-label="Statistiche utente">
+        <div class="stat">
+          <span class="label">Pubblicazioni</span>
+          <span id="publications-count" class="value stat-counter">0</span>
+        </div>
+        <div class="stat">
+          <span class="label">Followers</span>
+          <span id="followers-count" class="value stat-counter">0</span>
+        </div>
+        <div class="stat">
+          <span class="label">Following</span>
+          <span id="following-count" class="value stat-counter">0</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Sezione Bio -->
+  <section class="profile-full-bio" aria-label="Biografia utente" role="region">
+    <h2 tabindex="0">Biography</h2>
+    <p id="full-bio">Nessuna biografia disponibile.</p>
+  </section>
+
+  <!-- Azioni profilo -->
+  <section id="profile-actions" class="profile-actions" aria-label="Azioni profilo" role="region">
+  </section>
+
+  <!-- Modal popup for followers/following -->
+  <div id="users-modal" class="users-modal" style="display:none;">
+    <div class="users-modal-content">
+      <div class="users-modal-header">
+        <h2 id="users-modal-title">Followers</h2>
+        <button class="users-modal-close" onclick="closeUsersModal()">&times;</button>
+      </div>
+      <div class="users-modal-body">
+        <ul id="users-list" class="users-list"></ul>
+        <p id="no-users-msg" style="display:none; text-align:center; color:#666;">Nessun utente trovato.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Elenco Pubblicazioni -->
+  <section class="profile-recent" aria-label="Pubblicazioni recenti" role="region">
+    <h2 tabindex="0">Pubblicazioni</h2>
+
+    <!-- skeleton shown while loading -->
+    <div id="publications-skeleton" class="pub-skeleton" aria-hidden="true" style="display:none">
+      <div class="s-item"></div>
+      <div class="s-item"></div>
+      <div class="s-item"></div>
+      <div class="s-item"></div>
+    </div>
+
+    <!-- container with infinite scroll -->
+    <div id="pubs-container" class="pubs-container" aria-live="polite">
+      <ul id="recent-publications" class="pub-grid"></ul>
+    </div>
+
+    <p id="no-publications" tabindex="0" style="display:none">Nessuna pubblicazione recente.</p>
+
+    <!-- sentinel for lazy loading -->
+    <div id="publications-sentinel" style="height:1px;visibility:hidden;"></div>
+
+    <!-- loading indicator -->
+    <div id="pubs-loading" class="pubs-loading" style="display:none;text-align:center;padding:20px;color:#999;">
+      Caricamento...
+    </div>
+
+    <!-- padding to avoid nav menu overlap -->
+    <div style="height:100px;"></div>
+  </section>
+
+</main>
+
+<script type="module">
+
+  const params = new URLSearchParams(window.location.search);
+  const viewedUsername = params.get("username");
+
+  // pagination & state
+  let currentOffset = 0;
+  const pageLimit = 5;
+  let totalPublications = null;
+  let loading = false;
+  let isLoadingProfile = false; // Flag to prevent concurrent profile loads
+
+  async function loadProfile() {
+    // Block concurrent calls
+    if (isLoadingProfile) {
+      console.warn("[DEBUG][loadProfile] Already loading, skipping duplicate request");
+      return;
+    }
+
+    try {
+      isLoadingProfile = true;
+      showSkeleton(true);
+      const url = viewedUsername
+        ? `/profile/data?username=${encodeURIComponent(viewedUsername)}`
+        : `/profile/data`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Response non OK");
+
+      const data = await res.json();
+      
+      // Validate response contains user data
+      if (!data.user || data.status !== "OK") {
+        throw new Error("Invalid profile response: " + (data.error_msg || "unknown error"));
+      }
+
+      updateUI(data.user);
+      // pass both viewer (data.viewer) and the target user (data.user)
+      updateActions(data.viewer || data.self, data.user);
+      attachBioToggle();
+
+      // Use publications data from profile response (avoid redundant fetch)
+      let initial = data.recent_publications || [];
+      totalPublications = data.user?.publications_count ?? null;
+
+      // render the initial publications and paging state
+      updatePublications(initial, true);
+      currentOffset = initial.length;
+      renderLoadMoreButton();
+      // call animateCounters only if defined (avoids ReferenceError)
+      if (typeof animateCounters === "function") {
+        try { animateCounters(); } catch (e) { console.warn("[DEBUG] animateCounters failed:", e); }
+      }
+    } catch (err) {
+      console.error("[DEBUG][loadProfile] Error:", err);
+      // Display error to user
+      const userEl = document.getElementById("username");
+      if (userEl) userEl.textContent = "@error: " + err.message;
+    } finally {
+      isLoadingProfile = false;
+      showSkeleton(false);
+    }
+  }
+
+  function showSkeleton(show = true) {
+    const el = document.getElementById("publications-skeleton");
+    if (el) el.style.display = show ? "grid" : "none";
+  }
+
+  function renderLoadMoreButton() {
+    // This function is no longer needed - lazy scrolling handles pagination
+    // kept for backward compat but does nothing
+  }
+
+  async function loadMorePublications() {
+    if (loading) return;
+    loading = true;
+    try {
+      const usernameParam = viewedUsername ? `&username=${encodeURIComponent(viewedUsername)}` : "";
+      const res = await fetch(`/profile/publications?offset=${currentOffset}&limit=${pageLimit}${usernameParam}`);
+      if (!res.ok) throw new Error("fetch pubblicazioni fallito");
+      const data = await res.json();
+      const pubs = data.publications || [];
+      const count = data.count;
+      if (typeof count === "number") totalPublications = count;
+      
+      // Stop if no new publications
+      if (pubs.length === 0) {
+        document.getElementById('publications-sentinel').style.display = 'none';
+      }
+      
+      updatePublications(pubs, false);
+      currentOffset += pubs.length;
+      const pubsEl = document.getElementById("publications-count");
+      if (pubsEl && totalPublications !== null) pubsEl.textContent = totalPublications;
+    } catch (err) {
+      console.error("[DEBUG][loadMorePublications] Errore:", err);
+    } finally {
+      loading = false;
+      const loadingIndicator = document.getElementById('pubs-loading');
+      if (loadingIndicator) loadingIndicator.style.display = 'none';
+    }
+  }
+
+  // media type detection + icon helper (improves on feed logic; falls back to stored_at extension/path)
+  function detectMediaType(pub = {}) {
+    const raw = (pub.type || pub.media_type || pub.format || pub.file_type || '').toString().toLowerCase().trim();
+    if (raw && raw !== 'unknown') {
+      // normalize common synonyms
+      if (raw === 'song') return 'audio';
+      if (raw === 'audio' || raw === 'music') return 'audio';
+      if (raw === 'video' || raw === 'movie') return 'video';
+      if (raw === 'document' || raw === 'doc' || raw === 'pdf') return 'document';
+      return raw;
+    }
+    const stored = (pub.stored_at || pub.location || pub.link || pub.file || '').toString().toLowerCase();
+    if (!stored) return '';
+    if (stored.includes('/songs') || stored.includes('/audio') || stored.match(/\.(mp3|wav|m4a|ogg|flac)$/i)) return 'audio';
+    if (stored.includes('/videos') || stored.match(/\.(mp4|mov|webm|avi|mkv)$/i)) return 'video';
+    if (stored.includes('/documents') || stored.match(/\.(pdf|docx?|txt|odt|pptx?)$/i)) return 'document';
+    return '';
+  }
+
+  function getMediaIcon(type) {
+    switch ((type || '').toString().toLowerCase()) {
+      case 'song':
+      case 'audio':
+        return '/static/images/song.png';
+      case 'document':
+        return '/static/images/document.png';
+      case 'video':
+        return '/static/images/video.png';
+      case 'link':
+      case 'concert':
+        return '/static/images/concert.png';
+      default:
+        return '/static/images/unknown.jpg';
+    }
+  }
+
+  function updatePublications(list, replace = false) {
+    const ul = document.getElementById("recent-publications");
+    const emptyMsg = document.getElementById("no-publications");
+    if (!ul) return;
+    if (replace) ul.innerHTML = "";
+
+    if ((ul.children.length + list.length) === 0) {
+      if (emptyMsg) emptyMsg.style.display = "block";
+      return;
+    }
+    if (emptyMsg) emptyMsg.style.display = "none";
+
+    list.forEach(pub => {
+      const li = document.createElement("li");
+      li.className = "publication-card";
+
+      // determine media id / link (fallbacks)
+      const mediaId = pub.id || pub.media_id || pub._id || pub.link || '';
+      const mediaHref = mediaId ? `/show?media_id=${encodeURIComponent(mediaId)}` : '#';
+
+      // Prefer explicit pub.type when available, otherwise fall back to robust detector
+      let mediaType = (pub.type || pub.media_type || pub.format || pub.file_type || '').toString().toLowerCase().trim();
+      if (!mediaType || mediaType === 'unknown') {
+        mediaType = detectMediaType(pub) || 'unknown';
+      }
+      // normalize a couple synonyms to keep icon mapping consistent
+      if (mediaType === 'music') mediaType = 'audio';
+      if (mediaType === 'movie') mediaType = 'video';
+      if (mediaType === 'song') mediaType = 'audio';
+      if (mediaType === 'document') mediaType = 'document';
+
+      const iconSrc = getMediaIcon(mediaType);
+
+      // make the whole card clickable by wrapping content in an anchor
+      li.innerHTML = `
+        <a class="card-link" href="${mediaHref}" aria-label="Apri pubblicazione" data-media-type="${escapeHtml(mediaType)}">
+          <div class="card-thumb" aria-hidden="true">
+            <img src="${iconSrc}" alt="${escapeHtml(mediaType)} thumbnail">
+          </div>
+          <div class="card-body">
+            <strong class="card-title">${escapeHtml(truncateTitle(pub.title))}</strong>
+            <p class="card-desc">${escapeHtml(pub.description)}</p>
+            <div class="card-meta">${escapeHtml(pub.date_published)}</div>
+          </div>
+        </a>
+      `;
+      ul.appendChild(li);
+    });
+  }
+
+  function escapeHtml(str = "") {
+    return String(str || "").replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  function truncateTitle(title, maxLength = 20) {
+    if (!title) return 'Untitled';
+    const str = String(title).trim();
+    return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
+  }
+
+  // populate header, stats and bio
+  function updateUI(user = {}) {
+    const nameEl = document.getElementById("username");
+    const picEl = document.getElementById("profile-picture");
+    const fullBioEl = document.getElementById("full-bio");
+    const pubsEl = document.getElementById("publications-count");
+    const followersEl = document.getElementById("followers-count");
+    const followingEl = document.getElementById("following-count");
+
+    if (nameEl) nameEl.textContent = "@" + (user.username || "unknown");
+    // use "no pp.jpg" from static/images when no profile picture is available
+    if (picEl) {
+      const defaultPic = "/static/images/no pp.jpg";
+      // if server returned a profile_pic id, use the client proxy endpoint to fetch it
+      if (user.profile_pic) {
+        picEl.src = `/profile/picture/${encodeURIComponent(user.profile_pic)}`;
+      } else {
+        picEl.src = user.profile_picture_url || encodeURI(defaultPic);
+      }
+    }
+    if (fullBioEl) {
+      fullBioEl.textContent = user.full_bio ?? user.bio ?? "Nessuna biografia disponibile.";
+      // collapsed by default
+      fullBioEl.classList.add("bio-collapsed");
+    }
+    if (pubsEl) {
+      pubsEl.textContent = user.publications_count ?? 0;
+      pubsEl.classList.add("stat-counter");
+      pubsEl.dataset.target = user.publications_count ?? 0;
+    }
+    if (followersEl) {
+      followersEl.textContent = user.followers_count ?? user.followers ?? 0;
+      followersEl.classList.add("stat-counter");
+      followersEl.dataset.target = followersEl.textContent;
+      // Add click handler to show followers modal
+      followersEl.addEventListener("click", () => showFollowersModal(user.username));
+      followersEl.style.cursor = "pointer";
+    }
+    if (followingEl) {
+      followingEl.textContent = user.following_count ?? user.followed ?? 0;
+      followingEl.classList.add("stat-counter");
+      followingEl.dataset.target = followingEl.textContent;
+      // Add click handler to followers/following counts
+      followingEl.addEventListener("click", () => showFollowingModal(user.username));
+      followingEl.style.cursor = "pointer";
+    }
+  }
+
+  // Modal functions for followers/following
+  async function showFollowersModal(username) {
+    try {
+      const res = await fetch(`/profile/followers?username=${encodeURIComponent(username)}`);
+      if (!res.ok) throw new Error("Failed to fetch followers");
+      const data = await res.json();
+      const followers = data.followers || [];
+      
+      document.getElementById("users-modal-title").textContent = `Followers di @${escapeHtml(username)}`;
+      populateUsersModal(followers);
+      document.getElementById("users-modal").style.display = "block";
+    } catch (err) {
+      console.error("[DEBUG][showFollowersModal] Error:", err);
+      alert("Errore nel caricamento dei followers");
+    }
+  }
+
+  async function showFollowingModal(username) {
+    try {
+      const res = await fetch(`/profile/following?username=${encodeURIComponent(username)}`);
+      if (!res.ok) throw new Error("Failed to fetch following");
+      const data = await res.json();
+      const following = data.following || [];
+      
+      document.getElementById("users-modal-title").textContent = `Following di @${escapeHtml(username)}`;
+      populateUsersModal(following);
+      document.getElementById("users-modal").style.display = "block";
+    } catch (err) {
+      console.error("[DEBUG][showFollowingModal] Error:", err);
+      alert("Errore nel caricamento degli utenti seguiti");
+    }
+  }
+
+  function populateUsersModal(users) {
+    const list = document.getElementById("users-list");
+    const noMsg = document.getElementById("no-users-msg");
+    
+    list.innerHTML = "";
+    
+    if (!users || users.length === 0) {
+      noMsg.style.display = "block";
+      list.style.display = "none";
+      return;
+    }
+    
+    noMsg.style.display = "none";
+    list.style.display = "block";
+    
+    users.forEach(username => {
+      const li = document.createElement("li");
+      li.className = "user-item";
+      li.innerHTML = `<a href="/profile?username=${encodeURIComponent(username)}" class="user-link">@${escapeHtml(username)}</a>`;
+      list.appendChild(li);
+    });
+  }
+
+  function closeUsersModal() {
+    document.getElementById("users-modal").style.display = "none";
+  }
+
+  // Close modal when clicking outside of it
+  window.addEventListener("click", function(event) {
+    const modal = document.getElementById("users-modal");
+    if (event.target === modal) {
+      closeUsersModal();
+    }
+  });
+
+  // Expose modal functions to global scope for onclick handlers
+  window.showFollowersModal = showFollowersModal;
+  window.showFollowingModal = showFollowingModal;
+  window.closeUsersModal = closeUsersModal;
+  window.toggleFollow = toggleFollow;
+
+  // render action buttons depending on ownership
+  function updateActions(viewer = {is_self:false}, targetUser = {}) {
+    const container = document.getElementById("profile-actions");
+    if (!container) return;
+    container.innerHTML = "";
+
+    console.debug("[DEBUG][updateActions] viewer:", viewer, "targetUser:", targetUser);
+
+    // Extract viewer info coming from backend (ProfileService now includes id/username/lvl)
+    const viewerId = viewer?.id ?? null;
+    const viewerLvl = Number.isFinite(Number(viewer?.lvl)) ? Number(viewer.lvl) : -1;
+    const isSelf = viewer?.is_self === true;
+
+    // safe-normalize target username and level
+    const targetUsername = targetUser?.username ?? targetUser?.user_name ?? targetUser?.id ?? null;
+    const targetLvl = Number.isFinite(Number(targetUser?.lvl)) ? Number(targetUser.lvl) : null;
+
+    // Edit button: allowed only when viewing own profile OR viewer level is 0 or 1
+    const canEdit = isSelf || [0,1].includes(viewerLvl);
+    if (canEdit) {
+      // pass username to editProfile so admin/root can edit others
+      const param = targetUsername ? `'${encodeURIComponent(targetUsername)}'` : "undefined";
+      container.insertAdjacentHTML("beforeend",
+        `<button class="edit-btn" onclick="editProfile(${param})">Modifica Profilo</button>`);
+    }
+
+    // Publish button: allowed when viewer is self OR viewer level is 0,1,3
+    if (isSelf || [0,1,3].includes(viewerLvl)) {
+      // if viewing other user's profile, route to publish with username param
+      const targetParam = targetUsername ? `?username=${encodeURIComponent(targetUsername)}` : '';
+      container.insertAdjacentHTML("beforeend",
+        `<button class="edit-btn" onclick="window.location.href='/publish.html${targetParam}'">Pubblica</button>`);
+    }
+
+    // Follow / Unfollow only when viewing other user's profile and viewer is logged
+    if (!isSelf && viewerId) {
+      console.debug("Target user data:", targetUser);
+      const isFollowing = Boolean(targetUser?.is_followed ?? targetUser?.is_following ?? false);
+      console.debug("Computed isFollowing:", isFollowing);
+      const btnText = isFollowing ? "Unfollow" : "Follow";
+      container.insertAdjacentHTML("beforeend",
+        `<button id="follow-btn" class="follow-btn">${btnText}</button>`);
+      const btn = document.getElementById("follow-btn");
+      if (btn) btn.addEventListener("click", () => toggleFollow(targetUsername));
+    }
+
+    // Management buttons: visible depending on viewer level and target's level
+    // Helpers to create action buttons that call new endpoints
+    function addMgmtButton(label, onclick) {
+      container.insertAdjacentHTML("beforeend", `<button class="mgmt-btn">${label}</button>`);
+      const el = container.lastElementChild;
+      if (el) el.addEventListener("click", onclick);
+    }
+
+    // level name map for display
+    const LEVEL_NAMES = {
+      0: "Root",
+      1: "Admin",
+      2: "Mod",
+      3: "Publisher",
+      4: "Regular",
+      5: "Restricted",
+      6: "Banned"
+    };
+
+    // Only show management controls if viewer has sufficient privileges and target exists (not self for some actions)
+    if (targetUsername && (viewerLvl === 0 || viewerLvl === 1 || viewerLvl === 2)) {
+      // ROOT (0) and ADMIN (1) and MOD (2) see some moderation controls
+      // Admin cannot manage roots
+      const canManageLevels = (viewerLvl === 0) || (viewerLvl === 1 && targetLvl !== 0);
+      const canBan = (viewerLvl === 0) || (viewerLvl === 1 && targetLvl !== 0);
+      const canRestrict = (viewerLvl === 0) || (viewerLvl === 1);
+
+      // show current target level
+      const lvlLabel = targetLvl !== null ? (LEVEL_NAMES[targetLvl] || `Level ${targetLvl}`) : "Unknown";
+      container.insertAdjacentHTML("beforeend", `<div class="current-lvl">Livello: <strong>${escapeHtml(lvlLabel)}</strong></div>`);
+
+      // Mods (2) get moderate actions but not level changes or banning
+      if (viewerLvl === 2) {
+        addMgmtButton("Moderate (placeholder)", async ()=>{ alert("Moderation action - implement server RPC"); });
+      }
+
+      // Level change UI: only for admins/roots (canManageLevels)
+      if (canManageLevels) {
+        // small inline control: select + apply button
+        const selId = `lvl-select-${Math.random().toString(36).slice(2,8)}`;
+        const wrapperHtml = `
+          <div class="level-change-wrap" style="display:inline-block; margin-left:8px;">
+            <select id="${selId}" class="lvl-select">
+              ${Object.keys(LEVEL_NAMES).map(k => `<option value="${k}" ${targetLvl!==null && Number(k)===Number(targetLvl) ? "selected":""}>${LEVEL_NAMES[k]}</option>`).join("")}
+            </select>
+            <button class="mgmt-btn" id="${selId}-apply">Cambia Livello</button>
+          </div>`;
+        container.insertAdjacentHTML("beforeend", wrapperHtml);
+        const selectEl = document.getElementById(selId);
+        const applyBtn = document.getElementById(`${selId}-apply`);
+        if (applyBtn && selectEl) {
+          applyBtn.addEventListener("click", async () => {
+            const newLvl = Number(selectEl.value);
+            if (!confirm(`Impostare livello ${LEVEL_NAMES[newLvl] || newLvl} per ${targetUsername}?`)) return;
+            try {
+              const r = await fetch(`/profile/set_level/${encodeURIComponent(targetUsername)}/${newLvl}`, { method: 'POST' });
+              const j = await r.json();
+              if (!r.ok || j.status === 'ERROR') { alert('Errore: ' + (j.error_msg || JSON.stringify(j))); return; }
+              alert('Livello aggiornato'); location.reload();
+            } catch (e) { alert('Errore di rete'); }
+          });
+        }
+      }
+
+      // Restrict account (sets level to 5) - available to admin/root
+      if (canRestrict) {
+        addMgmtButton("Set Restricted", async ()=> {
+          if (!confirm("Impostare lo stato 'Restricted' per " + targetUsername + "?")) return;
+          try {
+            const r = await fetch(`/profile/set_level/${encodeURIComponent(targetUsername)}/5`, { method: 'POST' });
+            const j = await r.json();
+            if (!r.ok || j.status === 'ERROR') { alert('Errore: ' + (j.error_msg || JSON.stringify(j))); return; }
+            alert('Utente limitato'); location.reload();
+          } catch(e){ alert('Errore di rete'); }
+        });
+      }
+
+      // Ban account (sets level to 6) - only admin/root and not targeting root if admin
+      if (canBan) {
+        addMgmtButton("Ban Account", async ()=> {
+          if (!confirm("Bannare l'account di " + targetUsername + "? Questa azione rende l'utente inaccessibile.")) return;
+          try {
+            const r = await fetch(`/profile/ban/${encodeURIComponent(targetUsername)}`, { method: 'POST' });
+            const j = await r.json();
+            if (!r.ok || j.status === 'ERROR') { alert('Errore: ' + (j.error_msg || JSON.stringify(j))); return; }
+            alert('Utente bannato'); location.reload();
+          } catch(e){ alert('Errore di rete'); }
+        });
+      }
+    }
+
+    // Restricted users (5) see only a "View" hint, banned (6) see nothing
+    if ((viewerLvl === 5 && !isSelf) || viewerLvl === 6) {
+      container.innerHTML = `<span class="muted"></span>`;
+    }
+  }
+
+  function attachBioToggle() {
+    // Bio toggle removed - bio is always fully visible
+    const full = document.getElementById("full-bio");
+    if (full) {
+      full.style.whiteSpace = 'pre-wrap';
+      full.style.wordWrap = 'break-word';
+    }
+  }
+
+  function editProfile() {
+    // This function is invoked from the dynamically created edit button.
+    // When called with a username (encoded by the caller) we must open the editor
+    // targeted to that user so admins/roots can edit other profiles.
+    window.editProfile = function(username){
+      try {
+        if (username && username !== 'undefined') {
+          // username passed by caller is already encodeURIComponent()-ed
+          window.location.href = `/profile/edit?username=${username}`;
+        } else {
+          window.location.href = "/profile/edit";
+        }
+      } catch (e) {
+        window.location.href = "/profile/edit";
+      }
+    };
+  }
+
+  // ensure global is set in case other code calls editProfile directly
+  if (typeof window.editProfile !== 'function') window.editProfile = (u)=>{ window.location.href = u ? `/profile/edit?username=${u}` : '/profile/edit'; };
+  async function toggleFollow(targetIdentifier) {
+    try {
+      const username = viewedUsername || targetIdentifier;
+      if (!username) return;
+      const followBtn = document.getElementById("follow-btn");
+      const action = followBtn && followBtn.textContent.trim().toLowerCase() === "follow" ? "follow" : "unfollow";
+      const res = await fetch(`/profile/${action}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username })
+      });
+      if (!res.ok) throw new Error("Request failed");
+      const j = await res.json();
+      // toggle label on success (backend should return success flag)
+      if (j && (j.status === "OK" || j.success === true)) {
+        if (followBtn) followBtn.textContent = action === "follow" ? "Unfollow" : "Follow";
+        // update followers counter if present
+        const followersEl = document.getElementById("followers-count");
+        if (followersEl) {
+          let cur = Number(followersEl.textContent || 0);
+          followersEl.textContent = action === "follow" ? cur + 1 : Math.max(0, cur - 1);
+        }
+      }
+    } catch (err) {
+      console.error("[DEBUG][toggleFollow] Errore:", err);
+    }
+  }
+
+  // Setup lazy scrolling to load more publications as user scrolls
+  function setupLazyScrolling() {
+    const sentinel = document.getElementById('publications-sentinel');
+    const loadingIndicator = document.getElementById('pubs-loading');
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loading) {
+          loadingIndicator.style.display = 'block';
+          loadMorePublications();
+        }
+      },
+      { rootMargin: '300px', threshold: 0.01 }
+    );
+
+    observer.observe(sentinel);
+  }
+
+  loadProfile();
+  setupLazyScrolling();
+
+</script>
+</body>
+</html>

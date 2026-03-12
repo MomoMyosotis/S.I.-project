@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Publish Media — Form</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='publish_style.css') }}" />
+</head>
+<body
+  data-username="{{ username|default('') }}"
+  data-userlvl="{{ user_level|default('') }}"
+  data-target="{{ target_username|default('') }}"
+>
+<div class="top-bar">
+  <button id="btnProfile" class="btn small-btn">Profile</button>
+  <button id="btnFeed" class="btn small-btn">Go to feed</button>
+</div>
+
+<header><div>Publication Form</div></header>
+
+  <main>
+    <form id="publishForm" enctype="multipart/form-data" novalidate>
+      <div class="logged-info small">Logged as: <span id="whoami"></span></div>
+      <!-- Actor block: show logged user and optional target -->
+        <fieldset>
+          <legend>Actor</legend>
+
+          <div class="actor-grid">
+            <div>
+              <label>From user</label>
+              <input type="text" id="username" name="client_username" readonly />
+            </div>
+
+            <div>
+              <label>Level</label>
+              <input type="number" id="userlvl" name="client_level" min="0" max="6" readonly />
+            </div>
+
+            <div class="check-row">
+              <input type="checkbox" id="onBehalfToggle" />
+              <label for="onBehalfToggle">Publish on behalf of</label>
+            </div>
+
+            <div id="targetLabel" class="hidden">
+              <label>Target username</label>
+              <input type="text" id="targetInput" name="target_username" placeholder="username to publish into" />
+            </div>
+          </div>
+        </fieldset>
+
+
+      <!-- Media type & permission -->
+      <fieldset>
+        <legend>Media type & permissions</legend>
+        <div class="row">
+          <label>Type:
+            <select id="mediaType" name="media_type">
+              <option value="link">Link</option>
+              <option value="document">Document</option>
+              <option value="audio">Audio / Song</option>
+              <option value="video">Video</option>
+            </select>
+          </label>
+          <div id="permMsg" class="small error" style="margin-left:8px"></div>
+        </div>
+      </fieldset>
+
+      <!-- LINK -->
+      <fieldset id="linkFields">
+        <legend>Link</legend>
+        <label>Title <span class="required-mark">*</span><input type="text" id="linkTitle" name="title" required /></label>
+        <label>Description <textarea id="linkDesc" name="description" rows="3"></textarea></label>
+        <label>URL <span class="required-mark">*</span><input type="url" id="linkUrl" name="url" required placeholder="https://..." /></label>
+        <div id="linkPreview" style="margin-top:8px"></div>
+
+        <label>Publication date <input type="date" id="linkPublicationDate" name="publication_date" /></label>
+        <label>Tags <input type="text" id="linkTags" placeholder="comma separated" /></label>
+        <div class="small">Auto-extracted from YouTube: duration=<span id="linkDuration">-</span></div>
+
+        <label><input type="checkbox" id="linkIAmAuthor" /> I am author</label>
+        <label><input type="checkbox" id="linkIAmPerformer" /> I am performer</label>
+
+        <label>Performers <input type="text" id="linkPerformers" placeholder="comma separated (optional)" /></label>
+        <label>Instruments <input type="text" id="linkInstruments" placeholder="comma separated (optional)" /></label>
+
+        <label><input type="checkbox" id="linkIsLive" /> Is Live</label>
+        <div id="linkLiveInfo">
+          <label>Recording date <input type="date" id="linkRecDate" /></label>
+          <label>Recording location <input type="text" id="linkRecLoc" /></label>
+        </div>
+      </fieldset>
+
+      <!-- DOCUMENT -->
+      <fieldset id="docFields" class="hidden">
+        <legend>Document</legend>
+        <label>File <span class="required-mark">*</span><input type="file" id="docFile" accept=".pdf,application/pdf, .doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required /></label>
+        <label>Title <span class="required-mark">*</span><input type="text" id="docTitle" name="docTitle" required /></label>
+        <label>Description <textarea id="docDesc" rows="3"></textarea></label>
+        <label>Genres <input type="text" id="docGenres" placeholder="comma separated" /></label>
+        <label>Publication year <input type="number" id="docYear" min="1000" max="3000" /></label>
+        <label>Performers <input type="text" id="docPerformers" placeholder="comma separated (optional)" /></label>
+        <label>Instruments <input type="text" id="docInstruments" placeholder="comma separated (optional)" /></label>
+        <div class="linked-uploader" data-type="document" id="docUploader">
+          <label>Upload linked files</label>
+          <div class="dropzone" id="docDropzone">Drop files here or click to select</div>
+          <input type="file" id="docLinkedFiles" multiple class="hidden" />
+          <div class="linked-list" id="docLinkedList"></div>
+        </div>
+        <label><input type="checkbox" id="docIAmAuthor" /> I'm the author</label>
+        <div class="small">Automatic extracted: format=<span id="docFormat">-</span> pages=<span id="docPages">-</span></div>
+      </fieldset>
+
+      <!-- AUDIO -->
+      <fieldset id="audioFields" class="hidden">
+        <legend>Audio / Song</legend>
+        <label>File <span class="required-mark">*</span><input type="file" id="audioFile" accept="audio/*" required /></label>
+        <label>Title <span class="required-mark">*</span><input type="text" id="audioTitle" required /></label>
+        <label>Description <textarea id="audioDesc" rows="3"></textarea></label>
+        <label>Genres <input type="text" id="audioGenres" placeholder="comma separated" /></label>
+        <label>Publication year <input type="number" id="audioYear" min="1000" max="3000" /></label>
+        <label>Authors <input type="text" id="audioAuthors" placeholder="comma separated" /></label>
+        <div class="linked-uploader" data-type="audio" id="audioUploader">
+          <label>Upload linked files</label>
+          <div class="dropzone" id="audioDropzone">Drop files here or click to select</div>
+          <input type="file" id="audioLinkedFiles" multiple class="hidden" />
+          <div class="linked-list" id="audioLinkedList"></div>
+        </div>
+
+        <label><input type="checkbox" id="audioIAmAuthor" /> I am author</label>
+        <label><input type="checkbox" id="audioIAmPerformer" /> I am performer</label>
+
+        <label>Performers <input type="text" id="audioPerformers" placeholder="comma separated (optional)" /></label>
+        <label>Instruments <input type="text" id="audioInstruments" placeholder="comma separated (optional)" /></label>
+
+        <label><input type="checkbox" id="audioIsLive"
+  /> Is Live</label>
+        <div id="audioLiveInfo">
+          <label>Recording date <input type="date" id="audioRecDate" /></label>
+          <label>Recording location <input type="text" id="audioRecLoc" /></label>
+        </div>
+
+        <div class="small">Automatic extracted: duration=<span id="audioDuration">-</span> format=<span id="audioFormat">-</span></div>
+      </fieldset>
+
+      <!-- VIDEO -->
+      <fieldset id="videoFields" class="hidden">
+        <legend>Video</legend>
+        <label>File <span class="required-mark">*</span><input type="file" id="videoFile" accept="video/*" required /></label>
+        <label>Title <span class="required-mark">*</span><input type="text" id="videoTitle" required /></label>
+        <label>Description <textarea id="videoDesc" rows="3"></textarea></label>
+        <label>Genres <input type="text" id="videoGenres" placeholder="comma separated" /></label>
+        <label>Publication year <input type="number" id="videoYear" min="1000" max="3000" /></label>
+        <label>Authors <input type="text" id="videoAuthors" placeholder="comma separated" /></label>
+        <div class="linked-uploader" data-type="video" id="videoUploader">
+          <label>Upload linked files</label>
+          <div class="dropzone" id="videoDropzone">Drop files here or click to select</div>
+          <input type="file" id="videoLinkedFiles" multiple class="hidden" />
+          <div class="linked-list" id="videoLinkedList"></div>
+        </div>
+
+        <label><input type="checkbox" id="videoIAmAuthor" /> I am author</label>
+        <label><input type="checkbox" id="videoIAmPerformer" /> I am performer</label>
+
+        <label>Performers <input type="text" id="videoPerformers" placeholder="comma separated (optional)" /></label>
+        <label>Instruments <input type="text" id="videoInstruments" placeholder="comma separated (optional)" /></label>
+
+        <label><input type="checkbox" id="videoIsLive" /> Is Live</label>
+        <div id="videoLiveInfo">
+          <label>Recording date <input type="date" id="videoRecDate" /></label>
+          <label>Recording location <input type="text" id="videoRecLoc" /></label>
+        </div>
+
+        <div class="small">Automatic extracted: duration=<span id="videoDuration">-</span> format=<span id="videoFormat">-</span></div>
+      </fieldset>
+
+
+
+      <div style="margin-top:12px" class="flex-between">
+        <div>
+          <button type="submit" id="submitBtn" class="btn">Submit</button>
+          <button type="button" id="previewBtn" class="btn">Show payload</button>
+        </div>
+        <div class="small muted">Preview shows the payload that will be sent (debug).</div>
+      </div>
+
+      <h3>Payload (debug)</h3>
+      <div id="payloadView" class="jsonout">(not submitted)</div>
+    </form>
+  </main>
+
+<script>
+(() => {
+  /* ==========================================================
+   * BOOTSTRAP
+   * ========================================================== */
+  const $ = id => document.getElementById(id);
+  const body = document.body;
+
+  const SERVER = window.SERVER_USER || {};
+  const logged = {
+    username: SERVER.username || body.dataset.username || '',
+    lvl: Number(SERVER.lvl ?? body.dataset.userlvl ?? null),
+    target: SERVER.target || body.dataset.target || ''
+  };
+
+  $('username').value = logged.username;
+  $('userlvl').value = Number.isFinite(logged.lvl) ? logged.lvl : '';
+  $('whoami').textContent =
+    `${logged.username || 'anonymous'}${Number.isFinite(logged.lvl) ? ` (lvl ${logged.lvl})` : ''}`;
+
+  /* ==========================================================
+   * PERMISSIONS
+   * ========================================================== */
+  const CAN_PUBLISH = {
+    link: lvl => lvl >= 0 && lvl <= 5,
+    document: lvl => [0, 1, 3].includes(lvl),
+    audio: lvl => [0, 1, 3].includes(lvl),
+    video: lvl => [0, 1, 3].includes(lvl)
+  };
+
+  const canOnBehalf = [0, 1].includes(logged.lvl);
+
+  /* ==========================================================
+   * MEDIA CONFIG
+   * ========================================================== */
+  const MEDIA = {
+    link: {
+      fs: 'linkFields',
+      title: 'linkTitle',
+      file: null,
+      live: 'linkIsLive',
+      liveInfo: 'linkLiveInfo'
+    },
+    document: {
+      fs: 'docFields',
+      title: 'docTitle',
+      file: 'docFile',
+      auto: { format: 'docFormat', pages: 'docPages' }
+    },
+    audio: {
+      fs: 'audioFields',
+      title: 'audioTitle',
+      file: 'audioFile',
+      live: 'audioIsLive',
+      liveInfo: 'audioLiveInfo',
+      auto: { duration: 'audioDuration', format: 'audioFormat' }
+    },
+    video: {
+      fs: 'videoFields',
+      title: 'videoTitle',
+      file: 'videoFile',
+      live: 'videoIsLive',
+      liveInfo: 'videoLiveInfo',
+      auto: { duration: 'videoDuration', format: 'videoFormat' }
+    }
+  };
+
+  /* ==========================================================
+   * VISIBILITY
+   * ========================================================== */
+  function updateVisibility() {
+    const type = $('mediaType').value;
+    Object.entries(MEDIA).forEach(([k, cfg]) => {
+      $(cfg.fs).classList.toggle('hidden', k !== type);
+    });
+    updatePermissions(type);
+    updateLiveRequired(type);
+    validate();
+  }
+
+  function updatePermissions(type) {
+    const allowed = CAN_PUBLISH[type]?.(logged.lvl);
+    $('submitBtn').disabled = !allowed;
+    $('permMsg').textContent = allowed
+      ? ''
+      : `Permission denied: lvl ${logged.lvl} cannot publish ${type}.`;
+  }
+
+  function updateLiveRequired(type) {
+    const cfg = MEDIA[type];
+    if (!cfg?.live) return;
+    const on = $(cfg.live).checked;
+    cfg.liveInfo &&
+      [...$(cfg.liveInfo).querySelectorAll('input')]
+        .forEach(i => (i.required = on));
+  }
+
+  /* ==========================================================
+   * ON BEHALF
+   * ========================================================== */
+  const onBehalf = $('onBehalfToggle');
+  const targetBox = $('targetLabel');
+
+  onBehalf.disabled = !canOnBehalf;
+  if (logged.target) {
+    onBehalf.checked = true;
+    targetBox.classList.remove('hidden');
+    $('targetInput').value = logged.target;
+  }
+
+  onBehalf.addEventListener('change', e => {
+    if (!canOnBehalf && e.target.checked) {
+      e.target.checked = false;
+      alert('Not allowed');
+      return;
+    }
+    targetBox.classList.toggle('hidden', !e.target.checked);
+    if (!e.target.checked) $('targetInput').value = '';
+  });
+
+  /* ==========================================================
+   * VALIDATION
+   * ========================================================== */
+
+  function requiredIf(cond, el) {
+    if (!el) return true;
+    if (!cond) return true;
+    return !!el.value.trim();
+  }
+
+
+function validate() {
+  const type = $('mediaType').value;
+  const cfg = MEDIA[type];
+  if (!cfg) return;
+
+  const title = $(cfg.title);
+  const file = cfg.file ? $(cfg.file) : null;
+
+  const okTitle = title?.value.trim();
+  const okFile = !file || file.files.length;
+
+  // --- BASE ---
+  let ok = okTitle && okFile && CAN_PUBLISH[type](logged.lvl);
+
+  // --- CONDITIONAL: IS LIVE ---
+  if (cfg.live && cfg.liveInfo) {
+    const liveOn = $(cfg.live)?.checked;
+
+    [...$(cfg.liveInfo).querySelectorAll('input')].forEach(i => {
+      if (liveOn) {
+        const good = i.value.trim();
+        i.classList.toggle('required-empty', !good);
+        ok = ok && good;
+      } else {
+        i.classList.remove('required-empty'); // <-- QUESTO MANCAVA
+      }
+    });
+  }
+
+
+  // --- CONDITIONAL: IS PERFORMER ---
+  const performerMap = {
+    link: ['linkIAmPerformer', 'linkInstruments'],
+    audio: ['audioIAmPerformer', 'audioInstruments'],
+    video: ['videoIAmPerformer', 'videoInstruments']
+  };
+
+  const p = performerMap[type];
+  if (p) {
+    const [chkId, instrId] = p;
+    const chk = $(chkId);
+    const instr = $(instrId);
+
+    if (chk?.checked) {
+      const good = instr.value.trim();
+      instr.classList.toggle('required-empty', !good);
+      ok = ok && good;
+    } else {
+      instr.classList.remove('required-empty');
+    }
+  }
+
+  // --- UI feedback ---
+  title?.classList.toggle('required-empty', !okTitle);
+  file?.classList.toggle('required-empty', !okFile);
+
+  $('submitBtn').disabled = !ok;
+}
+
+  /* ==========================================================
+   * YOUTUBE PREVIEW
+   * ========================================================== */
+  function extractYouTubeId(url) {
+    if (!url) return null;
+    const m = url.match(/(?:v=|\/embed\/|youtu\.be\/)([A-Za-z0-9_-]{11})/i);
+    return m ? m[1] : null;
+  }
+
+  async function fetchYouTubeDuration(videoId) {
+    try {
+      const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+      return res.ok ? await res.json() : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  $('linkUrl').addEventListener('input', async e => {
+    const url = e.target.value.trim();
+    const preview = $('linkPreview');
+    const vidId = extractYouTubeId(url);
+
+    if (!vidId) {
+      preview.innerHTML = url ? '<div style="color:#a00">Not a valid YouTube URL</div>' : '';
+      $('linkDuration').textContent = '-';
+      return;
+    }
+
+    preview.innerHTML = `<iframe src="https://www.youtube.com/embed/${vidId}?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;height:240px"></iframe>`;
+    
+    $('linkDuration').textContent = '(loading...)';
+    const info = await fetchYouTubeDuration(vidId);
+    $('linkDuration').textContent = info ? 'server will fetch' : '-';
+  });
+
+  /* ==========================================================
+   * FILE METADATA
+   * ========================================================== */
+  async function extractPdf(file) {
+    if (!file) return { format: '-', pages: '-' };
+    const buf = await file.arrayBuffer();
+    const text = new TextDecoder().decode(buf);
+    const pages = Math.max(...[...text.matchAll(/\/Count\s+(\d+)/g)].map(m => +m[1]), 0);
+    return { format: 'pdf', pages: pages || '-' };
+  }
+
+  function extractDuration(input, outDur, outFmt, isAudio) {
+    input.addEventListener('change', () => {
+      const f = input.files[0];
+      if (!f) return;
+      outFmt.textContent = f.type || '-';
+      const el = isAudio ? new Audio() : document.createElement('video');
+      el.src = URL.createObjectURL(f);
+      el.onloadedmetadata = () => {
+        outDur.textContent = Math.round(el.duration) + 's';
+        URL.revokeObjectURL(el.src);
+      };
+    });
+  }
+
+  $('docFile')?.addEventListener('change', async e => {
+    const info = await extractPdf(e.target.files[0]);
+    $('docFormat').textContent = info.format;
+    $('docPages').textContent = info.pages;
+  });
+
+  extractDuration($('audioFile'), $('audioDuration'), $('audioFormat'), true);
+  extractDuration($('videoFile'), $('videoDuration'), $('videoFormat'), false);
+
+  /* ==========================================================
+   * PAYLOAD PREVIEW
+   * ========================================================== */
+  function list(v) {
+    return v ? v.split(',').map(s => s.trim()).filter(Boolean) : [];
+  }
+
+
+    // --- Build payload (client preview object) ---
+    function Payload(){
+      const t = mediaType.value;
+      const base = {
+        from: usernameInput.value || '',
+        on_behalf_of: (onBehalfToggle.checked && targetInput.value.trim()) ? targetInput.value.trim() : null,
+        type: t,
+      };
+
+      if(t === 'link'){
+        return {
+          ...base,
+          title: document.getElementById('linkTitle').value.trim(),
+          description: document.getElementById('linkDesc').value.trim(),
+          link: document.getElementById('linkUrl').value.trim(),
+          publication_date: document.getElementById('linkPublicationDate').value || null,
+          tags: splitListInput(document.getElementById('linkTags')?.value),
+          is_author: document.getElementById('linkIAmAuthor').checked,
+          is_performer: document.getElementById('linkIAmPerformer').checked,
+          performers: splitListInput(document.getElementById('linkPerformers')?.value),
+          instruments: splitListInput(document.getElementById('linkInstruments')?.value),
+          is_live: document.getElementById('linkIsLive').checked,
+          recording_date: document.getElementById('linkRecDate').value || null,
+          location: document.getElementById('linkRecLoc').value || null,
+          auto_extracted: {
+            duration: (function(){ const v = normalizeDurationValue(linkDurationEl?.textContent); return v ? Number(v) : null; })()
+          }
+        };
+      }
+      if(t === 'document'){
+        const f = docFile?.files[0] || null;
+        const drafts = getLinkedFilesForType('document').map(x => ({ filename: x.name }));
+        return {
+          ...base,
+          title: document.getElementById('docTitle').value.trim(),
+          description: document.getElementById('docDesc').value.trim(),
+          genres: splitListInput(document.getElementById('docGenres').value),
+          // alias for consistency with link/video payload preview
+          tags: splitListInput(document.getElementById('docGenres').value),
+          year: document.getElementById('docYear').value || null,
+          // authors: documents don't expose an authors text-field in the UI —
+          // if user checked "I'm the author" include the logged username
+          authors: (document.getElementById('docIAmAuthor')?.checked && usernameInput.value) ? [usernameInput.value] : [],
+          // performers/instruments are optional on the document form — include if present
+          performers: splitListInput(document.getElementById('docPerformers')?.value),
+          instruments: splitListInput(document.getElementById('docInstruments')?.value),
+          linked_media: {
+            selected: getSelectedMediaIds(null),
+            drafts: drafts
+          },
+          is_author: document.getElementById('docIAmAuthor').checked,
+          // avoid sending placeholder '-' values; prefer empty/null
+          automatic: {
+            format: (docFormatEl?.textContent && docFormatEl.textContent !== '-') ? docFormatEl.textContent : '',
+            pages: docPagesEl?.textContent ? (docPagesEl.textContent === '-' ? null : Number(docPagesEl.textContent) || null) : null
+          }
+        };
+      }
+      if(t === 'audio' || t === 'video'){
+        const isAudio = t === 'audio';
+        const f = isAudio ? audioFile?.files[0] : videoFile?.files[0];
+        const durationEl = isAudio ? audioDurationEl : videoDurationEl;
+        const formatEl = isAudio ? audioFormatEl : videoFormatEl;
+        const drafts = getLinkedFilesForType(isAudio ? 'audio' : 'video').map(x => ({ filename: x.name }));
+        return {
+          ...base,
+          title: document.getElementById((isAudio ? 'audioTitle' : 'videoTitle')).value.trim(),
+          description: document.getElementById((isAudio ? 'audioDesc' : 'videoDesc')).value.trim(),
+          genres: splitListInput(document.getElementById((isAudio ? 'audioGenres' : 'videoGenres')).value),
+          // alias 'tags' like in link/publish preview so payloads look consistent
+          tags: splitListInput(document.getElementById((isAudio ? 'audioGenres' : 'videoGenres')).value),
+          year: document.getElementById((isAudio ? 'audioYear' : 'videoYear')).value || null,
+          authors: splitListInput(document.getElementById((isAudio ? 'audioAuthors' : 'videoAuthors')).value),
+          performers: splitListInput(document.getElementById((isAudio ? 'audioPerformers' : 'videoPerformers'))?.value),
+          instruments: splitListInput(document.getElementById((isAudio ? 'audioInstruments' : 'videoInstruments'))?.value),
+          linked_media: {
+            selected: getSelectedMediaIds(null),
+            drafts: drafts
+          },
+          is_author: document.getElementById((isAudio ? 'audioIAmAuthor' : 'videoIAmAuthor')).checked,
+          is_performer: document.getElementById((isAudio ? 'audioIAmPerformer' : 'videoIAmPerformer')).checked,
+          is_live: document.getElementById((isAudio ? 'audioIsLive' : 'videoIsLive')).checked,
+          recording_date: document.getElementById((isAudio ? 'audioRecDate' : 'videoRecDate')).value || null,
+          location: document.getElementById((isAudio ? 'audioRecLoc' : 'videoRecLoc')).value || null,
+          automatic: {
+            duration: (function(){ const v = normalizeDurationValue(durationEl?.textContent); return v ? Number(v) : null; })(),
+            format: (formatEl?.textContent && formatEl.textContent !== '-') ? formatEl.textContent : ''
+          },
+          segments: gatherSegments(),
+          subtracks: gatherSubtracks()
+        };
+      }
+      return {...base};
+    }
+
+  // ----- Local DOM references & helpers -----
+  const usernameInput = $('username');
+  const mediaType = $('mediaType');
+  const onBehalfToggle = $('onBehalfToggle');
+  const targetInput = $('targetInput');
+  const linkDurationEl = $('linkDuration');
+  const docFormatEl = $('docFormat');
+  const docPagesEl = $('docPages');
+  const audioDurationEl = $('audioDuration');
+  const audioFormatEl = $('audioFormat');
+  const videoDurationEl = $('videoDuration');
+  const videoFormatEl = $('videoFormat');
+  const docFile = $('docFile');
+  const audioFile = $('audioFile');
+  const videoFile = $('videoFile');
+  const docLinkedFilesEl = $('docLinkedFiles');
+  const audioLinkedFilesEl = $('audioLinkedFiles');
+  const videoLinkedFilesEl = $('videoLinkedFiles');
+  const payloadViewEl = $('payloadView');
+  const previewBtn = $('previewBtn');
+  const publishForm = $('publishForm');
+  const submitBtn = $('submitBtn');
+
+  // wire simple linked-file dropzones (click / drag & drop -> hidden file input)
+  function wireDropzone(dropId, inputEl, listId){
+    const drop = $(dropId);
+    const list = $(listId);
+    if(!drop || !inputEl) return;
+    drop.addEventListener('click', () => inputEl.click());
+    inputEl.addEventListener('change', () => {
+      const files = Array.from(inputEl.files || []);
+      if(list) list.innerHTML = files.map(f => `<div class="linked-item">${f.name}</div>`).join('');
+    });
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+    drop.addEventListener('dragleave', e => { e.preventDefault(); drop.classList.remove('dragover'); });
+    drop.addEventListener('drop', e => {
+      e.preventDefault(); drop.classList.remove('dragover');
+      const dt = new DataTransfer();
+      const existing = Array.from(inputEl.files || []);
+      existing.concat(Array.from(e.dataTransfer.files || [])).forEach(f => dt.items.add(f));
+      inputEl.files = dt.files;
+      inputEl.dispatchEvent(new Event('change'));
+    });
+  }
+  wireDropzone('docDropzone', docLinkedFilesEl, 'docLinkedList');
+  wireDropzone('audioDropzone', audioLinkedFilesEl, 'audioLinkedList');
+  wireDropzone('videoDropzone', videoLinkedFilesEl, 'videoLinkedList');
+
+  function splitListInput(v){ return v ? v.split(',').map(s=>s.trim()).filter(Boolean) : []; }
+  // normalize duration string shown in the UI ("120s", "-", "(loading...)") -> numeric string or empty
+  function normalizeDurationValue(v){
+    if (v === null || v === undefined) return '';
+    const s = String(v).trim();
+    if (!s) return '';
+    const low = s.toLowerCase();
+    if (low === '-' || low.includes('load') || low.includes('server')) return '';
+    const m = s.match(/(-?\d+(?:\.\d+)?)/);
+    return m ? m[1] : '';
+  }
+  // safe fallbacks for UI pieces that are not implemented in this template
+  function getSelectedMediaIds(_){ return []; }
+  function gatherSegments(){ return []; }
+  function gatherSubtracks(){ return []; }
+
+  function getLinkedFilesForType(type){
+    if(type === 'document') return docLinkedFilesEl?.files ? Array.from(docLinkedFilesEl.files) : [];
+    if(type === 'audio') return audioLinkedFilesEl?.files ? Array.from(audioLinkedFilesEl.files) : [];
+    if(type === 'video') return videoLinkedFilesEl?.files ? Array.from(videoLinkedFilesEl.files) : [];
+    return [];
+  }
+
+  // Build FormData matching server expectations (request.form keys used in server-side handler)
+  function buildFormData(payload){
+    const fd = new FormData();
+
+    // basic scalar fields
+    fd.append('type', payload.type || '');
+    fd.append('title', payload.title || '');
+    fd.append('description', payload.description || '');
+    // prefer explicit 'genres' array, otherwise accept 'tags' (used by link form)
+    const _genres = Array.isArray(payload.genres) ? payload.genres : (Array.isArray(payload.tags) ? payload.tags : (payload.genres ? String(payload.genres).split(',').map(s=>s.trim()).filter(Boolean) : []));
+    fd.append('genres', Array.isArray(_genres) ? _genres.join(',') : (_genres || ''));
+    fd.append('year', payload.year || '');
+    fd.append('authors', JSON.stringify(payload.authors || []));
+    fd.append('performers', JSON.stringify(payload.performers || []));
+    if (payload.publication_date) fd.append('publication_date', payload.publication_date);
+    if (payload.recording_date) fd.append('recording_date', payload.recording_date);
+    fd.append('location', payload.location || '');
+    fd.append('format', payload.automatic?.format || payload.file_format || '');
+    fd.append('additional_info', payload.additional_info || '');
+    fd.append('concert_date', payload.concert_date || '');
+    fd.append('concert_location', payload.concert_location || '');
+    fd.append('link', payload.link || '');
+    // normalize duration so server receives either a number-string or empty (avoids float('-') errors)
+    const _rawDur = (payload.automatic && payload.automatic.duration) ?? payload.duration ?? '';
+    fd.append('duration', normalizeDurationValue(_rawDur));
+    fd.append('file_format', payload.automatic?.format || payload.file_format || '');
+    fd.append('instruments_used', Array.isArray(payload.instruments) ? payload.instruments.join(',') : (payload.instruments || ''));
+    fd.append('target_username', payload.on_behalf_of || '');
+
+    if(payload.is_author) fd.append('is_author', '1');
+    if(payload.is_performer) fd.append('is_performer', '1');
+    if(payload.is_live) fd.append('is_live', '1');
+
+    // attach main file (server expects files in request.files.getlist('files'))
+    const t = (payload.type || '').toLowerCase();
+    if(t === 'document' && docFile?.files?.length){ fd.append('files', docFile.files[0]); }
+    if(t === 'audio' && audioFile?.files?.length){ fd.append('files', audioFile.files[0]); }
+    if(t === 'video' && videoFile?.files?.length){ fd.append('files', videoFile.files[0]); }
+
+    // attach linked files (server expects request.files.getlist('linked_files'))
+    const linkedFiles = getLinkedFilesForType(t);
+    const linkedMeta = [];
+    linkedFiles.forEach(f => {
+      fd.append('linked_files', f);
+      linkedMeta.push({ filename: f.name, suggested_type: t });
+    });
+    fd.append('linked_files_meta', JSON.stringify(linkedMeta));
+
+    // flags/arrays passed explicitly
+    fd.append('authors', JSON.stringify(payload.authors || []));
+    fd.append('performers', JSON.stringify(payload.performers || []));
+
+    return fd;
+  }
+
+  // Preview helper
+  previewBtn?.addEventListener('click', e => {
+    e.preventDefault();
+    payloadViewEl.textContent = JSON.stringify(Payload(), null, 2);
+  });
+
+  // Submit handler: POST multipart/form-data to server endpoint '/content/publish'
+  publishForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    validate();
+    if(submitBtn.disabled) return;
+
+    const p = Payload();
+    payloadViewEl.textContent = 'Sending...';
+    submitBtn.disabled = true;
+
+    try{
+      const fd = buildFormData(p);
+      const res = await fetch('/content/publish', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => null);
+      if(!res.ok || (data && data.status === 'ERROR')){
+        payloadViewEl.textContent = `Error: ${data?.error_msg || JSON.stringify(data) || res.statusText}`;
+        submitBtn.disabled = false;
+        return;
+      }
+
+      // show server response and redirect to new media page when possible
+      payloadViewEl.textContent = JSON.stringify(data, null, 2);
+      const newId = (data && (data.id || data.media_id || data.result && data.result.id)) || null;
+      if(newId){
+        // small delay so user sees the response
+        setTimeout(() => window.location.href = `/show?id=${newId}` , 800);
+      } else {
+        submitBtn.disabled = false;
+      }
+    }catch(err){
+      payloadViewEl.textContent = `Submission failed: ${err}`;
+      submitBtn.disabled = false;
+    }
+  });
+
+
+  /* ==========================================================
+   * EVENTS
+   * ========================================================== */
+  $('mediaType').addEventListener('change', updateVisibility);
+  document.querySelectorAll('input,select,textarea')
+    .forEach(el => el.addEventListener('input', validate));
+
+  // go to self profile
+  $('btnProfile')?.addEventListener('click', () => {
+    window.location.href = `/home?form_type=profile`;
+  });
+
+  // go to feed
+  $('btnFeed')?.addEventListener('click', () => {
+    window.location.href = '/home?form_type=feed';
+  });
+
+  // if is_performer is true instruments is required
+  $('linkIAmPerformer')?.addEventListener('change', e => {
+    const required = e.target.checked;
+    $('linkInstruments').required = required;
+    if (!required) $('linkInstruments').value = '';
+  });
+
+  // if is_live is true recording date and location are required
+  ['linkIsLive', 'audioIsLive', 'videoIsLive'].forEach(id => {
+    $(id)?.addEventListener('change', e => {
+      const type = id.replace('IsLive', '');
+      const liveInfo = MEDIA[type]?.liveInfo;
+      if (liveInfo) {
+        [...$(liveInfo).querySelectorAll('input')]
+          .forEach(i => (i.required = e.target.checked));
+        if (!e.target.checked) {
+          [...$(liveInfo).querySelectorAll('input')].forEach(i => i.value = '');
+        }
+      }
+    });
+  });
+  $('conditional_block')?.addEventListener('change', validate);
+
+
+  updateVisibility();
+})();
+</script>
+
+</body>
+</html>

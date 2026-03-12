@@ -1,0 +1,10 @@
+flask
+pywebview
+requests
+wtforms
+flask_wtf
+Jinja2
+itsdangerous
+# Werkzeug and the others are included as a transitive requirement of Flask
+# but we list it explicitly so that the bootstrap checker
+# records it as a "required" package as well.

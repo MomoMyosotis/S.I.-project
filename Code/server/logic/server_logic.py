@@ -1,0 +1,105 @@
+# first line
+import json, secrets, threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from server.services.redirect import dispatch_command
+from server.logic.admin_console import macr, start_admin_server, register_stop_callback
+
+# Sessioni e modalità server
+sessions = {}
+mode_ref = ["auto"]
+
+def generate_token(length: int = 32) -> str:
+    """Genera un token sicuro per sessioni utente."""
+    return secrets.token_hex(length // 2)
+
+class RequestHandler(BaseHTTPRequestHandler):
+    def _set_headers(self, status_code=200):
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+
+    def do_POST(self):
+        if self.path != "/command":
+            self._set_headers(404)
+            self.wfile.write(json.dumps({
+                "status": "ERROR",
+                "error_msg": "Unknown endpoint"
+            }).encode())
+            return
+
+        content_length = int(self.headers.get('Content-Length', 0))
+        raw_data = self.rfile.read(content_length)
+
+        try:
+            data = json.loads(raw_data)
+            command = (data.get("command") or "").lower()
+            args = data.get("args", [])
+            token = data.get("token")
+        except Exception:
+            self._set_headers(400)
+            self.wfile.write(json.dumps({
+                "status": "ERROR",
+                "error_msg": "Invalid JSON"
+            }).encode())
+            return
+
+        user_obj = sessions.get(token)
+
+        # Intercetta register/login in modalità manuale (support 'register' and 'register_user')
+        if command in ("register", "register_user", "login") and mode_ref[0] == "manual":
+            meta = {"command": command, "args": args, "token": token}
+            approved = macr(timeout=30, meta=meta)
+            if not approved:
+                self._set_headers(200)
+                self.wfile.write(json.dumps({
+                    "status": "ERROR",
+                    "error_msg": "Registration denied by admin"
+                }).encode())
+                return
+
+        # Dispatcher principale
+        response, new_user_obj, new_token, status = dispatch_command(command, args, user_obj)
+        if new_token:
+            sessions[new_token] = new_user_obj
+
+        # Parsing
+        try:
+            response_dict = json.loads(response) if isinstance(response, str) else response
+        except Exception:
+            response_dict = {"status": "error", "error_msg": "Malformed response"}
+
+        self._set_headers(200)
+        self.wfile.write(json.dumps({
+            "status": response_dict.get("status", status),
+            "response": response_dict,
+            "token": new_token
+        }).encode())
+
+def start_server(host: str, port: int):
+    """Avvia l'HTTP server e il thread admin console."""
+    # Start admin TCP console (non-blocking). Use localhost only.
+    admin_server = start_admin_server(mode_ref, host='127.0.0.1', port=60000)
+
+    server = HTTPServer((host, port), RequestHandler)
+    # Register a stop callback so admin can stop this HTTPServer cleanly.
+    def _stop_httpserver():
+        try:
+            #print("Admin requested server stop. Shutting down HTTP server...")
+            server.shutdown()
+            server.server_close()
+        except Exception as e:
+            print(f"Error stopping server: {e}")
+    register_stop_callback(_stop_httpserver)
+    #print(f"Server running on {host}:{port}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        #print("\nKeyboardInterrupt received. Shutting down server...")
+        server.server_close()
+
+def stop_server(server: HTTPServer):
+    """Chiude il server HTTP."""
+    server.server_close()
+    #print("Server stopped.")
+
+# last line

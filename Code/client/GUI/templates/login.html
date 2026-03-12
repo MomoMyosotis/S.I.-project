@@ -1,0 +1,130 @@
+<!-- login.html -->
+<div class="box">
+  <div class="login">
+    <link rel="stylesheet" href="{{ url_for('static', filename='login_style.css') }}">
+
+    <form id="loginForm" class="loginBx" method="post" action="{{ url_for('.login') }}">
+      {{ form.hidden_tag() }}  <!-- CSRF token e campi nascosti -->
+
+      <h2>
+        <i class="fa-solid fa-right-to-bracket"></i>
+        Login
+        <i class="fa-solid fa-heart"></i>
+      </h2>
+
+      <!-- Username -->
+      {{ form.username(class_="input", placeholder="Username") }}
+      {% for error in form.username.errors %}
+        <p class="error">{{ error }}</p>
+      {% endfor %}
+
+      <!-- Password -->
+      <div class="password-input-group">
+        {{ form.password(class_="input", placeholder="Password", id="login_password") }}
+        <button type="button" class="toggle-password-btn" onclick="togglePasswordVisibility('login_password')" title="Show/Hide Password">
+          <i class="fas fa-eye"></i>
+        </button>
+      </div>
+      {% for error in form.password.errors %}
+        <p class="error">{{ error }}</p>
+      {% endfor %}
+
+      <input type="submit" value="Sign in" />
+
+      <div class="group">
+        <a href="{{ url_for('auth.recover') }}">Forgot Password?</a>
+        <a href="{{ url_for('auth.register') }}">Sign up</a>
+      </div>
+
+      <p id="msg" style="color: #ff2770; text-align: center; margin-top: 1px;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              {{ message }}
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+      </p>
+    </form>
+
+    <style>
+      /* Password Input Group */
+      .password-input-group {
+        position: relative;
+        width: 100%;
+        display: flex;
+        align-items: center;
+      }
+
+      .password-input-group .input {
+        width: 100%;
+        padding-right: 50px;
+      }
+
+      /* Toggle Password Button */
+      .toggle-password-btn {
+        position: absolute;
+        right: 15px;
+        background: none;
+        border: none;
+        color: #ff2770;
+        cursor: pointer;
+        font-size: 18px;
+        transition: 0.3s ease;
+        padding: 5px 10px;
+      }
+
+      .toggle-password-btn:hover {
+        color: #45f3ff;
+        text-shadow: 0 0 10px #45f3ff;
+        transform: scale(1.2);
+      }
+
+      .toggle-password-btn:active {
+        transform: scale(0.95);
+      }
+    </style>
+
+    <script>
+      // Toggle password visibility function
+      function togglePasswordVisibility(fieldId) {
+        const field = document.getElementById(fieldId);
+        const button = event.target.closest('.toggle-password-btn');
+        const icon = button.querySelector('i');
+        
+        if (field.type === 'password') {
+          field.type = 'text';
+          icon.classList.remove('fa-eye');
+          icon.classList.add('fa-eye-slash');
+        } else {
+          field.type = 'password';
+          icon.classList.remove('fa-eye-slash');
+          icon.classList.add('fa-eye');
+        }
+      }
+    </script>
+
+    <script>
+      function pollLoginStatus() {
+        fetch('/auth/login_status')
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'ACCEPTED') {
+              window.location.href = '/home';
+            } else if (data.status === 'PENDING') {
+              setTimeout(pollLoginStatus, 15000); // riprova tra 15 secondi
+            }
+          })
+          .catch(err => console.error(err));
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const msgText = document.getElementById('msg').innerText || '';
+        if (msgText.includes('attesa di approvazione admin')) {
+          pollLoginStatus();
+        }
+      });
+    </script>
+
+  </div>
+</div>

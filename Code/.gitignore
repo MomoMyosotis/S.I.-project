@@ -1,0 +1,11 @@
+# Python cache files
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+
+# Storage folders (all contents)
+server/storage/documents/
+server/storage/images/
+server/storage/notes/
+server/storage/songs/
+server/storage/videos/

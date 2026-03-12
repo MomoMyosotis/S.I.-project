@@ -1,0 +1,196 @@
+@import url("https://fonts.googleapis.com/css?family=Poppins:200,300,400,500,600,700,800,900&display=swap");
+
+/* ============================
+   STILE GENERALE PAGINA
+============================ */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Poppins", sans-serif;
+  background: #1e1b29;
+  color: #eee;
+}
+
+/* proprietà custom come negli altri file */
+@property --a {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes rotating {
+  0% { --a: 0deg; }
+  100% { --a: 360deg; }
+}
+
+/* ============================
+   CONTAINER PRINCIPALE
+============================ */
+.form-wrap {
+  position: relative;
+  width: 90%;
+  max-width: 560px;
+  margin: 30px auto;
+  padding: 25px;
+  border-radius: 20px;
+
+  background: repeating-conic-gradient(
+    from var(--a),
+    #ff2770 0%,
+    #ff2770 5%,
+    transparent 5%,
+    transparent 40%,
+    #ff2770 50%
+  );
+
+  filter: drop-shadow(0 15px 50px #000);
+  animation: rotating 4s linear infinite;
+  z-index: 1;
+}
+
+/* secondo layer */
+.form-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: repeating-conic-gradient(
+    from var(--a),
+    #45f3ff 0%,
+    #45f3ff 5%,
+    transparent 5%,
+    transparent 40%,
+    #45f3ff 50%
+  );
+  animation: rotating 4s linear infinite;
+  animation-delay: -1s;
+  z-index: -1;
+}
+
+/* layer interno */
+.form-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  background: #2d2d39;
+  border-radius: 15px;
+  border: 8px solid #25252b;
+  z-index: -1;
+}
+
+/* ============================
+   TITOLI E TESTI
+============================ */
+h1 {
+  text-align: center;
+  color: #ff2770;
+  text-shadow: 0 0 10px #ff2770;
+  margin-bottom: 20px;
+  user-select: none;
+}
+
+/* ============================
+   FORM / INPUT
+============================ */
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+label {
+  font-weight: 600;
+  color: #eee;
+}
+
+input[type="text"],
+textarea {
+  width: 100%;
+  padding: 12px;
+  background: #3a374a;
+  border: none;
+  border-radius: 10px;
+  color: #eee;
+  outline: none;
+  font-size: 0.95em;
+  transition: box-shadow 0.3s ease;
+}
+
+input[type="text"]:focus,
+textarea:focus {
+  box-shadow: 0 0 10px #ff2770;
+}
+
+/* ============================
+   FOTO PROFILO
+============================ */
+#preview {
+  width: 140px;
+  height: 140px;
+  border-radius: 15px;
+  object-fit: cover;
+  border: 3px solid #ff2770;
+  box-shadow: 0 0 15px #ff2770aa;
+  transition: box-shadow 0.3s ease;
+}
+
+#preview:hover {
+  box-shadow: 0 0 25px #ff2770ff;
+}
+
+/* ============================
+   BOTTONI
+============================ */
+button {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95em;
+  transition: 0.3s;
+}
+
+#upload-btn,
+#save-btn {
+  background: #ff2770;
+  color: #fff;
+  box-shadow: 0 0 15px #ff2770aa;
+}
+
+#upload-btn:hover,
+#save-btn:hover {
+  background: #e01f65;
+  box-shadow: 0 0 25px #ff2770;
+}
+
+#cancel-btn {
+  background: #3a374a;
+  color: #eee;
+}
+
+#cancel-btn:hover {
+  background: #4c475f;
+  box-shadow: 0 0 15px #45f3ff88;
+}
+
+/* messaggi */
+#msg {
+  text-align: center;
+  font-weight: 600;
+}
+
+/* ============================
+    RESPONSIVE
+============================ */
+@media (max-width: 480px) {
+  #preview {
+    width: 110px;
+    height: 110px;
+  }
+
+  button {
+    padding: 10px 15px;
+  }
+}
